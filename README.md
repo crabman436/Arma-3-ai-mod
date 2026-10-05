@@ -224,3 +224,20 @@ addons/main/
 mod.cpp
 .hemtt/project.toml
 ```
+
+## Reactive-army development checks
+
+Reinforcement requests now count the caller and its surviving committed QRFs,
+then dispatch suitable groups in arrival-time order until the desired combat
+power is reached or `CAI_maxResponders` is exhausted. Set
+`CAI_supportRatio = 1.5;` to require estimated friendly combat power equal to
+150% of the reported enemy power. Spare groups remain available for other
+fights. This is a heuristic based on the existing asset weights, not a combat
+outcome guarantee.
+
+Building searches confirm each building position only when a living entry
+soldier reaches it on the correct floor. A failed move, a dead entry team,
+cancellation, or remaining known enemies prevents a successful-clear report.
+Unfinished buildings can be retried after 120 seconds. These changes require
+the in-game acceptance checks in `tests/ACCEPTANCE.md`; a successful build alone
+does not verify Arma pathfinding or multiplayer behavior.
