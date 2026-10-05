@@ -30,6 +30,8 @@ private _defaults = [
     ["CAI_useJets", false],
     ["CAI_airLift", true],
     ["CAI_airLiftMinDistance", 900],    // infantry further than this from the fight get flown in
+    ["CAI_truckLift", true],            // idle crewed trucks drive infantry QRFs to the fight
+    ["CAI_truckRadius", 2500],          // how far a truck will come to pick infantry up
     ["CAI_grabVehicles", true],         // infantry QRFs use nearby empty vehicles
     ["CAI_assistTimeout", 600],         // responders give up and go home after this
     ["CAI_quietTime", 90],              // no contact for this long = fight is over

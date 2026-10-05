@@ -2,7 +2,9 @@
     CAI_fnc_groupType
     Classifies a group by what its leader is in.
     Params: 0: GROUP
-    Returns: "INF", "GROUND", "HELI_ATTACK", "HELI_TRANSPORT", "JET" or "ARTY"
+    Returns: "INF", "GROUND", "TRUCK", "UNARMED", "HELI_ATTACK", "HELI_TRANSPORT", "JET" or "ARTY"
+        TRUCK   = unarmed ground vehicle with at least 4 passenger seats
+        UNARMED = other unarmed ground vehicles (fuel/ammo/repair trucks...)
 */
 
 params [["_grp", grpNull, [grpNull]]];
@@ -23,4 +25,18 @@ if (_veh isKindOf "Helicopter") exitWith {
 };
 
 if (_veh isKindOf "Plane") exitWith {"JET"};
+
+if (_veh isKindOf "LandVehicle" && {!(_veh isKindOf "Tank")}) exitWith {
+    private _weapons = [];
+    {_weapons append (_veh weaponsTurret _x)} forEach ([[-1]] + allTurrets [_veh, false]);
+    private _armed = (_weapons findIf {
+        private _w = toLower _x;
+        (["horn", "smokelauncher", "cmflare", "laserdesignator", "fake"] findIf {(_w find _x) >= 0}) < 0
+    }) >= 0;
+    if (_armed) then {
+        "GROUND"
+    } else {
+        ["UNARMED", "TRUCK"] select ((count fullCrew [_veh, "cargo", true]) >= 4)
+    };
+};
 "GROUND"

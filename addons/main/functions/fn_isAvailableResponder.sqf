@@ -56,6 +56,7 @@ switch (_type) do {
             // Far-away infantry only go if they can ride.
             _dist <= CAI_infantryRadius * 3 && {
                 (CAI_airLift && {!isNull ([_cand, _targetPos] call CAI_fnc_findTransport)})
+                || {CAI_truckLift && {!isNull ([_cand, _targetPos, "TRUCK", CAI_truckRadius] call CAI_fnc_findTransport)}}
                 || {CAI_grabVehicles && {([_cand, true] call CAI_fnc_grabVehicles)}}
             }
         };

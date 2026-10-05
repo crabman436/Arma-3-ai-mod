@@ -14,7 +14,8 @@ no CBA and no ACE needed.** Load the mod and every AI group in your missions use
 | **Vehicle QRF** | Idle cars, APCs and tanks within 3 km drive in from a **flank** and search & destroy. Against enemy armor, AT-capable units get priority. |
 | **Attack helicopter QRF** | Idle armed helicopters within 6 km fly in from a flank and hunt the reported targets. |
 | **Helicopter air lift** | Far-away infantry QRFs are picked up by an idle transport helicopter, flown to a landing zone on the flank, dropped off, and the helicopter flies home. |
-| **Mounting up** | Infantry QRFs without a helicopter will take nearby empty, unlocked vehicles and drive to the fight. |
+| **Truck transport** | Infantry QRFs 600 m+ from the fight get picked up by an idle, crewed transport truck (any unarmed vehicle with 4+ seats) within 2.5 km. The truck drops them off ~450 m short, on a flank. They bail out early if the truck is hit or they spot enemies, and the truck drives home. |
+| **Mounting up** | Infantry QRFs without a helicopter or truck will take nearby empty, unlocked vehicles and drive to the fight. |
 | **Following the fight** | Responders keep updating their search & destroy point from the latest radio reports. When it's over, they go back to where they came from and resume their original GUARD, SENTRY or LOITER order. |
 | **Fire & maneuver** | Infantry squads split: machine gunners and half the squad suppress (red team) while the other half moves to the enemy's flank (blue team). |
 | **Smoke** | Pinned-down squads, and flanking teams under fire, throw smoke toward the enemy. |
@@ -29,9 +30,9 @@ Then either **sync groups** to it, or sync nothing and it takes every free AI
 group of the chosen side within the auto-assign radius (2 km by default).
 
 **Attack mission**
-1. **Form up:** groups move to a staging area on their side of the objective. Far-away infantry wait for a transport helicopter if the commander has one.
+1. **Form up:** groups move to a staging area on their side of the objective. Infantry more than 800 m away **ride the commander's trucks** there (or grab empty vehicles nearby). Infantry more than 1.5 km away wait for a transport helicopter if the commander has one.
 2. **Preparatory fires:** a barrage on the most important known enemies (anti-air first, then armor, then bunched-up infantry), and attack helicopters and jets start strike missions.
-3. **Assault:** infantry attack on up to 3 axes (60° apart), vehicles give support by fire from overwatch for 90 s and then push in, and a reserve (25 % by default) waits at the staging area. Infantry too far away get **flown in** by the commander's transport helicopters.
+3. **Assault:** infantry attack on up to 3 axes (60° apart), vehicles give support by fire from overwatch for 90 s and then push in, and a reserve (25 % by default) waits at the staging area. Infantry too far away get **flown in** by the commander's transport helicopters or **trucked** to a dismount point 450 m out on their axis.
 4. **Fighting through:** squads below 35 % strength fall back. Squads that run out of orders hunt the remaining spotted enemies or sweep the area. The reserve is committed when the assault stalls (or after 5 minutes).
 5. **Secured:** when no known enemies are left in the area for 45 s, the commander switches to **Defend**.
 6. **Failed:** if everyone is broken or 20 minutes pass, the force regroups at the staging area and attacks again, as long as it still has at least 4 men.
@@ -39,7 +40,7 @@ group of the chosen side within the auto-assign radius (2 km by default).
 **Defend mission**
 - Half the infantry **garrison buildings** in the area (one squad per building, staying in position).
 - 1–2 squads **patrol the perimeter**.
-- The rest, plus vehicles and attack helicopters, form a **mobile reserve**. When anything is spotted within 700 m of the area, enough of the reserve to match the threat **counter-attacks from a flank**, and artillery fires on enemies outside the area. When things go quiet, the reserve returns to its positions.
+- The rest, plus vehicles and attack helicopters, form a **mobile reserve** (infantry reserves ride the commander's trucks to counter-attacks more than 800 m away). When anything is spotted within 700 m of the area, enough of the reserve to match the threat **counter-attacks from a flank**, and artillery fires on enemies outside the area. When things go quiet, the reserve returns to its positions.
 - If the area is **lost**, the commander switches to Attack to retake it.
 
 **Fire support** (any friendly mortars or artillery with AI gunners, synced or not):
@@ -66,6 +67,7 @@ support (off/normal/heavy), air support, aircraft rearm at base, radio messages
 - Sync a **trigger** to the commander to start the attack later (e.g. when the player enters an area or after a timer).
 - Groups under a commander are never pulled away as QRFs, but they still share intel, use fire and maneuver and smoke, and call for artillery.
 - The commander only knows what its side has actually spotted. Scouts and helicopters make it smarter, and they also give the artillery its targets.
+- **Trucks:** sync crewed transport trucks (a driver is enough) to the commander and it will motorise its infantry: to the staging area, into the assault, and to counter-attacks.
 - For a big combined-arms fight: sync a mortar team or a couple of artillery pieces, an attack helicopter (placed landed at a helipad behind the lines) and a jet on a runway, along with the ground forces.
 
 ## Which groups get sent as reinforcements?
@@ -82,6 +84,7 @@ pulled away**. They still share and receive intel.
 
 **Tip:** for a QRF that waits at a base, place a group (or a helicopter, or
 a tank) with no waypoints, or give it a GUARD waypoint.
+For truck transport, place a **crewed unarmed truck** (driver only is enough) with no waypoints.
 For an air lift, place an **unarmed transport helicopter** (e.g. a Mohawk or
 Huron, or a Ghost Hawk, since door guns don't count) with its crew and no waypoints.
 Landed or hovering both work.
@@ -138,6 +141,8 @@ what the AI is doing (contacts, radio reports, QRFs, air lifts, flanks, fire mis
 | `CAI_useJets` | `false` | Allow armed planes to respond |
 | `CAI_airLift` | `true` | Helicopter air lifts for infantry |
 | `CAI_airLiftMinDistance` | `900` | Infantry further than this get flown in |
+| `CAI_truckLift` | `true` | Crewed transport trucks carry infantry (QRFs and commanders) |
+| `CAI_truckRadius` | `2500` | How far a truck will come to pick up a QRF |
 | `CAI_grabVehicles` | `true` | Infantry QRFs use nearby empty vehicles |
 | `CAI_assistTimeout` | `600` | Seconds before a QRF gives up and goes home |
 | `CAI_quietTime` | `90` | Seconds without contact before a fight counts as over |
@@ -168,7 +173,7 @@ addons/main/
     fn_processGroup.sqf   per-group brain
     fn_shareIntel.sqf     radio reports
     fn_requestSupport.sqf strength check + QRF selection
-    fn_dispatchResponder.sqf / fn_airLift.sqf / fn_grabVehicles.sqf
+    fn_dispatchResponder.sqf / fn_airLift.sqf / fn_groundLift.sqf / fn_grabVehicles.sqf
     fn_fireAndManeuver.sqf / fn_throwSmoke.sqf / fn_requestArtillery.sqf / fn_fireMission.sqf
     fn_moduleCommander.sqf / fn_commander.sqf   AI commander (attack / defend state machine)
     fn_cmdAssess.sqf / fn_cmdOrder.sqf / fn_cmdGarrison.sqf / fn_cmdRadio.sqf

@@ -16,6 +16,7 @@ CAI_airRadius       = _logic getVariable ["AirRadius", CAI_airRadius];
 CAI_maxResponders   = _logic getVariable ["MaxResponders", CAI_maxResponders];
 CAI_airLift         = _logic getVariable ["AirLift", CAI_airLift];
 CAI_useJets         = _logic getVariable ["UseJets", CAI_useJets];
+CAI_truckLift       = _logic getVariable ["TruckLift", CAI_truckLift];
 CAI_maneuver        = _logic getVariable ["Maneuver", CAI_maneuver];
 CAI_artillery       = _logic getVariable ["Artillery", CAI_artillery];
 CAI_skillFloor      = _logic getVariable ["SkillFloor", CAI_skillFloor];

@@ -33,18 +33,34 @@ switch (_type) do {
         if (CAI_airLift && {_dist > CAI_airLiftMinDistance}) then {
             _heli = [_grp, _targetPos] call CAI_fnc_findTransport;
         };
-        if (!isNull _heli) then {
-            [_grp, group driver _heli, _targetPos, _caller] spawn CAI_fnc_airLift;
-            _how = format ["by helicopter (%1)", getText (configOf _heli >> "displayName")];
-        } else {
-            if (CAI_grabVehicles && {_dist > 500}) then {
-                if ([_grp, false] call CAI_fnc_grabVehicles) then {_how = "by vehicle"};
+        private _truck = objNull;
+        if (isNull _heli && {CAI_truckLift} && {_dist > 600}) then {
+            _truck = [_grp, _targetPos, "TRUCK", CAI_truckRadius] call CAI_fnc_findTransport;
+        };
+        switch (true) do {
+            case (!isNull _heli): {
+                [_grp, group driver _heli, _targetPos, _caller] spawn CAI_fnc_airLift;
+                _how = format ["by helicopter (%1)", getText (configOf _heli >> "displayName")];
             };
-            private _approach = [_targetPos, _callerPos, getPosATL _leader, 200] call CAI_fnc_flankPosition;
-            private _wp = [_grp, _approach, "MOVE", "AWARE", "YELLOW", "FULL", 40] call CAI_fnc_addWaypoint;
-            [_grp, _targetPos, "SAD", "COMBAT", "RED", "NORMAL", 60] call CAI_fnc_addWaypoint;
-            _grp setCurrentWaypoint _wp;
-            if (_how == "") then {_how = "on foot"};
+            case (!isNull _truck): {
+                private _drop = [_targetPos, _callerPos, getPosATL _leader, 450] call CAI_fnc_flankPosition;
+                private _approach = [_targetPos, _callerPos, _drop, 200] call CAI_fnc_flankPosition;
+                [_grp, group driver _truck, _drop, [
+                    [_approach, "MOVE", "AWARE", "YELLOW", "FULL", 40],
+                    [_targetPos, "SAD", "COMBAT", "RED", "NORMAL", 60]
+                ]] spawn CAI_fnc_groundLift;
+                _how = format ["by truck (%1)", getText (configOf _truck >> "displayName")];
+            };
+            default {
+                if (CAI_grabVehicles && {_dist > 500}) then {
+                    if ([_grp, false] call CAI_fnc_grabVehicles) then {_how = "by vehicle"};
+                };
+                private _approach = [_targetPos, _callerPos, getPosATL _leader, 200] call CAI_fnc_flankPosition;
+                private _wp = [_grp, _approach, "MOVE", "AWARE", "YELLOW", "FULL", 40] call CAI_fnc_addWaypoint;
+                [_grp, _targetPos, "SAD", "COMBAT", "RED", "NORMAL", 60] call CAI_fnc_addWaypoint;
+                _grp setCurrentWaypoint _wp;
+                if (_how == "") then {_how = "on foot"};
+            };
         };
     };
     case "GROUND": {

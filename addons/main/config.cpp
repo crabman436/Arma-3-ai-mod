@@ -35,6 +35,7 @@ class CfgFunctions {
             class flankPosition {};
             class findTransport {};
             class airLift {};
+            class groundLift {};
             class grabVehicles {};
             class fireAndManeuver {};
             class throwSmoke {};
@@ -147,6 +148,13 @@ class CfgVehicles {
                 property = "CAI_ModuleSettings_AirLift";
                 displayName = "Helicopter air lifts";
                 tooltip = "Idle transport helicopters fly far-away infantry QRFs to a landing zone near the fight.";
+                typeName = "BOOL";
+                defaultValue = "true";
+            };
+            class TruckLift: Checkbox {
+                property = "CAI_ModuleSettings_TruckLift";
+                displayName = "Truck transport";
+                tooltip = "Idle crewed unarmed vehicles with seats (trucks, unarmed cars) drive infantry to the fight and drop them off short of it. Also used by the commander.";
                 typeName = "BOOL";
                 defaultValue = "true";
             };
