@@ -73,10 +73,10 @@ private _status = {
 };
 private _nearestTo = {
     params ["_list", "_pos"];
-    private _best = objNull;
+    private _best = [];
     private _bestD = 1e9;
     {
-        private _d = _x distance2D _pos;
+        private _d = (_x select 1) distance2D _pos;
         if (_d < _bestD) then {_best = _x; _bestD = _d};
     } forEach _list;
     _best
@@ -127,7 +127,7 @@ private _illuminate = {
 private _centroid = {
     if (_this isEqualTo []) exitWith {_center};
     private _sum = [0, 0, 0];
-    {_sum = _sum vectorAdd (getPosATL _x)} forEach _this;
+    {_sum = _sum vectorAdd _x} forEach _this;
     _sum = _sum vectorMultiply (1 / count _this);
     [_sum select 0, _sum select 1, 0]
 };
@@ -202,7 +202,7 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
             if (!_entered) then {
                 _entered = true;
                 _reserveCommitted = false;
-                _approachDir = _center getDir ((_alive apply {leader _x}) call _centroid);
+                _approachDir = _center getDir ((_alive apply {getPosATL leader _x}) call _centroid);
                 _staging = [_center getPos [_radius + 500, _approachDir], _center] call CAI_fnc_landPos;
                 private _lifts = _alive select {([_x] call CAI_fnc_groupType) == "HELI_TRANSPORT"};
                 {
@@ -339,7 +339,7 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
             // Continuous fire support and air strikes on everything spotted.
             [_side, _threats, _tickMissions, _fireRounds, _fireCooldown, format ["%1 HQ", _sideName]] call CAI_fnc_cmdFires;
             [true, _threats] call _runAir;
-            (_inArea call _centroid) call _illuminate;
+            ((_inArea apply {_x select 1}) call _centroid) call _illuminate;
 
             // Broken squads fall back.
             {
@@ -361,10 +361,10 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
                         [_x, _center, _radius] spawn CAI_fnc_clearBuildings;
                     } else {
                     private _t = [_inArea, getPosATL leader _x] call _nearestTo;
-                    private _pos = if (isNull _t) then {
+                    private _pos = if (_t isEqualTo []) then {
                         [_center getPos [random (_radius * 0.6), random 360], _center] call CAI_fnc_landPos
                     } else {
-                        getPosATL _t
+                        (_t select 1)
                     };
                     [_x, [[_pos, "SAD", "COMBAT", "RED", "NORMAL", 60]]] call CAI_fnc_cmdOrder;
                     };
@@ -387,7 +387,7 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
             _avg = if (_fighting isEqualTo []) then {0} else {_avg / count _fighting};
             if (!_reserveCommitted && {_avg < 0.6 || {time - _stateSince > 300}}) then {
                 _reserveCommitted = true;
-                private _target = _inArea call _centroid;
+                private _target = (_inArea apply {_x select 1}) call _centroid;
                 private _res = _alive select {(_x call _roleOf) == "RESERVE"};
                 {
                     [_x, [[_target, "SAD", "COMBAT", "RED", "FULL", 60]]] call CAI_fnc_cmdOrder;
@@ -473,7 +473,7 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
             private _reserve = _inf - _garrison - _patrol;
 
             // Face known enemies, otherwise all-round.
-            private _threatDir = if (_threats isEqualTo []) then {-1} else {_center getDir (_threats call _centroid)};
+            private _threatDir = if (_threats isEqualTo []) then {-1} else {_center getDir ((_threats apply {_x select 1}) call _centroid)};
             {
                 [_x, "GARRISON"] call _setRole;
                 if !([_x, _center, _radius * 0.7, _threatDir] call CAI_fnc_garrison) then {
@@ -534,7 +534,7 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
             if (_threats isNotEqualTo []) then {
                 if (time - _lastThreat > 120) then {
                     private _t = [_threats, _center] call _nearestTo;
-                    format ["Enemy contact %1 of %2!", (_center getDir _t) call _compass, _objName] call _say;
+                    format ["Enemy contact %1 of %2!", (_center getDir (_t select 1)) call _compass, _objName] call _say;
                     "under attack" call _status;
                 };
                 _lastThreat = time;
@@ -544,7 +544,7 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
                 private _wanted = ceil (_enemyPower / 4) max 1;
                 if (count _countering < _wanted) then {
                     private _t = [_threats, _center] call _nearestTo;
-                    private _tPos = getPosATL _t;
+                    private _tPos = (_t select 1);
                     private _res = _alive select {(_x call _roleOf) == "RESERVE"};
                     private _sorted = [];
                     {_sorted pushBack [(leader _x) distance2D _tPos, _forEachIndex, _x]} forEach _res;
@@ -569,19 +569,19 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
                         [_x, "COUNTER"] call _setRole;
                     } forEach _send;
                     if (_send isNotEqualTo []) then {
-                        format ["%1 groups moving to intercept %2 of %3.", count _send, (_center getDir _t) call _compass, _objName] call _say;
+                        format ["%1 groups moving to intercept %2 of %3.", count _send, (_center getDir (_t select 1)) call _compass, _objName] call _say;
                     };
                 };
 
                 // Artillery on the attackers (never danger close) and air strikes.
                 [_side, _threats, _tickMissions, _fireRounds, _fireCooldown, format ["%1 HQ", _sideName]] call CAI_fnc_cmdFires;
-                (getPosATL ([_threats, _center] call _nearestTo)) call _illuminate;
+                (([_threats, _center] call _nearestTo) select 1) call _illuminate;
 
                 // Counter-attacking groups keep hunting.
                 {
                     if ((_x call _roleOf) == "COUNTER" && {_x call _isIdle}) then {
                         private _t = [_threats, getPosATL leader _x] call _nearestTo;
-                        [_x, [[getPosATL _t, "SAD", "COMBAT", "RED", "NORMAL", 60]]] call CAI_fnc_cmdOrder;
+                        [_x, [[(_t select 1), "SAD", "COMBAT", "RED", "NORMAL", 60]]] call CAI_fnc_cmdOrder;
                     };
                 } forEach _alive;
             } else {
