@@ -14,7 +14,7 @@
     Params:
         0: OBJECT commander logic
         1: ARRAY air groups
-        2: ARRAY known enemies
+        2: ARRAY observation reports (see CAI_fnc_collectIntel)
         3: ARRAY objective center
         4: NUMBER objective radius
         5: BOOL allowed to engage
@@ -32,10 +32,10 @@ private _setRole = {
     _g setVariable ["CAI_cmdSince", time];
 };
 
-_targets = _targets select {alive _x};
+_targets = _targets select {!isNull (_x select 0) && {time - (_x select 2) <= CAI_intelMaxAge}};
 
 // Track known enemy anti-air.
-private _aa = _targets select {[_x] call CAI_fnc_isAA};
+private _aa = _targets select {_x select 5};
 private _aaSince = _logic getVariable ["CAI_aaSince", -1];
 if (_aa isEqualTo []) then {
     _logic setVariable ["CAI_aaSince", -1];
@@ -96,27 +96,33 @@ private _heliHold = _aa isNotEqualTo [] && {time - _aaSince < 240};
             };
 
             default {
-                // Keep a live target; re-task when it dies or the group runs out of orders.
+                // Search the reported area; re-task if the report expires,
+                // a newer report moves, or the group runs out of orders.
                 private _cur = _g getVariable ["CAI_airTarget", objNull];
+                private _curIndex = _targets findIf {(_x select 0) == _cur};
+                private _moved = false;
+                if (_curIndex >= 0) then {
+                    _moved = ((_targets select _curIndex) select 1) distance2D (_g getVariable ["CAI_airTargetPos", _center]) > 150;
+                };
                 private _idle = currentWaypoint _g >= count waypoints _g;
-                if (_role != "AIR_STRIKE" || {isNull _cur} || {!alive _cur} || {_idle} || {time - (_g getVariable ["CAI_cmdSince", 0]) > 180}) then {
-                    private _best = objNull;
+                if (_role != "AIR_STRIKE" || {_curIndex < 0} || {_moved} || {_idle} || {time - (_g getVariable ["CAI_cmdSince", 0]) > 180}) then {
+                    private _best = [];
                     private _bestScore = -1e9;
                     {
-                        private _score = [_x] call CAI_fnc_threatValue;
-                        if ([_x] call CAI_fnc_isAA) then {_score = _score + ([10, -100] select _isHeli)};
-                        if ((vehicle _x) isKindOf "Air" && {!isTouchingGround vehicle _x}) then {_score = _score - 50};
-                        _score = _score - ((_x distance2D _veh) / 1000);
+                        private _score = _x select 4;
+                        if (_x select 5) then {_score = _score + ([10, -100] select _isHeli)};
+                        if (_x select 6) then {_score = _score - 50};
+                        _score = _score - (((_x select 1) distance2D _veh) / 1000);
                         if (_score > _bestScore) then {_bestScore = _score; _best = _x};
                     } forEach _targets;
 
-                    if (!isNull _best && {_bestScore > -50}) then {
+                    if (_best isNotEqualTo [] && {_bestScore > -50}) then {
                         _veh flyInHeight ([300, 70] select _isHeli);
-                        _g reveal [vehicle _best, 4];
-                        [_g, [[getPosATL _best, "SAD", "COMBAT", "RED", "NORMAL", 300]]] call CAI_fnc_cmdOrder;
-                        _g setVariable ["CAI_airTarget", vehicle _best];
+                        [_g, [[_best select 1, "SAD", "COMBAT", "RED", "NORMAL", 300]]] call CAI_fnc_cmdOrder;
+                        _g setVariable ["CAI_airTarget", _best select 0];
+                        _g setVariable ["CAI_airTargetPos", +(_best select 1)];
                         if (_role != "AIR_STRIKE") then {
-                            format ["%1 inbound on %2.", groupId _g, getText (configOf vehicle _best >> "displayName")] call _say;
+                            format ["%1 inbound on reported enemy position.", groupId _g] call _say;
                         };
                         [_g, "AIR_STRIKE"] call _setRole;
                     };
