@@ -21,6 +21,37 @@ no CBA and no ACE needed.** Load the mod and every AI group in your missions use
 | **Artillery & mortars** | Idle friendly mortars or artillery fire a few HE rounds on well-located enemies. They never fire if friendlies or civilians are within 200 m of the target, and their accuracy depends on how well the enemy was spotted. |
 | **Teamwork skills** | Commanding, spotting and courage are raised to a minimum. Skills are never lowered and aiming is not touched, so your difficulty settings stay. |
 
+## AI Commander (take or hold a town)
+
+Place **Systems (F5) → Modules → Coordinated AI → Coordinated AI Commander** on
+a town or position. Resize its circle in the editor: that's the objective.
+Then either **sync groups** to it, or sync nothing and it takes every free AI
+group of the chosen side within the auto-assign radius (2 km by default).
+
+**Attack mission**
+1. **Form up:** groups move to a staging area on their side of the objective. Far-away infantry wait for a transport helicopter if the commander has one.
+2. **Preparatory fires:** mortars and artillery hit known enemy positions, and attack helicopters and jets strike the objective.
+3. **Assault:** infantry attack on up to 3 axes (60° apart), vehicles give support by fire from overwatch for 90 s and then push in, and a reserve (25 % by default) waits at the staging area. Infantry too far away get **flown in** by the commander's transport helicopters.
+4. **Fighting through:** squads below 35 % strength fall back. Squads that run out of orders hunt the remaining spotted enemies or sweep the area. The reserve is committed when the assault stalls (or after 5 minutes).
+5. **Secured:** when no known enemies are left in the area for 45 s, the commander switches to **Defend**.
+6. **Failed:** if everyone is broken or 20 minutes pass, the force regroups at the staging area and attacks again, as long as it still has at least 4 men.
+
+**Defend mission**
+- Half the infantry **garrison buildings** in the area (one squad per building, staying in position).
+- 1–2 squads **patrol the perimeter**.
+- The rest, plus vehicles and attack helicopters, form a **mobile reserve**. When anything is spotted within 700 m of the area, enough of the reserve to match the threat **counter-attacks from a flank**, and artillery fires on enemies outside the area. When things go quiet, the reserve returns to its positions.
+- If the area is **lost**, the commander switches to Attack to retake it.
+
+**Options:** mission (attack/defend), side, auto-assign radius, reserve %, radio
+messages (players on that side hear the orders in side chat) and map markers
+(objective area + live status).
+
+**Tips**
+- Put two commanders on the same town, one attacking and one defending, then sit back and watch, or join either side.
+- Sync a **trigger** to the commander to start the attack later (e.g. when the player enters an area or after a timer).
+- Groups under a commander are never pulled away as QRFs, but they still share intel, use fire and maneuver and smoke, and call for artillery.
+- The commander only knows what its side has actually spotted. Scouts and helicopters make it smarter.
+
 ## Which groups get sent as reinforcements?
 
 The mod only moves groups that have **nothing else to do**, so your mission
@@ -60,6 +91,7 @@ It works as soon as the mod is loaded. Optional modules are under
 
 - **Coordinated AI Settings**: turn features on or off and change the radii, the max responders and the debug messages.
 - **Coordinated AI Exclude Groups**: sync units to it to either ignore their groups completely, or only stop them from being sent as reinforcements.
+- **Coordinated AI Commander**: an AI commander that takes or holds an area (see above).
 
 Turn on **Debug messages** in the settings module to watch in system chat
 what the AI is doing (contacts, radio reports, QRFs, air lifts, flanks, fire missions).
@@ -121,7 +153,9 @@ addons/main/
     fn_shareIntel.sqf     radio reports
     fn_requestSupport.sqf strength check + QRF selection
     fn_dispatchResponder.sqf / fn_airLift.sqf / fn_grabVehicles.sqf
-    fn_fireAndManeuver.sqf / fn_throwSmoke.sqf / fn_requestArtillery.sqf
+    fn_fireAndManeuver.sqf / fn_throwSmoke.sqf / fn_requestArtillery.sqf / fn_fireMission.sqf
+    fn_moduleCommander.sqf / fn_commander.sqf   AI commander (attack / defend state machine)
+    fn_cmdAssess.sqf / fn_cmdOrder.sqf / fn_cmdGarrison.sqf / fn_cmdRadio.sqf
     ...
 mod.cpp
 .hemtt/project.toml

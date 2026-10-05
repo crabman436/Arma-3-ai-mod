@@ -21,6 +21,7 @@ if (!local _cand) exitWith {false};
 if !([_cand] call CAI_fnc_isValidGroup) exitWith {false};
 if (!isNull _caller && {((side _cand) getFriend (side _caller)) < 0.6}) exitWith {false};
 if (_cand getVariable ["CAI_noQRF", false]) exitWith {false};
+if (!isNull (_cand getVariable ["CAI_commander", objNull])) exitWith {false}; // under a commander module
 if ((_cand getVariable ["CAI_assist", []]) isNotEqualTo []) exitWith {false};
 if (_cand getVariable ["CAI_busy", false]) exitWith {false};
 if (_cand getVariable ["CAI_inTransit", false]) exitWith {false};

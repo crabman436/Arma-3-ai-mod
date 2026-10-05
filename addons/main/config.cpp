@@ -5,7 +5,7 @@ class CfgPatches {
         url = "https://github.com/crabman436/Arma-3-ai-mod";
         requiredVersion = 2.10;
         requiredAddons[] = {"A3_Functions_F", "A3_Modules_F"};
-        units[] = {"CAI_ModuleSettings", "CAI_ModuleExclude"};
+        units[] = {"CAI_ModuleSettings", "CAI_ModuleExclude", "CAI_ModuleCommander"};
         weapons[] = {};
     };
 };
@@ -42,6 +42,14 @@ class CfgFunctions {
             class skillFloor {};
             class moduleSettings {};
             class moduleExclude {};
+            class moduleCommander {};
+            class commander {};
+            class cmdAssess {};
+            class cmdOrder {};
+            class cmdGarrison {};
+            class cmdRadio {};
+            class fireMission {};
+            class landPos {};
         };
     };
 };
@@ -204,6 +212,87 @@ class CfgVehicles {
 
         class ModuleDescription: ModuleDescription {
             description = "Sync units to this module to exclude their groups from Coordinated AI, or just stop them from being sent away as reinforcements.";
+            sync[] = {"AnyBrain"};
+        };
+    };
+
+    class CAI_ModuleCommander: Module_F {
+        scope = 2;
+        displayName = "Coordinated AI Commander";
+        icon = "\a3\ui_f\data\igui\cfg\simpletasks\types\attack_ca.paa";
+        category = "CAI_Modules";
+        function = "CAI_fnc_moduleCommander";
+        functionPriority = 3;
+        isGlobal = 0;
+        isTriggerActivated = 1;
+        isDisposable = 0;
+        is3DEN = 0;
+        canSetArea = 1;
+        canSetAreaShape = 0;
+
+        class AttributeValues {
+            size3[] = {250, 250, -1};
+            isRectangle = 0;
+        };
+
+        class Attributes: AttributesBase {
+            class Mode: Combo {
+                property = "CAI_ModuleCommander_Mode";
+                displayName = "Mission";
+                tooltip = "Attack: take the area. Defend: hold it. An attacker that takes the area switches to defending it, and a defender that loses it counter-attacks.";
+                typeName = "NUMBER";
+                defaultValue = "0";
+                class Values {
+                    class Attack { name = "Attack / take the area"; value = 0; };
+                    class Defend { name = "Defend / hold the area"; value = 1; };
+                };
+            };
+            class Side: Combo {
+                property = "CAI_ModuleCommander_Side";
+                displayName = "Side";
+                tooltip = "Which side this commander leads. 'From synced groups' uses the side of the first synced group.";
+                typeName = "NUMBER";
+                defaultValue = "-1";
+                class Values {
+                    class Auto { name = "From synced groups"; value = -1; };
+                    class West { name = "BLUFOR"; value = 0; };
+                    class East { name = "OPFOR"; value = 1; };
+                    class Indep { name = "Independent"; value = 2; };
+                };
+            };
+            class AutoRadius: Edit {
+                property = "CAI_ModuleCommander_AutoRadius";
+                displayName = "Auto-assign radius (m)";
+                tooltip = "Only used when no groups are synced: every free AI group of the side within this distance is put under command.";
+                typeName = "NUMBER";
+                defaultValue = "2000";
+            };
+            class Reserve: Edit {
+                property = "CAI_ModuleCommander_Reserve";
+                displayName = "Reserve (%)";
+                tooltip = "Share of infantry squads held back during an attack and committed when the assault stalls.";
+                typeName = "NUMBER";
+                defaultValue = "25";
+            };
+            class Radio: Checkbox {
+                property = "CAI_ModuleCommander_Radio";
+                displayName = "Radio messages";
+                tooltip = "Players on this side hear the commander's orders in side chat.";
+                typeName = "BOOL";
+                defaultValue = "true";
+            };
+            class Markers: Checkbox {
+                property = "CAI_ModuleCommander_Markers";
+                displayName = "Map markers";
+                tooltip = "Show the objective area and the commander's current status on the map.";
+                typeName = "BOOL";
+                defaultValue = "true";
+            };
+            class ModuleDescription: ModuleDescription {};
+        };
+
+        class ModuleDescription: ModuleDescription {
+            description = "An AI commander that takes or holds the module's area with the groups synced to it (or all free groups of its side nearby). Resize the area in the editor. Sync a trigger to start it later.";
             sync[] = {"AnyBrain"};
         };
     };
