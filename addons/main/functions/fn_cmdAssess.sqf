@@ -12,7 +12,11 @@ params ["_side", "_center", "_radius"];
 private _outer = _radius + 700;
 private _known = [];
 {
-    if ((_side getFriend side _x) >= 0.6 && {alive leader _x} && {(leader _x) distance2D _center < _outer + 2500}) then {
+    if ((leader _x) distance2D _center < _outer + 2500
+        && {side _x in [west, east, independent]}
+        && {(_side getFriend side _x) >= 0.6}
+        && {alive leader _x}
+    ) then {
         _known append ((leader _x) targets [true, _outer, [], 120, _center]);
     };
 } forEach allGroups;

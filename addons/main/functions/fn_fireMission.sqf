@@ -28,8 +28,11 @@ private _safeDist = switch (_kind) do {
     default {0};
 };
 if (_safeDist > 0) then {
+    // Friendly soldiers or crewed friendly vehicles nearby. Parked empty cars don't count.
     private _blocked = (_targetPos nearEntities [["CAManBase", "LandVehicle"], _safeDist]) findIf {
-        alive _x && {((side _x) getFriend _side) >= 0.6}
+        alive _x
+        && {_x isKindOf "CAManBase" || {(crew _x findIf {alive _x}) >= 0}}
+        && {((side _x) getFriend _side) >= 0.6}
     };
     if (_blocked >= 0) then {_targetPos = []};
 };
@@ -40,10 +43,13 @@ if (isNil "CAI_fireMissions") then {CAI_fireMissions = []};
 CAI_fireMissions = CAI_fireMissions select {time - (_x select 1) < (_x select 3)};
 if ((CAI_fireMissions findIf {(_x select 2) == _kind && {(_x select 0) distance2D _targetPos < 150}}) >= 0) exitWith {false};
 
-private _guns = vehicles select {
+// Artillery-capable vehicles, refreshed every 15 s (the config lookup over every vehicle is the slow part).
+if (isNil "CAI_gunCache" || {time - (CAI_gunCache select 0) > 15}) then {
+    CAI_gunCache = [time, vehicles select {getNumber (configOf _x >> "artilleryScanner") == 1}];
+};
+private _guns = (CAI_gunCache select 1) select {
     alive _x
     && {local _x}
-    && {getNumber (configOf _x >> "artilleryScanner") == 1}
     && {alive gunner _x}
     && {!isPlayer gunner _x}
     && {((side _x) getFriend _side) >= 0.6}
@@ -55,7 +61,7 @@ private _fired = false;
 {
     private _gun = _x;
     private _mags = getArtilleryAmmo [_gun];
-    private _mag = _mags param [_mags findIf {
+    private _idx = _mags findIf {
         private _m = toLower _x;
         switch (_kind) do {
             case "SMOKE": {(_m find "smoke") >= 0};
@@ -63,7 +69,8 @@ private _fired = false;
             // Plain HE: skip smoke, illumination, mines, cluster and guided rounds.
             default {(["smoke", "flare", "illum", "mine", "cluster", "guided", "_lg", "laser"] findIf {(_m find _x) >= 0}) < 0};
         }
-    }, ""];
+    };
+    private _mag = if (_idx < 0) then {""} else {_mags select _idx};
     if (_mag != "" && {_targetPos inRangeOfArtillery [[_gun], _mag]}) exitWith {
         private _aim = _targetPos getPos [random (_error + 20), random 360];
         _gun doArtilleryFire [_aim, _mag, _rounds];

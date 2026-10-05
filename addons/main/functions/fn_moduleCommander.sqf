@@ -47,10 +47,17 @@ if !(_side in [west, east, independent]) exitWith {
     diag_log "[CAI] Commander module has no groups and no side set.";
 };
 
+// Like CAI_fnc_isValidGroup, but CARELESS groups (often used for parked helicopters
+// and trucks) are allowed: the commander wakes them up.
 private _free = {
     params ["_g"];
+    private _l = leader _g;
     local _g
-    && {[_g] call CAI_fnc_isValidGroup}
+    && {alive _l}
+    && {!isPlayer _l}
+    && {!(_g getVariable ["CAI_exclude", false])}
+    && {!unitIsUAV vehicle _l}
+    && {(CAI_excludedTypes findIf {(vehicle _l) isKindOf _x}) < 0}
     && {isNull (_g getVariable ["CAI_commander", objNull])}
     && {(units _g findIf {isPlayer _x}) < 0}
 };
@@ -69,5 +76,8 @@ if (_groups isEqualTo []) then {
 if (_groups isEqualTo []) exitWith {
     format ["Commander module (%1): no groups available.", _side] call CAI_fnc_log;
 };
+
+// Claim the groups right away so other commanders starting at the same moment can't take them.
+{_x setVariable ["CAI_commander", _logic, true]} forEach _groups;
 
 [_logic, _side, _groups, _mode, _radius, _reserve, _radio, _markers, [_fireLevel, _airSupport, _refit, _clear]] spawn CAI_fnc_commander;

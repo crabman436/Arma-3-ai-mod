@@ -14,11 +14,21 @@ private _pos = getPosATL leader _inf;
 private _best = objNull;
 private _bestDist = [_maxDist, CAI_airRadius] select (_maxDist < 0);
 
+// Transport groups of this kind, refreshed every few seconds instead of scanning
+// every group for every infantry squad that might need a ride.
+private _cacheVar = format ["CAI_transportCache_%1", _kind];
+private _cache = missionNamespace getVariable [_cacheVar, [-1e6, []]];
+if (time - (_cache select 0) > 5) then {
+    _cache = [time, allGroups select {local _x && {[_x] call CAI_fnc_groupType == _kind}}];
+    missionNamespace setVariable [_cacheVar, _cache];
+};
+
 {
-    if ([_x] call CAI_fnc_groupType == _kind) then {
+    if (!isNull _x && {alive leader _x}) then {
         private _v = vehicle leader _x;
         private _d = _v distance2D _pos;
         if (_d < _bestDist
+            && {(side _x getFriend side _inf) >= 0.6}
             && {_v emptyPositions "Cargo" >= _need}
             && {[_x, _inf, _targetPos, false] call CAI_fnc_isAvailableResponder}
         ) then {
@@ -26,6 +36,6 @@ private _bestDist = [_maxDist, CAI_airRadius] select (_maxDist < 0);
             _bestDist = _d;
         };
     };
-} forEach allGroups;
+} forEach (_cache select 1);
 
 _best

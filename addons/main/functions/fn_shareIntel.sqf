@@ -26,25 +26,28 @@ if (!isNull _best) then {
 
 private _friends = allGroups select {
     _x != _grp
+    && {(leader _x) distance2D _pos <= CAI_shareRadius}
     && {side _x in [west, east, independent]}
     && {(_side getFriend side _x) >= 0.6}
-    && {!(_x getVariable ["CAI_exclude", false])}
     && {alive leader _x}
-    && {(leader _x) distance2D _pos <= CAI_shareRadius}
+    && {!(_x getVariable ["CAI_exclude", false])}
 };
 
 if (_friends isEqualTo []) exitWith {};
 
+private _known = _contacts apply {[_x, _leader knowsAbout _x]};
 {
     private _friend = _x;
     private _dist = (leader _friend) distance2D _pos;
     private _quality = linearConversion [0, CAI_shareRadius, _dist, 1, 0.6, true];
+    // One batched message per friendly group.
+    private _list = [];
     {
-        private _k = ((_leader knowsAbout _x) * _quality) min 3.5;
-        if (_k >= 1) then {
-            [_friend, _x, _k max 1.5] call CAI_fnc_revealTo;
-        };
-    } forEach _contacts;
+        _x params ["_t", "_k"];
+        _k = (_k * _quality) min 3.5;
+        if (_k >= 1) then {_list pushBack [_t, _k max 1.5]};
+    } forEach _known;
+    [_friend, _list] call CAI_fnc_revealTo;
 
     // Wake up relaxed groups.
     if (local _friend && {behaviour leader _friend == "SAFE"}) then {

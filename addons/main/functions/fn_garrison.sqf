@@ -88,7 +88,7 @@ private _picked = [];
 // Not enough good spots: fill up with whatever is left.
 {
     if (count _picked >= count _units) exitWith {};
-    if !(_x in _picked) then {_picked pushBack _x};
+    _picked pushBackUnique _x;
 } forEach _scored;
 
 [_grp, [[getPosATL _main, "MOVE", "AWARE", "YELLOW", "FULL", 25]]] call CAI_fnc_cmdOrder;

@@ -57,8 +57,9 @@ private _slots = CAI_maxResponders - count _responders;
 
 if (_slots > 0) then {
     private _candidates = [];
+    private _maxRange = (CAI_infantryRadius * 3) max CAI_vehicleRadius max (CAI_airRadius * ([1, 2] select CAI_useJets));
     {
-        if ([_x, _grp, _targetPos, true] call CAI_fnc_isAvailableResponder) then {
+        if ((leader _x) distance2D _targetPos < _maxRange && {[_x, _grp, _targetPos, true] call CAI_fnc_isAvailableResponder}) then {
             private _type = [_x] call CAI_fnc_groupType;
             private _speed = switch (_type) do {
                 case "INF": {3};

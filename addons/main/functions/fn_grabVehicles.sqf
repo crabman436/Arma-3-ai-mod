@@ -19,7 +19,11 @@ private _cands = (_leader nearEntities [["Car", "Tank", "Wheeled_APC_F"], 150]) 
     && {fuel _x > 0.1}
     && {locked _x < 2}
     && {({alive _x} count crew _x) == 0}
-    && {!(_x getVariable ["CAI_claimed", false])}
+    && {
+        // Taken by a squad that still exists?
+        private _by = _x getVariable ["CAI_claimedBy", grpNull];
+        isNull _by || {_by == _grp} || {({alive _x} count units _by) == 0}
+    }
 };
 if (_cands isEqualTo []) exitWith {false};
 
@@ -42,7 +46,7 @@ if (_dryRun) exitWith {true};
 
 {
     _grp addVehicle _x;
-    _x setVariable ["CAI_claimed", true, true];
+    _x setVariable ["CAI_claimedBy", _grp, true];
 } forEach _take;
 
 true

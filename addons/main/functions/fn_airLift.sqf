@@ -57,7 +57,8 @@ format ["Air lift: %1 picking up %2", groupId _hGrp, groupId _inf] call CAI_fnc_
 
 if (isTouchingGround _heli) then {_heli engineOn true};
 [_hGrp, _pickup, "MOVE", "CARELESS", "BLUE", "FULL", 100] call CAI_fnc_addWaypoint;
-[_inf, _pickup, "MOVE", "AWARE", "YELLOW", "FULL", 20] call CAI_fnc_addWaypoint;
+// Drop whatever the infantry were doing and head for the pick-up.
+[_inf, [[_pickup, "MOVE", "AWARE", "YELLOW", "FULL", 20]]] call CAI_fnc_cmdOrder;
 
 private _timeout = time + 240;
 waitUntil {sleep 2; !(call _heliOk) || {!(call _infAlive)} || {_heli distance2D _pickup < 250} || {time > _timeout}};
@@ -88,9 +89,11 @@ if (!(call _heliOk) || {_aboard < ({alive _x} count units _inf) / 2}) exitWith {
     [[_padA]] call _cleanup;
 };
 // Anyone left behind walks.
-{
-    if (alive _x && {vehicle _x != _heli}) then {unassignVehicle _x; [_x] join grpNull};
-} forEach units _inf;
+private _left = units _inf select {alive _x && {vehicle _x != _heli}};
+if (_left isNotEqualTo []) then {
+    {unassignVehicle _x} forEach _left;
+    _left joinSilent createGroup [side _inf, true];
+};
 
 // --- 2. Fly to a landing zone on the flank ------------------------------------
 private _callerPos = if (isNull _caller) then {_targetPos} else {getPosATL leader _caller};

@@ -19,9 +19,7 @@ private _dist = _leader distance2D _targetPos;
 _grp setVariable ["CAI_assist", [_caller, time, _targetPos]];
 
 // They heard it on the radio.
-{
-    [_grp, _x, (((leader _caller) knowsAbout _x) * 0.8) max 1.5] call CAI_fnc_revealTo;
-} forEach _contacts;
+[_grp, _contacts apply {[_x, (((leader _caller) knowsAbout _x) * 0.8) max 1.5]}] call CAI_fnc_revealTo;
 
 [_grp] call CAI_fnc_clearWaypoints;
 _grp setBehaviour "AWARE";
@@ -39,10 +37,13 @@ switch (_type) do {
         };
         switch (true) do {
             case (!isNull _heli): {
+                // Book it now so another squad in the same request can't take it too.
+                (group driver _heli) setVariable ["CAI_busy", true];
                 [_grp, group driver _heli, _targetPos, _caller] spawn CAI_fnc_airLift;
                 _how = format ["by helicopter (%1)", getText (configOf _heli >> "displayName")];
             };
             case (!isNull _truck): {
+                (group driver _truck) setVariable ["CAI_busy", true];
                 private _drop = [_targetPos, _callerPos, getPosATL _leader, 450] call CAI_fnc_flankPosition;
                 private _approach = [_targetPos, _callerPos, _drop, 200] call CAI_fnc_flankPosition;
                 [_grp, group driver _truck, _drop, [

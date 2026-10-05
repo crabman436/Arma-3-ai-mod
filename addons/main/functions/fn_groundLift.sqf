@@ -94,9 +94,11 @@ if (!(call _truckOk) || {_aboard < ({alive _x} count units _inf) / 2}) exitWith 
     call _release;
 };
 // Anyone who didn't fit or didn't make it walks on their own.
-{
-    if (alive _x && {vehicle _x != _truck}) then {unassignVehicle _x; [_x] join grpNull};
-} forEach units _inf;
+private _left = units _inf select {alive _x && {vehicle _x != _truck}};
+if (_left isNotEqualTo []) then {
+    {unassignVehicle _x} forEach _left;
+    _left joinSilent createGroup [side _inf, true];
+};
 
 // --- 2. Drive to the drop-off -----------------------------------------------
 private _drop = [_dropPos, 150] call _nearRoad;
