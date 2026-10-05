@@ -23,6 +23,9 @@ addMissionEventHandler ["EntityKilled", {
     while {true} do {
         if (CAI_enabled) then {
             {
+                if (local _x && {side _x in [west, east, independent]}
+                    && {!(_x getVariable ["CAI_exclude", false])}
+                ) then {[_x] call CAI_fnc_collectIntel};
                 if (local _x && {[_x] call CAI_fnc_isValidGroup}) then {
                     [_x] call CAI_fnc_processGroup;
                 };

@@ -19,11 +19,13 @@ private _defaults = [
     ["CAI_shareRadius", 1500],          // groups within this range get spotted targets
     ["CAI_shareInterval", 8],           // seconds between radio reports per group
     ["CAI_shareMaxAge", 60],            // only report contacts seen in the last N seconds
+    ["CAI_intelMaxAge", 120],           // HQ stops tasking against older observation reports
     ["CAI_alertRadius", 500],           // groups within this range react to friendly deaths
 
     // Quick reaction forces
     ["CAI_requestCooldown", 45],        // seconds between support requests per group
     ["CAI_maxResponders", 3],           // max groups sent to help one group
+    ["CAI_supportRatio", 1.5],          // desired friendly/enemy combat power, including committed QRFs
     ["CAI_infantryRadius", 1200],
     ["CAI_vehicleRadius", 3000],
     ["CAI_airRadius", 6000],

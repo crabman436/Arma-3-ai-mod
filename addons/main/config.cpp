@@ -24,6 +24,7 @@ class CfgFunctions {
             class revealTo {};
             class processGroup {};
             class shareIntel {};
+            class collectIntel {};
             class alertNearby {};
             class requestSupport {};
             class isAvailableResponder {};

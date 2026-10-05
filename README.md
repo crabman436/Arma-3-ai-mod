@@ -24,7 +24,7 @@ no CBA and no ACE needed.** Load the mod and every AI group in your missions use
 
 ## AI Commander (take or hold a town)
 
-Place **Systems (F5) → Modules → Coordinated AI → Coordinated AI Commander** on
+Place **Systems (F5) â†’ Modules â†’ Coordinated AI â†’ Coordinated AI Commander** on
 a town or position. Resize its circle in the editor: that's the objective.
 Then either **sync groups** to it, or sync nothing and it takes every free AI
 group of the chosen side within the auto-assign radius (2 km by default).
@@ -32,14 +32,14 @@ group of the chosen side within the auto-assign radius (2 km by default).
 **Attack mission**
 1. **Form up:** groups move to a staging area on their side of the objective. Infantry more than 800 m away **ride the commander's trucks** there (or grab empty vehicles nearby). Infantry more than 1.5 km away wait for a transport helicopter if the commander has one.
 2. **Preparatory fires:** a barrage on the most important known enemies (anti-air first, then armor, then bunched-up infantry), and attack helicopters and jets start strike missions.
-3. **Assault:** infantry attack on up to 3 axes (60° apart), vehicles give support by fire from overwatch for 90 s and then push in, and a reserve (25 % by default) waits at the staging area. Infantry too far away get **flown in** by the commander's transport helicopters or **trucked** to a dismount point 450 m out on their axis.
+3. **Assault:** infantry attack on up to 3 axes (60Â° apart), vehicles give support by fire from overwatch for 90 s and then push in, and a reserve (25 % by default) waits at the staging area. Infantry too far away get **flown in** by the commander's transport helicopters or **trucked** to a dismount point 450 m out on their axis.
 4. **Fighting through:** squads below 35 % strength fall back. Once infantry squads are in the town they **clear the buildings room by room** (see below), splitting the buildings between them. Vehicles hunt the remaining spotted enemies. The reserve is committed when the assault stalls (or after 5 minutes). Progress is reported over the radio ("Clearing Kavala: 45 % of buildings cleared").
 5. **Secured:** when no known enemies are left in the area for 45 s **and at least 60 % of its buildings are cleared** (or after 25 minutes), the commander switches to **Defend**.
 6. **Failed:** if everyone is broken or 20 minutes pass, the force regroups at the staging area and attacks again, as long as it still has at least 4 men.
 
 **Defend mission**
 - Half the infantry **garrison buildings** in the area (see *Realistic garrisons* below), facing known enemies or all-round.
-- 1–2 squads **patrol the perimeter**.
+- 1â€“2 squads **patrol the perimeter**.
 - The rest, plus vehicles and attack helicopters, form a **mobile reserve** (infantry reserves ride the commander's trucks to counter-attacks more than 800 m away). When anything is spotted within 700 m of the area, enough of the reserve to match the threat **counter-attacks from a flank**, and artillery fires on enemies outside the area. When things go quiet, the reserve returns to its positions.
 - After enemies got inside the area and were beaten back, up to 2 reserve squads **sweep the buildings** for stragglers.
 - If the area is **lost**, the commander switches to Attack to retake it.
@@ -132,11 +132,11 @@ Landed or hovering both work.
 ### Option A: download the build
 1. Open the **Actions** tab of this repository, pick the latest successful **Build** run and download the `@CoordinatedAI` artifact.
 2. Unzip it into a folder named `@CoordinatedAI` (for example in your Arma 3 directory).
-3. In the Arma 3 Launcher, go to **Mods → ⋯ More → Add watched folder / Add local mod** and pick the `@CoordinatedAI` folder. Enable it.
+3. In the Arma 3 Launcher, go to **Mods â†’ â‹¯ More â†’ Add watched folder / Add local mod** and pick the `@CoordinatedAI` folder. Enable it.
 
 ### Option B: build it yourself
 - With [HEMTT](https://github.com/BrettMayson/HEMTT): run `hemtt build` in the repo root. The mod appears in `.hemttout/build`.
-- With **Arma 3 Tools → Addon Builder**: pack `addons/main` into `@CoordinatedAI/addons/cai_main.pbo`. The `$PBOPREFIX$` file sets the prefix (`z\cai\addons\main`). Then copy `mod.cpp` next to the `addons` folder.
+- With **Arma 3 Tools â†’ Addon Builder**: pack `addons/main` into `@CoordinatedAI/addons/cai_main.pbo`. The `$PBOPREFIX$` file sets the prefix (`z\cai\addons\main`). Then copy `mod.cpp` next to the `addons` folder.
 
 In multiplayer, the server and every client (and any headless client) should run the mod.
 Each machine only drives the AI that is local to it.
@@ -144,7 +144,7 @@ Each machine only drives the AI that is local to it.
 ## Using it in the editor
 
 It works as soon as the mod is loaded. Optional modules are under
-**Systems (F5) → Modules → Coordinated AI**:
+**Systems (F5) â†’ Modules â†’ Coordinated AI**:
 
 - **Coordinated AI Settings**: turn features on or off and change the radii, the max responders and the debug messages.
 - **Coordinated AI Exclude Groups**: sync units to it to either ignore their groups completely, or only stop them from being sent as reinforcements.
@@ -175,7 +175,7 @@ what the AI is doing (contacts, radio reports, QRFs, air lifts, flanks, fire mis
 | `CAI_alertRadius` | `500` | Range at which deaths alert friendly groups |
 | `CAI_maxResponders` | `3` | Max QRF groups per group in contact |
 | `CAI_requestCooldown` | `45` | Seconds between support calls per group |
-| `CAI_infantryRadius` | `1200` | Infantry QRF range (×3 if they can ride) |
+| `CAI_infantryRadius` | `1200` | Infantry QRF range (Ã—3 if they can ride) |
 | `CAI_vehicleRadius` | `3000` | Ground vehicle QRF range |
 | `CAI_airRadius` | `6000` | Helicopter QRF / air lift range |
 | `CAI_useJets` | `false` | Allow armed planes to respond |
@@ -224,3 +224,29 @@ addons/main/
 mod.cpp
 .hemtt/project.toml
 ```
+
+## Reactive-army development checks
+
+Reinforcement requests now count the caller and its surviving committed QRFs,
+then dispatch suitable groups in arrival-time order until the desired combat
+power is reached or `CAI_maxResponders` is exhausted. Set
+`CAI_supportRatio = 1.5;` to require estimated friendly combat power equal to
+150% of the reported enemy power. Spare groups remain available for other
+fights. This is a heuristic based on the existing asset weights, not a combat
+outcome guarantee.
+
+Building searches confirm each building position only when a living entry
+soldier reaches it on the correct floor. A failed move, a dead entry team,
+cancellation, or remaining known enemies prevents a successful-clear report.
+Unfinished buildings can be retried after 120 seconds. These changes require
+the in-game acceptance checks in `tests/ACCEPTANCE.md`; a successful build alone
+does not verify Arma pathfinding or multiplayer behavior.
+
+HQ now consumes observation reports published by each friendly group's owner.
+Ground pursuit, aircraft search areas, threat clustering, and objective status
+use the reported positions rather than reading live enemy coordinates.
+Reports expire after `CAI_intelMaxAge` (120 seconds by default). Commander
+artillery requires a report at most 20 seconds old with position error within
+`CAI_artilleryMaxError`; aircraft receive a search area without a forced
+perfect-knowledge reveal. Native AI perception and the existing nearby radio
+sharing still require the live-observer checks in `tests/ACCEPTANCE.md`.

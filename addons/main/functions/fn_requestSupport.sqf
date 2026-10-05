@@ -9,6 +9,8 @@
 
 params ["_grp", "_contacts"];
 
+if (_contacts isEqualTo []) exitWith {false};
+
 private _leader = leader _grp;
 private _alive = units _grp select {alive _x};
 
@@ -55,6 +57,17 @@ private _responders = (_grp getVariable ["CAI_responders", []]) select {
 };
 private _slots = CAI_maxResponders - count _responders;
 
+// Count assets once, including support already committed to this fight.
+// A full response cap is a limit, not a quota: leave spare groups available
+// for other contacts. Recalculate surviving strength on every request.
+private _committedAssets = +_ownAssets;
+{
+    {if (alive _x) then {_committedAssets pushBackUnique vehicle _x}} forEach units _x;
+} forEach _responders;
+private _committed = 0;
+{_committed = _committed + ([_x] call CAI_fnc_threatValue)} forEach _committedAssets;
+private _required = (_enemy * (CAI_supportRatio max 1)) max (_own + _lost);
+
 if (_slots > 0) then {
     private _candidates = [];
     {
@@ -84,11 +97,20 @@ if (_slots > 0) then {
 
     _candidates sort true;
     {
+        if (_slots <= 0 || {_committed >= _required}) exitWith {};
         _x params ["_eta", "", "_resp"];
         [_resp, _grp, _targetPos, _contacts] call CAI_fnc_dispatchResponder;
         _responders pushBack _resp;
+        {
+            private _asset = vehicle _x;
+            if (alive _x && {!(_asset in _committedAssets)}) then {
+                _committedAssets pushBack _asset;
+                _committed = _committed + ([_asset] call CAI_fnc_threatValue);
+            };
+        } forEach units _resp;
+        _slots = _slots - 1;
         _sent = true;
-    } forEach (_candidates select [0, _slots]);
+    } forEach _candidates;
 };
 
 _grp setVariable ["CAI_responders", _responders];

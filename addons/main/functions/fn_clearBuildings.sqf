@@ -19,11 +19,17 @@
 
 params ["_grp", "_center", "_radius", ["_maxTime", 1800]];
 
-if (isNull _grp) exitWith {};
+if (isNull _grp || {!local _grp}) exitWith {};
+
+// A replacement clearing job must not be cancelled by the old job waking up.
+private _run = (_grp getVariable ["CAI_clearRun", 0]) + 1;
+_grp setVariable ["CAI_clearRun", _run];
 
 private _side = side _grp;
 private _clearedVar = format ["CAI_cleared_%1", _side];
 private _claimVar = format ["CAI_claim_%1", _side];
+private _claimRunVar = format ["CAI_claimRun_%1", _side];
+private _retryVar = format ["CAI_clearRetry_%1", _side];
 private _end = time + _maxTime;
 
 [_grp] call CAI_fnc_clearWaypoints;
@@ -38,7 +44,9 @@ _grp setCombatMode "RED";
 } forEach units _grp;
 
 private _active = {
-    !isNull _grp && {_grp getVariable ["CAI_clearing", false]} && {time < _end}
+    !isNull _grp && {local _grp} && {CAI_enabled}
+    && {_grp getVariable ["CAI_clearing", false]}
+    && {(_grp getVariable ["CAI_clearRun", 0]) == _run} && {time < _end}
 };
 private _men = {
     units _grp select {alive _x && {isNull objectParent _x} && {!isPlayer _x}}
@@ -61,9 +69,11 @@ while {call _active} do {
     // Next building: nearest one nobody has cleared recently or is clearing now.
     private _cands = ([_center, _radius] call CAI_fnc_buildingsIn) select {
         time - (_x getVariable [_clearedVar, -1e6]) > 900
+        && {time >= (_x getVariable [_retryVar, 0])}
         && {
             private _c = _x getVariable [_claimVar, grpNull];
             isNull _c || {_c == _grp} || {({alive _x} count units _c) == 0}
+            || {!(_c getVariable ["CAI_clearing", false])}
         }
     };
     if (_cands isEqualTo []) exitWith {};
@@ -74,6 +84,7 @@ while {call _active} do {
         if (_d < _bestD) then {_bestD = _d; _building = _x};
     } forEach _cands;
     _building setVariable [_claimVar, _grp, true];
+    _building setVariable [_claimRunVar, _run, true];
 
     // Entry team: up to 4, not the leader, machine gunners stay outside.
     private _pool = [];
@@ -108,6 +119,10 @@ while {call _active} do {
     _sorted sort true;
     _positions = _sorted apply {_x select 3};
 
+    if (_positions isEqualTo []) exitWith {
+        _building setVariable [_claimVar, grpNull, true];
+    };
+
     // Stack up at the first position.
     {_x doMove (_positions select 0)} forEach _entry;
     private _t = time + 40;
@@ -118,44 +133,73 @@ while {call _active} do {
     private _friendsInside = (_building nearEntities [["CAManBase"], _bRadius]) select {
         alive _x && {((side group _x) getFriend _side) >= 0.6} && {!(_x in _entry)}
     };
-    if (_inside isNotEqualTo [] && {_friendsInside isEqualTo []}) then {
+    if (call _active && {_inside isNotEqualTo []} && {_friendsInside isEqualTo []}) then {
         if ([_entry, getPosATL (_inside select 0), "frag"] call CAI_fnc_throwSmoke) then {
             sleep 3;
         };
     };
 
-    // Sweep the rooms as a team: each step the team moves to the next few positions.
-    private _n = count _entry;
-    for "_i" from 0 to (count _positions - 1) step (_n max 1) do {
+    // Remove a room from the pending list only after a living entry soldier
+    // reaches it. unitReady can also mean an order failed, so it is not proof.
+    private _pending = +_positions;
+    private _swept = _pending isNotEqualTo [];
+    while {_pending isNotEqualTo []} do {
         if !(call _active) exitWith {};
-        private _team = _entry select {alive _x};
-        if (_team isEqualTo []) exitWith {};
+        private _team = _entry select {alive _x && {isNull objectParent _x} && {!isPlayer _x}};
+        if (_team isEqualTo []) exitWith {_swept = false};
+        private _assignments = [];
         {
-            private _p = _positions select ((_i + _forEachIndex) min (count _positions - 1));
-            _x doMove _p;
+            if (_forEachIndex < count _pending) then {
+                private _p = _pending select _forEachIndex;
+                _assignments pushBack [_x, _p];
+                _x doMove _p;
+            };
         } forEach _team;
         _t = time + 25;
         waitUntil {
             sleep 1.5;
-            !(call _active) || {time > _t} || {(_team findIf {alive _x && {!unitReady _x}}) < 0}
+            {
+                _x params ["_unit", "_room"];
+                // Vertical tolerance prevents a soldier on the floor below
+                // from confirming an upstairs room.
+                if (alive _unit && {isNull objectParent _unit}
+                    && {_unit distance2D _room < 2}
+                    && {abs (((getPosATL _unit) select 2) - (_room select 2)) < 1.5}
+                ) then {_pending = _pending - [_room]};
+            } forEach _assignments;
+            !(call _active) || {time > _t}
+            || {(_assignments findIf {(_x select 1) in _pending}) < 0}
         };
+        if ((_assignments findIf {(_x select 1) in _pending}) >= 0) exitWith {_swept = false};
         [getPosATL _building] call _fightPause;
     };
 
-    if (call _active) then {
+    private _remaining = (_leader targets [true, _bRadius + 5, [], 20, getPosATL _building]) select {alive _x};
+    if (call _active && {_swept} && {_pending isEqualTo []} && {_remaining isEqualTo []}) then {
         _building setVariable [_clearedVar, time, true];
         _count = _count + 1;
         format ["%1 cleared %2 (%3 buildings so far)", groupId _grp, getText (configOf _building >> "displayName"), _count] call CAI_fnc_log;
+    } else {
+        // Avoid retrying the same unreachable building in a tight loop.
+        _building setVariable [_retryVar, time + 120, true];
     };
-    _building setVariable [_claimVar, grpNull, true];
+    if ((_building getVariable [_claimVar, grpNull]) == _grp
+        && {(_building getVariable [_claimRunVar, -1]) == _run}
+    ) then {
+        _building setVariable [_claimVar, grpNull, true];
+    };
 
     // Regroup on the leader before the next building.
-    {if (alive _x) then {_x doWatch objNull; _x doFollow (leader _grp)}} forEach (call _men);
+    if (call _active) then {
+        {if (alive _x) then {_x doWatch objNull; _x doFollow (leader _grp)}} forEach (call _men);
+    };
     sleep 2;
 };
 
-if (!isNull _grp) then {
-    {if (alive _x) then {_x doWatch objNull; _x doFollow (leader _grp)}} forEach units _grp;
+if (!isNull _grp && {local _grp} && {(_grp getVariable ["CAI_clearRun", 0]) == _run}) then {
+    if (_grp getVariable ["CAI_clearing", false]) then {
+        {if (alive _x) then {_x doWatch objNull; _x doFollow (leader _grp)}} forEach (call _men);
+    };
     _grp setVariable ["CAI_clearing", false];
     _grp setVariable ["CAI_clearDone", time];
     format ["%1 finished clearing (%2 buildings)", groupId _grp, _count] call CAI_fnc_log;
