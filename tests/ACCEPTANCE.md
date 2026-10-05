@@ -44,6 +44,24 @@ RPT log, map, mod version, and hosted/dedicated configuration for each run.
 
 ## Remaining full-goal gates
 
+### HQ observation reports
+
+Run `tests/intel_regression.sqf` in an empty VR editor mission as instructed in
+that file. Retain the RPT and inspect `CAI_intelTestFailures`. This harness is
+pending execution; it tests report consumption with injected observations,
+not whether the engine reports correct perception data.
+
+Also test live observers: let a squad see a moving enemy, break line of sight,
+then move the enemy elsewhere. Inspect `CAI_reports` on the observer group.
+The position and observation timestamp must remain unchanged without a newer
+sighting. HQ ground/air orders must use that position, artillery must stop
+using it after 20 seconds, and HQ must discard it after `CAI_intelMaxAge`.
+Reacquisition must create a newer report. Repeat with an observing squad on
+a headless client and HQ on the server, and with friendly radio reveals:
+radio traffic alone must not turn an old sighting into a fresh observation.
+
+### Other gates
+
 The complete reactive-army goal also requires scenario evidence for contact
 aging and radio propagation without omniscient pursuit, searching last-known
 positions, threat-appropriate combined-arms allocation across simultaneous
