@@ -24,6 +24,7 @@ private _defaults = [
     // Quick reaction forces
     ["CAI_requestCooldown", 45],        // seconds between support requests per group
     ["CAI_maxResponders", 3],           // max groups sent to help one group
+    ["CAI_supportRatio", 1.5],          // desired friendly/enemy combat power, including committed QRFs
     ["CAI_infantryRadius", 1200],
     ["CAI_vehicleRadius", 3000],
     ["CAI_airRadius", 6000],
