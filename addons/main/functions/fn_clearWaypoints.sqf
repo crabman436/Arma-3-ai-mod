@@ -12,7 +12,7 @@ for "_i" from (count waypoints _grp - 1) to 0 step -1 do {
 
 private _leader = leader _grp;
 {
-    if (alive _x && {!isPlayer _x} && {vehicle _x == _x} && {_x != _leader}) then {
+    if (alive _x && {!isPlayer _x} && {isNull objectParent _x} && {_x != _leader}) then {
         _x doFollow _leader;
     };
 } forEach units _grp;

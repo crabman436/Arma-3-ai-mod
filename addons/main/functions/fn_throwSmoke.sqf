@@ -24,7 +24,7 @@ private _getMuzzle = {
 private _thrower = objNull;
 private _muzzle = "";
 {
-    if (alive _x && {vehicle _x == _x} && {!isPlayer _x}) then {
+    if (alive _x && {isNull objectParent _x} && {!isPlayer _x}) then {
         private _m = [_x] call _getMuzzle;
         if (_m != "" && {isNull _thrower}) then {
             _thrower = _x;

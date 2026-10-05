@@ -10,10 +10,10 @@
 params ["_grp", "_contacts"];
 
 private _leader = leader _grp;
-if (vehicle _leader != _leader) exitWith {};
+if (!isNull objectParent _leader) exitWith {};
 
 private _men = units _grp select {
-    alive _x && {_x != _leader} && {vehicle _x == _x} && {!isPlayer _x} && {_x checkAIFeature "PATH"}
+    alive _x && {_x != _leader} && {isNull objectParent _x} && {!isPlayer _x} && {_x checkAIFeature "PATH"}
 };
 if (count _men < 3) exitWith {};
 

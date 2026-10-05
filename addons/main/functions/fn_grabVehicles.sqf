@@ -10,7 +10,7 @@
 params ["_grp", ["_dryRun", false]];
 
 private _leader = leader _grp;
-private _need = {alive _x && {vehicle _x == _x}} count units _grp;
+private _need = {alive _x && {isNull objectParent _x}} count units _grp;
 if (_need == 0) exitWith {false};
 
 private _cands = (_leader nearEntities [["Car", "Tank", "Wheeled_APC_F"], 150]) select {
