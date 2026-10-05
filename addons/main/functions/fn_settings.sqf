@@ -19,6 +19,7 @@ private _defaults = [
     ["CAI_shareRadius", 1500],          // groups within this range get spotted targets
     ["CAI_shareInterval", 8],           // seconds between radio reports per group
     ["CAI_shareMaxAge", 60],            // only report contacts seen in the last N seconds
+    ["CAI_intelMaxAge", 120],           // HQ stops tasking against older observation reports
     ["CAI_alertRadius", 500],           // groups within this range react to friendly deaths
 
     // Quick reaction forces
