@@ -93,12 +93,12 @@ private _centroid = {
 
 if (_markers) then {
     private _area = createMarker [format ["CAI_cmd_area_%1", _cmdId], _center];
-    _area setMarkerShape "ELLIPSE";
-    _area setMarkerSize [_radius, _radius];
-    _area setMarkerBrush "FDiagonal";
+    _area setMarkerShapeLocal "ELLIPSE";
+    _area setMarkerSizeLocal [_radius, _radius];
+    _area setMarkerBrushLocal "FDiagonal";
     _area setMarkerColor (["colorBLUFOR", "colorOPFOR", "colorIndependent"] select (([west, east, independent] find _side) max 0));
     private _txt = createMarker [format ["CAI_cmd_txt_%1", _cmdId], _center];
-    _txt setMarkerType "mil_objective";
+    _txt setMarkerTypeLocal "mil_objective";
     _txt setMarkerColor (markerColor _area);
 };
 
@@ -345,7 +345,7 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
 
             private _nGarrison = ceil ((count _inf) * 0.5);
             // 1 patrol from 3 squads, 2 from 5 squads; the rest is the reserve.
-            private _nPatrol = [0, 1, 2] select (([0, 1] select (count _inf >= 3)) + ([0, 1] select (count _inf >= 5)));
+            private _nPatrol = parseNumber (count _inf >= 3) + parseNumber (count _inf >= 5);
             _nPatrol = _nPatrol min ((count _inf - _nGarrison) max 0);
             private _garrison = _inf select [0, _nGarrison];
             private _patrol = _inf select [_nGarrison, _nPatrol];
