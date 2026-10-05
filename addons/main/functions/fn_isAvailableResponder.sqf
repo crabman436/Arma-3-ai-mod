@@ -25,6 +25,8 @@ if (!isNull (_cand getVariable ["CAI_commander", objNull])) exitWith {false}; //
 if ((_cand getVariable ["CAI_assist", []]) isNotEqualTo []) exitWith {false};
 if (_cand getVariable ["CAI_busy", false]) exitWith {false};
 if (_cand getVariable ["CAI_inTransit", false]) exitWith {false};
+if (_cand getVariable ["CAI_clearing", false]) exitWith {false};
+if (_cand getVariable ["CAI_garrisoned", false]) exitWith {false};
 if (time - (_cand getVariable ["CAI_lastContact", -1e6]) < CAI_quietTime) exitWith {false};
 if ((units _cand findIf {isPlayer _x}) >= 0) exitWith {false};
 

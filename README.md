@@ -33,14 +33,15 @@ group of the chosen side within the auto-assign radius (2 km by default).
 1. **Form up:** groups move to a staging area on their side of the objective. Infantry more than 800 m away **ride the commander's trucks** there (or grab empty vehicles nearby). Infantry more than 1.5 km away wait for a transport helicopter if the commander has one.
 2. **Preparatory fires:** a barrage on the most important known enemies (anti-air first, then armor, then bunched-up infantry), and attack helicopters and jets start strike missions.
 3. **Assault:** infantry attack on up to 3 axes (60° apart), vehicles give support by fire from overwatch for 90 s and then push in, and a reserve (25 % by default) waits at the staging area. Infantry too far away get **flown in** by the commander's transport helicopters or **trucked** to a dismount point 450 m out on their axis.
-4. **Fighting through:** squads below 35 % strength fall back. Squads that run out of orders hunt the remaining spotted enemies or sweep the area. The reserve is committed when the assault stalls (or after 5 minutes).
-5. **Secured:** when no known enemies are left in the area for 45 s, the commander switches to **Defend**.
+4. **Fighting through:** squads below 35 % strength fall back. Once infantry squads are in the town they **clear the buildings room by room** (see below), splitting the buildings between them. Vehicles hunt the remaining spotted enemies. The reserve is committed when the assault stalls (or after 5 minutes). Progress is reported over the radio ("Clearing Kavala: 45 % of buildings cleared").
+5. **Secured:** when no known enemies are left in the area for 45 s **and at least 60 % of its buildings are cleared** (or after 25 minutes), the commander switches to **Defend**.
 6. **Failed:** if everyone is broken or 20 minutes pass, the force regroups at the staging area and attacks again, as long as it still has at least 4 men.
 
 **Defend mission**
-- Half the infantry **garrison buildings** in the area (one squad per building, staying in position).
+- Half the infantry **garrison buildings** in the area (see *Realistic garrisons* below), facing known enemies or all-round.
 - 1–2 squads **patrol the perimeter**.
 - The rest, plus vehicles and attack helicopters, form a **mobile reserve** (infantry reserves ride the commander's trucks to counter-attacks more than 800 m away). When anything is spotted within 700 m of the area, enough of the reserve to match the threat **counter-attacks from a flank**, and artillery fires on enemies outside the area. When things go quiet, the reserve returns to its positions.
+- After enemies got inside the area and were beaten back, up to 2 reserve squads **sweep the buildings** for stragglers.
 - If the area is **lost**, the commander switches to Attack to retake it.
 
 **Fire support** (any friendly mortars or artillery with AI gunners, synced or not):
@@ -58,9 +59,46 @@ group of the chosen side within the auto-assign radius (2 km by default).
 - When defending, aircraft wait at base and launch as soon as enemies are spotted near the objective.
 
 **Options:** mission (attack/defend), side, auto-assign radius, reserve %, fire
-support (off/normal/heavy), air support, aircraft rearm at base, radio messages
+support (off/normal/heavy), air support, aircraft rearm at base, clear buildings, radio messages
 (players on that side hear the orders in side chat) and map markers
 (objective area + live status).
+
+### Commander vs commander
+
+Each Commander module leads **one side** (BLUFOR, OPFOR or Independent) and
+only uses its own groups. Groups already under one commander are never taken
+by another. So you can:
+
+- **Attack vs defend:** put an OPFOR commander on *Defend* and a BLUFOR commander on *Attack* on the same town, each with its own synced troops, artillery, trucks and aircraft. If BLUFOR takes it, BLUFOR switches to defending it and OPFOR (if it has troops left) counter-attacks to retake it, and so on.
+- **Three-way fights:** add an Independent commander as well.
+- **Several objectives:** one commander per town or base, on any side.
+- **You in the middle:** play as a squad leader on either side. Your commander's orders show up in side chat and its status on the map.
+
+Each commander only knows what its side has spotted, so scouting, recon
+helicopters and fast movement really matter.
+
+### House clearing (CQB)
+
+Squads clearing an area take the nearest building that no other squad of
+their side has cleared or is clearing:
+- the **leader and the rest of the squad cover the outside**, spread around the building, while an **entry team of up to 4** (machine gunners stay outside) stacks up at the door
+- if an enemy is known to be inside, a **frag goes in first** (never with friendlies inside)
+- the team moves through every position **ground floor first, then up**, a few rooms at a time, and **stops to fight** whenever enemies show up close by
+- the building is marked cleared for the whole side and the squad regroups and moves on
+
+Used by the commander (attack, and defend sweeps), by the **Clear Area** module, or from a script:
+`[group, center, radius] spawn CAI_fnc_clearBuildings;`
+
+### Realistic garrisons
+
+Squads holding a town:
+- take positions in a building (and its neighbours if it's small) chosen by **how much each spot can see out of windows and over walls**, toward the threat or all-round, with **upper floors and rooftops** preferred
+- each soldier **stands or crouches** depending on where he can see from, and **watches his sector**
+- soldiers **stay put** (they won't wander off), but anyone with an **enemy within 25 m (a breach) is released** to fight
+- one squad per building, so a town is held by several squads in different buildings
+
+Used by the commander (defend), by the **Garrison** module, or from a script:
+`[group, center, radius, threatDirection (-1 = all-round)] call CAI_fnc_garrison;`
 
 **Tips**
 - Put two commanders on the same town, one attacking and one defending, then sit back and watch, or join either side.
@@ -111,6 +149,8 @@ It works as soon as the mod is loaded. Optional modules are under
 - **Coordinated AI Settings**: turn features on or off and change the radii, the max responders and the debug messages.
 - **Coordinated AI Exclude Groups**: sync units to it to either ignore their groups completely, or only stop them from being sent as reinforcements.
 - **Coordinated AI Commander**: an AI commander that takes or holds an area (see above).
+- **Coordinated AI Garrison**: synced squads garrison the buildings in its area realistically (see *Realistic garrisons*). Can watch all-round or the module's facing direction.
+- **Coordinated AI Clear Area**: synced squads clear every building in its area (see *House clearing*). Sync a trigger to start it later.
 
 Turn on **Debug messages** in the settings module to watch in system chat
 what the AI is doing (contacts, radio reports, QRFs, air lifts, flanks, fire missions).
@@ -176,7 +216,9 @@ addons/main/
     fn_dispatchResponder.sqf / fn_airLift.sqf / fn_groundLift.sqf / fn_grabVehicles.sqf
     fn_fireAndManeuver.sqf / fn_throwSmoke.sqf / fn_requestArtillery.sqf / fn_fireMission.sqf
     fn_moduleCommander.sqf / fn_commander.sqf   AI commander (attack / defend state machine)
-    fn_cmdAssess.sqf / fn_cmdOrder.sqf / fn_cmdGarrison.sqf / fn_cmdRadio.sqf
+    fn_cmdAssess.sqf / fn_cmdOrder.sqf / fn_cmdRadio.sqf
+    fn_garrison.sqf / fn_clearBuildings.sqf / fn_buildingsIn.sqf   CQB: garrison and house clearing
+    fn_moduleGarrison.sqf / fn_moduleClear.sqf
     fn_cmdFires.sqf / fn_cmdAir.sqf / fn_isAA.sqf   commander fire plan and air tasking
     ...
 mod.cpp

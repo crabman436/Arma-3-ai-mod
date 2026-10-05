@@ -18,6 +18,15 @@ if (isNull _grp || {_wps isEqualTo []}) exitWith {};
     };
 } forEach units _grp;
 
+// Free any buildings this group was holding.
+private _held = _grp getVariable ["CAI_garrisonBuildings", []];
+if (_held isNotEqualTo []) then {
+    private _key = format ["CAI_garrisonTaken_%1", side _grp];
+    missionNamespace setVariable [_key, (missionNamespace getVariable [_key, []]) - _held];
+    _grp setVariable ["CAI_garrisonBuildings", []];
+};
+_grp setVariable ["CAI_garrisoned", false];
+_grp setVariable ["CAI_clearing", false];
 [_grp] call CAI_fnc_clearWaypoints;
 if (behaviour leader _grp == "CARELESS") then {_grp setBehaviour "AWARE"};
 

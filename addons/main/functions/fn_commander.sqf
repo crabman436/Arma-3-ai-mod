@@ -22,11 +22,11 @@
         5: NUMBER reserve fraction (0-1)
         6: BOOL radio messages to players
         7: BOOL map markers
-        8: ARRAY [fire support level (0 off, 1 normal, 2 heavy), air support, refit aircraft at base]
+        8: ARRAY [fire support level (0 off, 1 normal, 2 heavy), air support, refit aircraft at base, clear buildings]
 */
 
 params ["_logic", "_side", "_groups", "_mode", "_radius", "_reservePct", "_radio", "_markers", ["_opts", [1, true, true]]];
-_opts params [["_fireLevel", 1], ["_airSupport", true], ["_refit", true]];
+_opts params [["_fireLevel", 1], ["_airSupport", true], ["_refit", true], ["_clearOpt", true]];
 
 // Fire support intensity: [prep missions, missions per update, rounds per mission, gun cooldown]
 private _fires = [[0, 0, 0, 0], [3, 1, CAI_artilleryRounds, 60], [6, 2, CAI_artilleryRounds * 2, 40]] select (_fireLevel max 0 min 2);
@@ -160,6 +160,25 @@ private _secureSince = -1;
 private _reserveCommitted = false;
 private _lastThreat = -1e6;
 private _attempt = 1;
+private _nextClearReport = 0;
+private _infiltrated = false;
+
+// Buildings in the objective, and how many of them this side has cleared.
+private _objBuildings = [_center, _radius, 3] call CAI_fnc_buildingsIn;
+private _clearedRatio = {
+    private _bs = _objBuildings select {alive _x};
+    if (_bs isEqualTo []) exitWith {1};
+    private _v = format ["CAI_cleared_%1", _side];
+    ({time - (_x getVariable [_v, -1e6]) < 1800} count _bs) / count _bs
+};
+// Infantry squads that can be sent into the buildings.
+private _canClear = {
+    _clearOpt
+    && {([_this] call CAI_fnc_groupType) == "INF"}
+    && {!(_this getVariable ["CAI_clearing", false])}
+    && {time - (_this getVariable ["CAI_clearDone", -1e6]) > 60}
+    && {(call _clearedRatio) < 1}
+};
 private _nextIllum = 0;
 
 format ["%1 HQ taking command of %2 groups. Mission: %3 %4.", _sideName, count _groups, ["attack", "defend"] select (_mode == 1), _objName] call _say;
@@ -331,9 +350,16 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
                 };
             } forEach _alive;
 
-            // Groups that ran out of orders hunt the remaining enemies or sweep the objective.
+            // Groups that ran out of orders clear buildings, hunt the remaining enemies or sweep the objective.
             {
-                if ((_x call _roleOf) in ["ASSAULT", "SUPPORT", "COUNTER"] && {_x call _isIdle}) then {
+                if ((_x call _roleOf) in ["ASSAULT", "SUPPORT", "COUNTER"]
+                    && {_x call _isIdle}
+                    && {!(_x getVariable ["CAI_clearing", false])}
+                ) then {
+                    if (_x call _canClear && {(leader _x) distance2D _center < _radius + 150}) then {
+                        _x setVariable ["CAI_clearing", true];
+                        [_x, _center, _radius] spawn CAI_fnc_clearBuildings;
+                    } else {
                     private _t = [_inArea, getPosATL leader _x] call _nearestTo;
                     private _pos = if (isNull _t) then {
                         [_center getPos [random (_radius * 0.6), random 360], _center] call CAI_fnc_landPos
@@ -341,8 +367,18 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
                         getPosATL _t
                     };
                     [_x, [[_pos, "SAD", "COMBAT", "RED", "NORMAL", 60]]] call CAI_fnc_cmdOrder;
+                    };
                 };
             } forEach _alive;
+
+            // Progress report on the house clearing.
+            if (_clearOpt && {_objBuildings isNotEqualTo []} && {time > _nextClearReport}) then {
+                private _clearing = {_x getVariable ["CAI_clearing", false]} count _alive;
+                if (_clearing > 0) then {
+                    _nextClearReport = time + 120;
+                    format ["Clearing %1: %2%% of buildings cleared, %3 squads clearing.", _objName, round ((call _clearedRatio) * 100), _clearing] call _say;
+                };
+            };
 
             // Commit the reserve when the assault is stalling.
             private _fighting = _alive select {(_x call _roleOf) in ["ASSAULT", "SUPPORT"]};
@@ -362,8 +398,9 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
                 };
             };
 
-            // Secured?
-            if (_inArea isEqualTo [] && {_friendIn >= 2}) then {
+            // Secured? No known enemies left and (when clearing) most buildings cleared.
+            private _buildingsDone = !_clearOpt || {(call _clearedRatio) >= 0.6} || {time - _stateSince > 1500};
+            if (_inArea isEqualTo [] && {_friendIn >= 2} && {_buildingsDone}) then {
                 if (_secureSince < 0) then {_secureSince = time};
                 if (time - _secureSince > 45) then {
                     format ["%1 is secured. All units consolidate and defend.", _objName] call _say;
@@ -375,7 +412,9 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
 
             // Failed?
             private _committed = _alive select {(_x call _roleOf) in ["ASSAULT", "SUPPORT", "COUNTER"]};
-            if (_change == "" && {(_reserveCommitted && {_committed isEqualTo []}) || {time - _stateSince > 1200}}) then {
+            // While troops hold ground in the objective (e.g. clearing houses) the attack gets more time.
+            private _limit = [1200, 2400] select (_friendIn > 0);
+            if (_change == "" && {(_reserveCommitted && {_committed isEqualTo []}) || {time - _stateSince > _limit}}) then {
                 format ["The attack on %1 has failed. Regroup at the staging area.", _objName] call _say;
                 {
                     if (([_x] call CAI_fnc_groupType) in ["INF", "GROUND"]) then {
@@ -433,9 +472,15 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
             private _patrol = _inf select [_nGarrison, _nPatrol];
             private _reserve = _inf - _garrison - _patrol;
 
+            // Face known enemies, otherwise all-round.
+            private _threatDir = if (_threats isEqualTo []) then {-1} else {_center getDir (_threats call _centroid)};
             {
                 [_x, "GARRISON"] call _setRole;
-                [_x, _center, _radius, _logic] call CAI_fnc_cmdGarrison;
+                if !([_x, _center, _radius * 0.7, _threatDir] call CAI_fnc_garrison) then {
+                    // No buildings: hold a spot in the objective.
+                    private _pos = [_center getPos [random (_radius * 0.5), random 360], _center] call CAI_fnc_landPos;
+                    [_x, [[_pos, "HOLD", "AWARE", "YELLOW", "NORMAL", 20]]] call CAI_fnc_cmdOrder;
+                };
             } forEach _garrison;
 
             {
@@ -555,8 +600,30 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
                         "Area clear. Reserve, return to positions." call _say;
                         "defending" call _status;
                     };
+
+                    // Enemies got inside earlier: sweep the buildings for stragglers.
+                    if (_infiltrated && {_clearOpt}) then {
+                        _infiltrated = false;
+                        {
+                            [_x, "SWEEP"] call _setRole;
+                            _x setVariable ["CAI_clearDone", -1e6];
+                            _x setVariable ["CAI_clearing", true];
+                            [_x, _center, _radius] spawn CAI_fnc_clearBuildings;
+                        } forEach ((_alive select {(_x call _roleOf) == "RESERVE" && {([_x] call CAI_fnc_groupType) == "INF"}}) select [0, 2]);
+                        format ["Sweeping %1 for infiltrators.", _objName] call _say;
+                    };
                 };
             };
+            if (_inArea isNotEqualTo []) then {_infiltrated = true};
+
+            // Sweep teams that are done go back into reserve.
+            {
+                if ((_x call _roleOf) == "SWEEP" && {!(_x getVariable ["CAI_clearing", false])}) then {
+                    private _p = [_center getPos [random (_radius * 0.3), random 360], _center] call CAI_fnc_landPos;
+                    [_x, [[_p, "MOVE", "AWARE", "YELLOW", "NORMAL", 30]]] call CAI_fnc_cmdOrder;
+                    [_x, "RESERVE"] call _setRole;
+                };
+            } forEach _alive;
 
             [_threats isNotEqualTo [], _threats] call _runAir;
 

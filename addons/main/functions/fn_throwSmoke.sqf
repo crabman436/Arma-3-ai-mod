@@ -1,12 +1,12 @@
 /*
     CAI_fnc_throwSmoke
-    The first soldier in the list carrying a smoke grenade throws it toward
-    the enemy.
-    Params: 0: ARRAY units, 1: ARRAY enemy position
-    Returns: BOOL - a smoke was thrown
+    The first soldier in the list carrying a smoke grenade (or a frag
+    grenade) throws it toward the enemy.
+    Params: 0: ARRAY units, 1: ARRAY enemy position, 2: STRING "smoke" (default) or "frag"
+    Returns: BOOL - a grenade was thrown
 */
 
-params ["_units", "_towardPos"];
+params ["_units", "_towardPos", ["_kind", "smoke"]];
 
 private _throwCfg = configFile >> "CfgWeapons" >> "Throw";
 private _getMuzzle = {
@@ -14,7 +14,13 @@ private _getMuzzle = {
     private _mags = magazines _unit;
     private _muzzle = "";
     {
-        if ((toLower _x) find "smoke" >= 0
+        private _m = toLower _x;
+        private _match = if (_kind == "frag") then {
+            (_m find "handgrenade") >= 0 || {(_m find "minigrenade") >= 0}
+        } else {
+            (_m find "smoke") >= 0
+        };
+        if (_match
             && {(getArray (_throwCfg >> _x >> "magazines") findIf {_x in _mags}) >= 0}
         ) exitWith {_muzzle = _x};
     } forEach getArray (_throwCfg >> "muzzles");

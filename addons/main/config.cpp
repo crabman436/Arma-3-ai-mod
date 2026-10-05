@@ -5,7 +5,7 @@ class CfgPatches {
         url = "https://github.com/crabman436/Arma-3-ai-mod";
         requiredVersion = 2.10;
         requiredAddons[] = {"A3_Functions_F", "A3_Modules_F"};
-        units[] = {"CAI_ModuleSettings", "CAI_ModuleExclude", "CAI_ModuleCommander"};
+        units[] = {"CAI_ModuleSettings", "CAI_ModuleExclude", "CAI_ModuleCommander", "CAI_ModuleGarrison", "CAI_ModuleClear"};
         weapons[] = {};
     };
 };
@@ -47,7 +47,11 @@ class CfgFunctions {
             class commander {};
             class cmdAssess {};
             class cmdOrder {};
-            class cmdGarrison {};
+            class buildingsIn {};
+            class garrison {};
+            class clearBuildings {};
+            class moduleGarrison {};
+            class moduleClear {};
             class cmdRadio {};
             class cmdFires {};
             class cmdAir {};
@@ -311,6 +315,13 @@ class CfgVehicles {
                 typeName = "BOOL";
                 defaultValue = "true";
             };
+            class ClearBuildings: Checkbox {
+                property = "CAI_ModuleCommander_ClearBuildings";
+                displayName = "Clear buildings";
+                tooltip = "Attack: once in the objective, squads clear its buildings room by room, and the objective only counts as secured when most buildings are cleared. Defend: reserves sweep the buildings after enemies got inside.";
+                typeName = "BOOL";
+                defaultValue = "true";
+            };
             class Radio: Checkbox {
                 property = "CAI_ModuleCommander_Radio";
                 displayName = "Radio messages";
@@ -330,6 +341,75 @@ class CfgVehicles {
 
         class ModuleDescription: ModuleDescription {
             description = "An AI commander that takes or holds the module's area with the groups synced to it (or all free groups of its side nearby). Resize the area in the editor. Sync a trigger to start it later.";
+            sync[] = {"AnyBrain"};
+        };
+    };
+
+    class CAI_ModuleGarrison: Module_F {
+        scope = 2;
+        displayName = "Coordinated AI Garrison";
+        icon = "\a3\ui_f\data\igui\cfg\simpletasks\types\defend_ca.paa";
+        category = "CAI_Modules";
+        function = "CAI_fnc_moduleGarrison";
+        functionPriority = 4;
+        isGlobal = 0;
+        isTriggerActivated = 1;
+        isDisposable = 0;
+        is3DEN = 0;
+        canSetArea = 1;
+        canSetAreaShape = 0;
+
+        class AttributeValues {
+            size3[] = {75, 75, -1};
+            isRectangle = 0;
+        };
+
+        class Attributes: AttributesBase {
+            class Facing: Combo {
+                property = "CAI_ModuleGarrison_Facing";
+                displayName = "Watch";
+                tooltip = "All-round, or concentrate on the direction the module is facing (rotate it in the editor).";
+                typeName = "NUMBER";
+                defaultValue = "0";
+                class Values {
+                    class AllRound { name = "All-round"; value = 0; };
+                    class Facing { name = "Module facing direction"; value = 1; };
+                };
+            };
+            class ModuleDescription: ModuleDescription {};
+        };
+
+        class ModuleDescription: ModuleDescription {
+            description = "Synced squads garrison the buildings in the area: soldiers take window and rooftop positions with a view, crouch or stand to see out, watch their sector and hold. Anyone with an enemy right on top of them is released to fight.";
+            sync[] = {"AnyBrain"};
+        };
+    };
+
+    class CAI_ModuleClear: Module_F {
+        scope = 2;
+        displayName = "Coordinated AI Clear Area";
+        icon = "\a3\ui_f\data\igui\cfg\simpletasks\types\search_ca.paa";
+        category = "CAI_Modules";
+        function = "CAI_fnc_moduleClear";
+        functionPriority = 4;
+        isGlobal = 0;
+        isTriggerActivated = 1;
+        isDisposable = 0;
+        is3DEN = 0;
+        canSetArea = 1;
+        canSetAreaShape = 0;
+
+        class AttributeValues {
+            size3[] = {150, 150, -1};
+            isRectangle = 0;
+        };
+
+        class Attributes: AttributesBase {
+            class ModuleDescription: ModuleDescription {};
+        };
+
+        class ModuleDescription: ModuleDescription {
+            description = "Synced squads clear every building in the area room by room: security outside, an entry team inside, frag first if an enemy is known inside. Squads split the buildings between them. Sync a trigger to start later.";
             sync[] = {"AnyBrain"};
         };
     };
