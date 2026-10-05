@@ -23,6 +23,9 @@ private _reserve = ((_logic getVariable ["Reserve", 25]) max 0 min 90) / 100;
 private _autoRadius = _logic getVariable ["AutoRadius", 2000];
 private _radio = _logic getVariable ["Radio", true];
 private _markers = _logic getVariable ["Markers", true];
+private _fireLevel = _logic getVariable ["FireSupport", 1];
+private _airSupport = _logic getVariable ["AirSupport", true];
+private _refit = _logic getVariable ["Refit", true];
 
 private _area = _logic getVariable ["objectArea", [250, 250, 0, false, -1]];
 private _radius = ((_area select 0) max (_area select 1)) max 50;
@@ -66,4 +69,4 @@ if (_groups isEqualTo []) exitWith {
     format ["Commander module (%1): no groups available.", _side] call CAI_fnc_log;
 };
 
-[_logic, _side, _groups, _mode, _radius, _reserve, _radio, _markers] spawn CAI_fnc_commander;
+[_logic, _side, _groups, _mode, _radius, _reserve, _radio, _markers, [_fireLevel, _airSupport, _refit]] spawn CAI_fnc_commander;

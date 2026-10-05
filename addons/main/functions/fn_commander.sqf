@@ -22,9 +22,15 @@
         5: NUMBER reserve fraction (0-1)
         6: BOOL radio messages to players
         7: BOOL map markers
+        8: ARRAY [fire support level (0 off, 1 normal, 2 heavy), air support, refit aircraft at base]
 */
 
-params ["_logic", "_side", "_groups", "_mode", "_radius", "_reservePct", "_radio", "_markers"];
+params ["_logic", "_side", "_groups", "_mode", "_radius", "_reservePct", "_radio", "_markers", ["_opts", [1, true, true]]];
+_opts params [["_fireLevel", 1], ["_airSupport", true], ["_refit", true]];
+
+// Fire support intensity: [prep missions, missions per update, rounds per mission, gun cooldown]
+private _fires = [[0, 0, 0, 0], [3, 1, CAI_artilleryRounds, 60], [6, 2, CAI_artilleryRounds * 2, 40]] select (_fireLevel max 0 min 2);
+_fires params ["_prepMissions", "_tickMissions", "_fireRounds", "_fireCooldown"];
 
 private _center = getPosATL _logic;
 _center = [_center select 0, _center select 1, 0];
@@ -75,6 +81,23 @@ private _nearestTo = {
     } forEach _list;
     _best
 };
+private _airOf = {
+    _this select {([_x] call CAI_fnc_groupType) in ["HELI_ATTACK", "JET"]}
+};
+private _runAir = {
+    params ["_engage", "_targets"];
+    if (_airSupport) then {
+        [_logic, (call _aliveGroups) call _airOf, _targets, _center, _radius, _engage, _refit, _side, _radio] call CAI_fnc_cmdAir;
+    };
+};
+private _isNight = {sunOrMoon < 0.3};
+private _illuminate = {
+    if (_fireLevel > 0 && {CAI_artillery} && {call _isNight} && {time > _nextIllum}) then {
+        if ([_side, _this, 0, format ["%1 HQ", _sideName], 2, "ILLUM", 30] call CAI_fnc_fireMission) then {
+            _nextIllum = time + 90;
+        };
+    };
+};
 private _centroid = {
     if (_this isEqualTo []) exitWith {_center};
     private _sum = [0, 0, 0];
@@ -111,6 +134,7 @@ private _secureSince = -1;
 private _reserveCommitted = false;
 private _lastThreat = -1e6;
 private _attempt = 1;
+private _nextIllum = 0;
 
 format ["%1 HQ taking command of %2 groups. Mission: %3 %4.", _sideName, count _groups, ["attack", "defend"] select (_mode == 1), _objName] call _say;
 
@@ -151,7 +175,9 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
                         };
                         case (_type == "HELI_TRANSPORT"): {[_x, "LIFT"] call _setRole};
                         case (_type == "ARTY"): {[_x, "FIRES"] call _setRole};
-                        default {[_x, "AIR"] call _setRole};
+                        default {
+                            if ((_x call _roleOf) != "AIR_REARM") then {[_x, "AIR"] call _setRole};
+                        };
                     };
                 } forEach _alive;
                 format ["All units, form up %1 of %2. Attack begins when ready.", _approachDir call _compass, _objName] call _say;
@@ -170,23 +196,17 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
         case "ATTACK_PREP": {
             if (!_entered) then {
                 _entered = true;
-                private _fired = 0;
-                if (CAI_artillery) then {
-                    {
-                        if (_fired < 3 && {[_side, getPosATL _x, 50, format ["%1 HQ", _sideName]] call CAI_fnc_fireMission}) then {
-                            _fired = _fired + 1;
-                        };
-                    } forEach _inArea;
-                };
-                {
-                    if ((_x call _roleOf) == "AIR") then {
-                        [_x, [[_center, "SAD", "COMBAT", "RED", "NORMAL", 300]]] call CAI_fnc_cmdOrder;
-                        [_x, "AIR_STRIKE"] call _setRole;
-                    };
-                } forEach _alive;
-                format ["Preparing the objective: %1 fire missions, air moving in.", _fired] call _say;
+                private _fired = [_side, _threats, _prepMissions, _fireRounds, _fireCooldown, format ["%1 HQ", _sideName]] call CAI_fnc_cmdFires;
+                private _air = count (_alive call _airOf);
+                format ["Preparing the objective: %1 fire missions%2.", _fired, ["", format [", %1 air units moving in", _air]] select (_airSupport && {_air > 0})] call _say;
                 "preparatory fires" call _status;
             };
+            // Keep hitting whatever is spotted while the troops get ready.
+            if (time - _stateSince > 20) then {
+                [_side, _threats, _tickMissions, _fireRounds, _fireCooldown, format ["%1 HQ", _sideName]] call CAI_fnc_cmdFires;
+            };
+            [true, _threats] call _runAir;
+            _center call _illuminate;
             if (time - _stateSince > 45) then {_change = "ATTACK_ASSAULT"};
         };
 
@@ -223,6 +243,18 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
                     };
                 } forEach _assault;
 
+                // Smoke screens on the assault lanes.
+                private _smoked = 0;
+                if (_fireLevel > 0 && {CAI_artillery} && {!call _isNight}) then {
+                    {
+                        private _screen = [_center getPos [_radius + 40, _approachDir + _x], _center] call CAI_fnc_landPos;
+                        if ([_side, _screen, 20, format ["%1 HQ", _sideName], 2, "SMOKE", 30] call CAI_fnc_fireMission) then {
+                            _smoked = _smoked + 1;
+                        };
+                    } forEach _axes;
+                };
+                if (_smoked > 0) then {"Smoke on the assault lanes. Move!" call _say};
+
                 // Vehicles: support by fire from overwatch, then push in.
                 {
                     private _d = _approachDir + ([-30, 30] select (_forEachIndex % 2));
@@ -244,6 +276,11 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
                 format ["assault (attempt %1)", _attempt] call _status;
             };
 
+            // Continuous fire support and air strikes on everything spotted.
+            [_side, _threats, _tickMissions, _fireRounds, _fireCooldown, format ["%1 HQ", _sideName]] call CAI_fnc_cmdFires;
+            [true, _threats] call _runAir;
+            (_inArea call _centroid) call _illuminate;
+
             // Broken squads fall back.
             {
                 if ((_x call _roleOf) in ["ASSAULT", "SUPPORT", "COUNTER"] && {([_x] call _strength) < 0.35}) then {
@@ -255,7 +292,7 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
 
             // Groups that ran out of orders hunt the remaining enemies or sweep the objective.
             {
-                if ((_x call _roleOf) in ["ASSAULT", "SUPPORT", "AIR_STRIKE", "COUNTER"] && {_x call _isIdle}) then {
+                if ((_x call _roleOf) in ["ASSAULT", "SUPPORT", "COUNTER"] && {_x call _isIdle}) then {
                     private _t = [_inArea, getPosATL leader _x] call _nearestTo;
                     private _pos = if (isNull _t) then {
                         [_center getPos [random (_radius * 0.6), random 360], _center] call CAI_fnc_landPos
@@ -313,6 +350,9 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
                 _entered = true;
                 "regrouping" call _status;
             };
+            // Cover the regroup.
+            [_side, _threats, _tickMissions, _fireRounds, _fireCooldown, format ["%1 HQ", _sideName]] call CAI_fnc_cmdFires;
+            [true, _threats] call _runAir;
             if (time - _stateSince > 180) then {
                 private _men = 0;
                 {_men = _men + ({alive _x} count units _x)} forEach _alive;
@@ -325,7 +365,7 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
                     {
                         _x setVariable ["CAI_cmdInitial", {alive _x} count units _x];
                         private _type = [_x] call CAI_fnc_groupType;
-                        [_x, ["AIR", "STAGING"] select (_type in ["INF", "GROUND"])] call _setRole;
+                        if (_type in ["INF", "GROUND"]) then {[_x, "STAGING"] call _setRole};
                         if (_type == "HELI_TRANSPORT") then {[_x, "LIFT"] call _setRole};
                         if (_type == "ARTY") then {[_x, "FIRES"] call _setRole};
                     } forEach _alive;
@@ -385,8 +425,8 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
             {
                 private _type = [_x] call CAI_fnc_groupType;
                 if (_type in ["HELI_ATTACK", "JET"]) then {
-                    if ((_x call _roleOf) != "") then {[_x] call CAI_fnc_returnHome};
-                    [_x, "RESERVE"] call _setRole;
+                    if ((_x call _roleOf) in ["AIR_STRIKE", "AIR_HOLD"]) then {[_x] call CAI_fnc_returnHome};
+                    if ((_x call _roleOf) != "AIR_REARM") then {[_x, "AIR"] call _setRole};
                 };
                 if (_type == "HELI_TRANSPORT") then {[_x, "LIFT"] call _setRole};
                 if (_type == "ARTY") then {[_x, "FIRES"] call _setRole};
@@ -394,6 +434,10 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
 
             format ["Defending %1: %2 squads garrisoned, %3 on patrol, %4 groups in reserve.",
                 _objName, count _garrison, count _patrol, count _reserve + count _veh] call _say;
+            private _air = count (_alive call _airOf);
+            if (_airSupport && {_air > 0}) then {
+                format ["%1 air units on standby at base.", _air] call _say;
+            };
             "defending" call _status;
             _change = "DEFEND";
         };
@@ -436,13 +480,9 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
                     };
                 };
 
-                // Artillery on approaching enemies (never danger close).
-                if (CAI_artillery) then {
-                    private _far = _threats select {_x distance2D _center > _radius};
-                    if (_far isNotEqualTo []) then {
-                        [_side, getPosATL (selectRandom _far), 50, format ["%1 HQ", _sideName]] call CAI_fnc_fireMission;
-                    };
-                };
+                // Artillery on the attackers (never danger close) and air strikes.
+                [_side, _threats, _tickMissions, _fireRounds, _fireCooldown, format ["%1 HQ", _sideName]] call CAI_fnc_cmdFires;
+                (getPosATL ([_threats, _center] call _nearestTo)) call _illuminate;
 
                 // Counter-attacking groups keep hunting.
                 {
@@ -469,6 +509,8 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
                     };
                 };
             };
+
+            [_threats isNotEqualTo [], _threats] call _runAir;
 
             // Lost the objective? Retake it.
             if (_inArea isNotEqualTo [] && {_friendIn == 0}) then {

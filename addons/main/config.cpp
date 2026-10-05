@@ -48,6 +48,9 @@ class CfgFunctions {
             class cmdOrder {};
             class cmdGarrison {};
             class cmdRadio {};
+            class cmdFires {};
+            class cmdAir {};
+            class isAA {};
             class fireMission {};
             class landPos {};
         };
@@ -273,6 +276,32 @@ class CfgVehicles {
                 tooltip = "Share of infantry squads held back during an attack and committed when the assault stalls.";
                 typeName = "NUMBER";
                 defaultValue = "25";
+            };
+            class FireSupport: Combo {
+                property = "CAI_ModuleCommander_FireSupport";
+                displayName = "Fire support";
+                tooltip = "How hard the commander uses friendly mortars and artillery: preparatory barrages, continuous fire on spotted enemies (AA and armor first), smoke screens for the assault and illumination at night. Never danger close.";
+                typeName = "NUMBER";
+                defaultValue = "1";
+                class Values {
+                    class Off { name = "Off"; value = 0; };
+                    class Normal { name = "Normal"; value = 1; };
+                    class Heavy { name = "Heavy (double rounds, faster missions)"; value = 2; };
+                };
+            };
+            class AirSupport: Checkbox {
+                property = "CAI_ModuleCommander_AirSupport";
+                displayName = "Air support";
+                tooltip = "Commanded attack helicopters and jets fly strike missions on the most valuable spotted targets. Helicopters hold back while enemy anti-air is alive.";
+                typeName = "BOOL";
+                defaultValue = "true";
+            };
+            class Refit: Checkbox {
+                property = "CAI_ModuleCommander_Refit";
+                displayName = "Aircraft rearm at base";
+                tooltip = "Aircraft that run out of ammo or fuel, or are badly damaged, fly back to where they started, get rearmed, refueled and repaired after 90 seconds, then return to the fight.";
+                typeName = "BOOL";
+                defaultValue = "true";
             };
             class Radio: Checkbox {
                 property = "CAI_ModuleCommander_Radio";

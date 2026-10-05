@@ -30,7 +30,7 @@ group of the chosen side within the auto-assign radius (2 km by default).
 
 **Attack mission**
 1. **Form up:** groups move to a staging area on their side of the objective. Far-away infantry wait for a transport helicopter if the commander has one.
-2. **Preparatory fires:** mortars and artillery hit known enemy positions, and attack helicopters and jets strike the objective.
+2. **Preparatory fires:** a barrage on the most important known enemies (anti-air first, then armor, then bunched-up infantry), and attack helicopters and jets start strike missions.
 3. **Assault:** infantry attack on up to 3 axes (60° apart), vehicles give support by fire from overwatch for 90 s and then push in, and a reserve (25 % by default) waits at the staging area. Infantry too far away get **flown in** by the commander's transport helicopters.
 4. **Fighting through:** squads below 35 % strength fall back. Squads that run out of orders hunt the remaining spotted enemies or sweep the area. The reserve is committed when the assault stalls (or after 5 minutes).
 5. **Secured:** when no known enemies are left in the area for 45 s, the commander switches to **Defend**.
@@ -42,15 +42,31 @@ group of the chosen side within the auto-assign radius (2 km by default).
 - The rest, plus vehicles and attack helicopters, form a **mobile reserve**. When anything is spotted within 700 m of the area, enough of the reserve to match the threat **counter-attacks from a flank**, and artillery fires on enemies outside the area. When things go quiet, the reserve returns to its positions.
 - If the area is **lost**, the commander switches to Attack to retake it.
 
-**Options:** mission (attack/defend), side, auto-assign radius, reserve %, radio
-messages (players on that side hear the orders in side chat) and map markers
+**Fire support** (any friendly mortars or artillery with AI gunners, synced or not):
+- Preparatory barrage, then continuous fire missions on whatever the side has spotted, during the attack and when defending.
+- Targets are prioritised: **enemy AA first** (to clear the sky for helicopters), then armor and vehicles, then groups of infantry.
+- **Smoke screens** on the assault lanes when the attack starts (daytime, if the guns have smoke rounds).
+- **Illumination rounds** over the fight at night.
+- Never fires danger close: no HE within 200 m of friendlies or civilians.
+- *Normal* or *Heavy* (double rounds, guns re-tasked faster), or *Off*.
+
+**Air support** (commanded attack helicopters and jets):
+- Strike missions on the most valuable spotted targets, re-tasked as soon as their target dies.
+- **Enemy AA spotted:** helicopters hold back out of range while artillery and jets go after the AA (for up to 4 minutes, then they go in anyway).
+- Aircraft low on ammo or fuel, or badly damaged, **fly home, rearm, refuel and repair** (after 90 s) and come back. Turn this off for a harder, attrition fight.
+- When defending, aircraft wait at base and launch as soon as enemies are spotted near the objective.
+
+**Options:** mission (attack/defend), side, auto-assign radius, reserve %, fire
+support (off/normal/heavy), air support, aircraft rearm at base, radio messages
+(players on that side hear the orders in side chat) and map markers
 (objective area + live status).
 
 **Tips**
 - Put two commanders on the same town, one attacking and one defending, then sit back and watch, or join either side.
 - Sync a **trigger** to the commander to start the attack later (e.g. when the player enters an area or after a timer).
 - Groups under a commander are never pulled away as QRFs, but they still share intel, use fire and maneuver and smoke, and call for artillery.
-- The commander only knows what its side has actually spotted. Scouts and helicopters make it smarter.
+- The commander only knows what its side has actually spotted. Scouts and helicopters make it smarter, and they also give the artillery its targets.
+- For a big combined-arms fight: sync a mortar team or a couple of artillery pieces, an attack helicopter (placed landed at a helipad behind the lines) and a jet on a runway, along with the ground forces.
 
 ## Which groups get sent as reinforcements?
 
@@ -156,6 +172,7 @@ addons/main/
     fn_fireAndManeuver.sqf / fn_throwSmoke.sqf / fn_requestArtillery.sqf / fn_fireMission.sqf
     fn_moduleCommander.sqf / fn_commander.sqf   AI commander (attack / defend state machine)
     fn_cmdAssess.sqf / fn_cmdOrder.sqf / fn_cmdGarrison.sqf / fn_cmdRadio.sqf
+    fn_cmdFires.sqf / fn_cmdAir.sqf / fn_isAA.sqf   commander fire plan and air tasking
     ...
 mod.cpp
 .hemtt/project.toml
