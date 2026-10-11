@@ -40,7 +40,7 @@ private _type = call {
             private _w = toLower _x;
             (["cmflare", "laserdesignator", "fake", "horn"] findIf {(_w find _x) >= 0}) < 0
         }) >= 0;
-        if (!_armed && {(count fullCrew [_veh, "cargo", true]) >= 4}) then {"PLANE_TRANSPORT"} else {"JET"}
+        ["JET", "PLANE_TRANSPORT"] select (!_armed && {(count fullCrew [_veh, "cargo", true]) >= 4})
     };
 
     if (_veh isKindOf "LandVehicle" && {!(_veh isKindOf "Tank")}) exitWith {
