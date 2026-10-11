@@ -133,7 +133,8 @@ if (_height > 90) then {
             unassignVehicle _x;
             moveOut _x;
             private _chute = createVehicle ["NonSteerable_Parachute_F", [0, 0, 1000], [], 0, "CAN_COLLIDE"];
-            _chute setPosASL ((getPosASL _veh) vectorAdd [0, 0, -6]);
+            // Open behind and below the aircraft so nobody clips it.
+            _chute setPosASL ((getPosASL _veh) vectorAdd ((vectorDir _veh) vectorMultiply -15) vectorAdd [0, 0, -10]);
             _chute setDir (getDir _veh);
             _x moveInDriver _chute;
             sleep 0.5;

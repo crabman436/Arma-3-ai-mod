@@ -18,6 +18,15 @@ addMissionEventHandler ["EntityKilled", {
     [_unit, _instigator] call CAI_fnc_alertNearby;
 }];
 
+// Player support requests (action menu), re-added after respawn.
+if (hasInterface) then {
+    [] spawn {
+        waitUntil {sleep 0.5; !isNull player};
+        [player] call CAI_fnc_playerActions;
+        player addEventHandler ["Respawn", {[_this select 0] call CAI_fnc_playerActions}];
+    };
+};
+
 [] spawn {
     "Coordinated AI started" call CAI_fnc_log;
     while {true} do {

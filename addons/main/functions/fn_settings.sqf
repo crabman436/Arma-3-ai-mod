@@ -50,7 +50,10 @@ private _defaults = [
     ["CAI_artilleryMaxError", 60],      // only fire on targets located better than this
 
     // Skills
-    ["CAI_skillFloor", true]
+    ["CAI_skillFloor", true],
+
+    // Players can request fire missions and reinforcements from the action menu
+    ["CAI_playerRequests", true]
 ];
 
 {

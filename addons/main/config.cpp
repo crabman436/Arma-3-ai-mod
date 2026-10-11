@@ -60,6 +60,9 @@ class CfgFunctions {
             class landPos {};
             class pickPos {};
             class paraDrop {};
+            class selectResponders {};
+            class playerActions {};
+            class playerRequest {};
             class boundAdvance {};
         };
     };
@@ -162,6 +165,13 @@ class CfgVehicles {
                 property = "CAI_ModuleSettings_TruckLift";
                 displayName = "Truck transport";
                 tooltip = "Idle crewed unarmed vehicles with seats (trucks, unarmed cars) drive infantry to the fight and drop them off short of it. Also used by the commander.";
+                typeName = "BOOL";
+                defaultValue = "true";
+            };
+            class PlayerRequests: Checkbox {
+                property = "CAI_ModuleSettings_PlayerRequests";
+                displayName = "Player support requests";
+                tooltip = "Players get two action-menu entries: a fire mission on the point they aim at, and reinforcements to that point (the best available AI groups respond). With cooldowns.";
                 typeName = "BOOL";
                 defaultValue = "true";
             };

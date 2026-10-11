@@ -180,6 +180,14 @@ It works as soon as the mod is loaded. Optional modules are under
 Turn on **Debug messages** in the settings module to watch in system chat
 what the AI is doing (contacts, radio reports, QRFs, air lifts, flanks, fire missions).
 
+### Calling for support yourself
+
+Every player gets two entries in the **action menu (scroll wheel)**:
+- **CAI: Fire mission on aim point**: your side's idle mortars or artillery fire on the spot you're looking at. It's refused if friendlies are within 200 m of the spot, no gun is in range, or the spot was just hit. 60 s cooldown.
+- **CAI: Request reinforcements to aim point**: the best available AI groups (vehicles, helicopters, infantry by truck or air lift) move there and search & destroy, picked the same way the AI picks its QRFs. 120 s cooldown.
+
+A hint tells you what's coming. Turn this off with *Player support requests* in the Settings module, or `CAI_playerRequests = false;`.
+
 ### Per-group control (unit init field)
 
 ```sqf
@@ -217,6 +225,7 @@ what the AI is doing (contacts, radio reports, QRFs, air lifts, flanks, fire mis
 | `CAI_artilleryRounds` | `3` | Rounds per fire mission |
 | `CAI_artillerySafeDistance` | `200` | No fire with friendlies this close to the target |
 | `CAI_skillFloor` | `true` | Raise teamwork skills to a minimum |
+| `CAI_playerRequests` | `true` | Action-menu fire missions and reinforcements for players |
 
 ## Quick test scenario
 

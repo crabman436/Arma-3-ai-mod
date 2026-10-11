@@ -273,9 +273,14 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
             private _lz = _x getVariable ["CAI_heloLZ", _center];
             if ((leader _x) distance2D _lz < 400) then {
                 format ["%1 inserted %2 of %3.", groupId _x, (_center getDir _lz) call _compass, _objName] call _say;
+                _x setVariable ["CAI_cmdProg", [time, (leader _x) distance2D _center]];
+                [_x, ["RESERVE", "ASSAULT"] select ((_state find "ATTACK") == 0)] call _setRole;
+            } else {
+                // The helicopter never got them there: join the ground attack instead of walking in alone.
+                private _rally = if (_staging isEqualTo []) then {_center} else {_staging getPos [random 100, random 360]};
+                [_x, [[_rally, "MOVE", "AWARE", "YELLOW", "FULL", 50]]] call CAI_fnc_cmdOrder;
+                [_x, ["RESERVE", "STAGING"] select (_state in ["ATTACK_STAGE", "ATTACK_PREP"])] call _setRole;
             };
-            _x setVariable ["CAI_cmdProg", [time, (leader _x) distance2D _center]];
-            [_x, ["RESERVE", "ASSAULT"] select ((_state find "ATTACK") == 0)] call _setRole;
         };
         if (_role == "HELO_LIFT" && {!(_x getVariable ["CAI_busy", false])}) then {[_x, "LIFT"] call _setRole};
     } forEach _alive;
