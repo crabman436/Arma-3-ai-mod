@@ -23,11 +23,12 @@
         6: BOOL radio messages to players
         7: BOOL map markers
         8: ARRAY [fire support level (0 off, 1 normal, 2 heavy), air support, refit aircraft at base, clear buildings,
-                  opening paradrop (0 off, 1 onto the objective, 2 behind the objective)]
+                  opening paradrop (0 off, 1 onto the objective, 2 behind the objective),
+                  helicopter air assault (0 off, 1 edge of the objective, 2 into the objective)]
 */
 
 params ["_logic", "_side", "_groups", "_mode", "_radius", "_reservePct", "_radio", "_markers", ["_opts", [1, true, true]]];
-_opts params [["_fireLevel", 1], ["_airSupport", true], ["_refit", true], ["_clearOpt", true], ["_paraMode", 0]];
+_opts params [["_fireLevel", 1], ["_airSupport", true], ["_refit", true], ["_clearOpt", true], ["_paraMode", 0], ["_heloMode", 0]];
 
 // Fire support intensity: [prep missions, missions per update, rounds per mission, gun cooldown]
 private _fires = [[0, 0, 0, 0], [3, 1, CAI_artilleryRounds, 60], [6, 2, CAI_artilleryRounds * 2, 40]] select (_fireLevel max 0 min 2);
@@ -88,8 +89,43 @@ private _airOf = {
 private _runAir = {
     params ["_engage", "_targets"];
     if (_airSupport) then {
-        [_logic, (call _aliveGroups) call _airOf, _targets, _center, _radius, _engage, _refit, _side, _radio] call CAI_fnc_cmdAir;
+        private _groupsNow = call _aliveGroups;
+        // Troops in contact: enemies within 400 m of our squads that are fighting right now.
+        private _tic = [];
+        {
+            if (([_x] call CAI_fnc_groupType) == "INF" && {time - (_x getVariable ["CAI_lastContact", -1e6]) < 30}) then {
+                private _lp = getPosATL leader _x;
+                _tic append (_targets select {_x distance2D _lp < 400});
+            };
+        } forEach _groupsNow;
+        _tic = _tic arrayIntersect _tic;
+        _escortLZs = _escortLZs select {(_x select 1) > time};
+        private _friendPos = if (_staging isEqualTo [] || {(_state find "DEFEND") == 0}) then {_center} else {_staging};
+        [_logic, _groupsNow call _airOf, _targets, _center, _radius, _engage, _refit, _side, _radio,
+            _friendPos, _tic, _escortLZs apply {_x select 0}, _objName] call CAI_fnc_cmdAir;
     };
+};
+// Nearest infantry squad that fits into an aircraft (squads already aboard count as distance 0).
+private _pickSquadFor = {
+    params ["_av", "_exclude"];
+    private _best = grpNull;
+    private _bestD = 2500;
+    {
+        private _g = _x;
+        private _in = {alive _x && {vehicle _x == _av}} count units _g;
+        private _cnt = {alive _x} count units _g;
+        private _d = [(leader _g) distance2D _av, 0] select (_in > 0);
+        if (([_g] call CAI_fnc_groupType) == "INF"
+            && {!(_g in _exclude)}
+            && {!((_g call _roleOf) in ["PARA", "HELO"])}
+            && {_cnt - _in <= _av emptyPositions "Cargo"}
+            && {_d < _bestD}
+        ) then {
+            _best = _g;
+            _bestD = _d;
+        };
+    } forEach (call _aliveGroups);
+    _best
 };
 private _isNight = {sunOrMoon < 0.3};
 // Put an infantry group on the nearest free commanded truck. Returns true if it worked.
@@ -183,6 +219,8 @@ private _canClear = {
 private _nextIllum = 0;
 private _hHour = -1;
 private _paraUsed = false;
+private _heloUsed = false;
+private _escortLZs = [];
 private _axes = [0];
 
 format ["%1 HQ taking command of %2 groups. Mission: %3 %4.", _sideName, count _groups, ["attack", "defend"] select (_mode == 1), _objName] call _say;
@@ -230,6 +268,16 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
             };
         };
         if (_role == "PARA_LIFT" && {!(_x getVariable ["CAI_busy", false])}) then {[_x, "LIFT"] call _setRole};
+        // Air assault squads: once on the ground they're assault squads.
+        if (_role == "HELO" && {!(_x getVariable ["CAI_inTransit", false])}) then {
+            private _lz = _x getVariable ["CAI_heloLZ", _center];
+            if ((leader _x) distance2D _lz < 400) then {
+                format ["%1 inserted %2 of %3.", groupId _x, (_center getDir _lz) call _compass, _objName] call _say;
+            };
+            _x setVariable ["CAI_cmdProg", [time, (leader _x) distance2D _center]];
+            [_x, ["RESERVE", "ASSAULT"] select ((_state find "ATTACK") == 0)] call _setRole;
+        };
+        if (_role == "HELO_LIFT" && {!(_x getVariable ["CAI_busy", false])}) then {[_x, "LIFT"] call _setRole};
     } forEach _alive;
 
     switch (_state) do {
@@ -245,30 +293,16 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
                 // Opening paradrop: each transport aircraft loads one squad and waits for the go.
                 if (_paraMode > 0 && {!_paraUsed}) then {
                     _paraUsed = true;
+                    // With an air assault planned the helicopters are kept for it; planes still drop.
+                    private _kinds = [["HELI_TRANSPORT", "PLANE_TRANSPORT"], ["PLANE_TRANSPORT"]] select (_heloMode > 0);
                     private _carriers = _alive select {
-                        ([_x] call CAI_fnc_groupType) in ["HELI_TRANSPORT", "PLANE_TRANSPORT"] && {!(_x getVariable ["CAI_busy", false])}
+                        ([_x] call CAI_fnc_groupType) in _kinds && {!(_x getVariable ["CAI_busy", false])}
                     };
                     private _behind = [_center getPos [_radius + 350, _approachDir + 180], _center] call CAI_fnc_landPos;
                     private _taken = [];
                     {
                         private _a = _x;
-                        private _av = vehicle leader _a;
-                        private _best = grpNull;
-                        private _bestD = 2500;
-                        {
-                            private _g = _x;
-                            private _in = {alive _x && {vehicle _x == _av}} count units _g;
-                            private _cnt = {alive _x} count units _g;
-                            private _d = [(leader _g) distance2D _av, 0] select (_in > 0);
-                            if (([_g] call CAI_fnc_groupType) == "INF"
-                                && {!(_g in _taken)}
-                                && {_cnt - _in <= _av emptyPositions "Cargo"}
-                                && {_d < _bestD}
-                            ) then {
-                                _best = _g;
-                                _bestD = _d;
-                            };
-                        } forEach _alive;
+                        private _best = [vehicle leader _a, _taken] call _pickSquadFor;
                         if (!isNull _best) then {
                             _taken pushBack _best;
                             private _dz = if (_paraMode == 1) then {
@@ -294,12 +328,43 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
                     };
                 };
 
+                // Helicopter air assault: each transport helicopter loads a squad now and goes in at H-hour.
+                if (_heloMode > 0 && {!_heloUsed}) then {
+                    _heloUsed = true;
+                    private _carriers = _alive select {
+                        ([_x] call CAI_fnc_groupType) == "HELI_TRANSPORT" && {!(_x getVariable ["CAI_busy", false])}
+                    };
+                    private _taken = [];
+                    {
+                        private _a = _x;
+                        private _best = [vehicle leader _a, _taken] call _pickSquadFor;
+                        if (!isNull _best) then {
+                            private _off = [0, -45, 45, -90, 90] select ((count _taken) % 5);
+                            private _lz = [_center getPos [_radius * ([0.9, 0.35] select (_heloMode == 2)), _approachDir + _off], _center] call CAI_fnc_landPos;
+                            private _final = [[_center getPos [_radius * 0.2, _approachDir + _off], "SAD", "COMBAT", "RED", "FULL", 60]];
+                            _taken pushBack _best;
+                            _best setVariable ["CAI_inTransit", true];
+                            _best setVariable ["CAI_heloLZ", _lz];
+                            [_best, "HELO"] call _setRole;
+                            [_a, "HELO_LIFT"] call _setRole;
+                            _a setVariable ["CAI_busy", true];
+                            _a setVariable ["CAI_liftGo", false];
+                            // Low and fast, tight landing zone, unload hot.
+                            [_best, _a, _center, grpNull, _final, _lz, 900, 35, 100] spawn CAI_fnc_airLift;
+                        };
+                    } forEach _carriers;
+                    if (_taken isNotEqualTo []) then {
+                        format ["%1 helicopters loading for an air assault %2 %3. Wheels up at H-hour.",
+                            count _taken, ["at the edge of", "into"] select (_heloMode == 2), _objName] call _say;
+                    };
+                };
+
                 private _lifts = _alive select {([_x] call CAI_fnc_groupType) == "HELI_TRANSPORT" && {!(_x getVariable ["CAI_busy", false])}};
                 {
                     private _type = [_x] call CAI_fnc_groupType;
                     private _d = (leader _x) distance2D _staging;
                     switch (true) do {
-                        case ((_x call _roleOf) in ["PARA", "PARA_LIFT"]): {};
+                        case ((_x call _roleOf) in ["PARA", "PARA_LIFT", "HELO", "HELO_LIFT"]): {};
                         case (_type == "INF" && {_d > 1500} && {_lifts isNotEqualTo []}): {
                             [_x, "AWAIT_LIFT"] call _setRole;
                         };
@@ -440,6 +505,15 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
                         } forEach _axes;
                     };
                     format ["H-hour! All squads, assault %1!%2", _objName, ["", " Smoke on the lanes."] select (_smoked > 0)] call _say;
+                    // Air assault goes in now; gunships escort the landing zones.
+                    private _heloLifts = _alive select {(_x call _roleOf) == "HELO_LIFT"};
+                    {_x setVariable ["CAI_liftGo", true]} forEach _heloLifts;
+                    {
+                        if ((_x call _roleOf) == "HELO") then {_escortLZs pushBack [_x getVariable ["CAI_heloLZ", _center], time + 300]};
+                    } forEach _alive;
+                    if (_heloLifts isNotEqualTo []) then {
+                        format ["Air assault inbound: %1 helicopters, gunships escort the landing zones.", count _heloLifts] call _say;
+                    };
                     format ["assault (attempt %1)", _attempt] call _status;
                 };
             };
@@ -663,7 +737,7 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
                         _x setVariable ["CAI_cmdInitial", {alive _x} count units _x];
                         private _type = [_x] call CAI_fnc_groupType;
                         // Paratroopers still on their way keep their role.
-                        if !((_x call _roleOf) in ["PARA", "PARA_LIFT"]) then {
+                        if !((_x call _roleOf) in ["PARA", "PARA_LIFT", "HELO", "HELO_LIFT"]) then {
                         if (_type in ["INF", "GROUND"]) then {[_x, "STAGING"] call _setRole};
                         if (_type in ["HELI_TRANSPORT", "PLANE_TRANSPORT"]) then {[_x, "LIFT"] call _setRole};
                         if (_type == "TRUCK") then {[_x, "TRUCK"] call _setRole};

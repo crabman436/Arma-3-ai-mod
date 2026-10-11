@@ -50,6 +50,17 @@ group of the chosen side within the auto-assign radius (2 km by default).
 - After enemies got inside the area and were beaten back, up to 2 reserve squads **sweep the buildings** for stragglers.
 - If the area is **lost**, the commander switches to Attack to retake it.
 
+**Helicopter air assault** (option, attack only):
+- When the attack forms up, each **transport helicopter** under the commander picks up an infantry squad (or uses one already aboard) and waits.
+- At **H-hour** they all lift off together, fly in **low and fast** (35 m), land at **tight landing zones** (within 100 m of the chosen spot) on the lanes, either **at the edge of the objective** or **into it (hot LZ)**, unload and leave straight away. The squads go straight into the attack and the house clearing.
+- **Gunships escort the landing zones** for 5 minutes: any enemy near an LZ becomes their top target, and if none is known they overwatch the LZ anyway.
+- If both the paradrop and the air assault are on, helicopters fly the air assault and transport planes do the paradrop.
+
+**Coordinated helicopter CAS:**
+- Attack helicopters fly **attack runs** instead of hovering over the target: from a **holding area** behind friendly lines to a **firing position 1 km out on the target's flank** (so they never shoot over friendly troops), engage for about 50 s, **break off**, and go round again.
+- **Rotation:** with two or more gunships, at most half are on a run at any time, so one is always coming in while the other resets.
+- **Target priority:** enemies near air assault landing zones, then **enemies engaging friendly squads** (troops in contact), then the most valuable target. Enemy AA: helicopters still hold back while the artillery and jets deal with it.
+
 **Opening paradrop** (option, attack only):
 - When the attack forms up, each **transport helicopter or transport plane** under the commander loads one infantry squad: a squad already sitting in its cargo seats, or the nearest one (helicopters fly to it and land; planes on a runway are walked to).
 - When the preparatory fires start they take off, fly over the drop zone at 200 m (helicopters) or 300 m (planes), and the squad **jumps in a stick**, half a second apart, so it lands spread out. The aircraft fly home.
@@ -67,13 +78,13 @@ group of the chosen side within the auto-assign radius (2 km by default).
 - *Normal* or *Heavy* (double rounds, guns re-tasked faster), or *Off*.
 
 **Air support** (commanded attack helicopters and jets):
-- Strike missions on the most valuable spotted targets, re-tasked as soon as their target dies.
+- Jets fly strike missions on the most valuable spotted targets, re-tasked as soon as their target dies. Helicopters fly coordinated attack runs (see *Coordinated helicopter CAS*).
 - **Enemy AA spotted:** helicopters hold back out of range while artillery and jets go after the AA (for up to 4 minutes, then they go in anyway).
 - Aircraft low on ammo or fuel, or badly damaged, **fly home, rearm, refuel and repair** (after 90 s) and come back. Turn this off for a harder, attrition fight.
 - When defending, aircraft wait at base and launch as soon as enemies are spotted near the objective.
 
 **Options:** mission (attack/defend), side, auto-assign radius, reserve %, fire
-support (off/normal/heavy), air support, aircraft rearm at base, clear buildings, opening paradrop, radio messages
+support (off/normal/heavy), air support, aircraft rearm at base, clear buildings, helicopter air assault, opening paradrop, radio messages
 (players on that side hear the orders in side chat) and map markers
 (objective area + live status).
 

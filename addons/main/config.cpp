@@ -318,6 +318,18 @@ class CfgVehicles {
                 typeName = "BOOL";
                 defaultValue = "true";
             };
+            class AirAssault: Combo {
+                property = "CAI_ModuleCommander_AirAssault";
+                displayName = "Helicopter air assault";
+                tooltip = "Attack only. When the attack forms up, each transport helicopter under this commander picks up an infantry squad and waits. At H-hour they fly in low and fast, land at tight landing zones close to the objective and unload hot, while gunships escort the landing zones. Edge: just outside the objective. Into: inside it.";
+                typeName = "NUMBER";
+                defaultValue = "0";
+                class Values {
+                    class Off { name = "Off"; value = 0; };
+                    class Edge { name = "Edge of the objective"; value = 1; };
+                    class Into { name = "Into the objective (hot LZ)"; value = 2; };
+                };
+            };
             class Paradrop: Combo {
                 property = "CAI_ModuleCommander_Paradrop";
                 displayName = "Opening paradrop";

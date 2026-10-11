@@ -13,9 +13,12 @@
         4: ARRAY orders after landing, each [pos, type, behaviour, combat, speed, radius]
            (default: flank the target and search & destroy)
         5: ARRAY landing zone center (default: 600 m from the target on a flank)
+        6: NUMBER seconds to wait after boarding for CAI_liftGo on the helicopter group (0 = go at once)
+        7: NUMBER flight height (default 60; low = nap of the earth)
+        8: NUMBER how far from the LZ center a landing spot may be (default 250)
 */
 
-params ["_inf", "_hGrp", "_targetPos", "_caller", ["_finalWps", []], ["_lzPos", []]];
+params ["_inf", "_hGrp", "_targetPos", "_caller", ["_finalWps", []], ["_lzPos", []], ["_waitGo", 0], ["_flyHeight", 60], ["_lzSearch", 250]];
 
 private _heli = vehicle leader _hGrp;
 private _heliOk = { alive _heli && {canMove _heli} && {alive driver _heli} };
@@ -106,19 +109,34 @@ if (_left isNotEqualTo []) then {
     _left joinSilent createGroup [side _inf, true];
 };
 
-// --- 2. Fly to a landing zone on the flank ------------------------------------
+// --- 2. Wait for the go (timed insertions) -----------------------------------
+if (_waitGo > 0) then {
+    format ["Air lift: %1 loaded with %2, standing by", groupId _hGrp, groupId _inf] call CAI_fnc_log;
+    private _goBy = time + _waitGo;
+    waitUntil {sleep 2; !(call _heliOk) || {_hGrp getVariable ["CAI_liftGo", false]} || {time > _goBy}};
+};
+if !(call _heliOk) exitWith {
+    if (alive _heli && {isTouchingGround _heli}) then {
+        _inf leaveVehicle _heli;
+        {unassignVehicle _x; if (vehicle _x == _heli) then {moveOut _x}} forEach units _inf;
+    };
+    call _onFoot;
+    [[_padA]] call _cleanup;
+};
+
+// --- 3. Fly to the landing zone -----------------------------------------------
 private _callerPos = if (isNull _caller) then {_targetPos} else {getPosATL leader _caller};
 private _lzCenter = if (_lzPos isEqualTo []) then {
     [_targetPos, _callerPos, getPosATL _heli, 600] call CAI_fnc_flankPosition
 } else {
     _lzPos
 };
-private _lz = [_lzCenter, 0, 250, 15, 0, 0.25, 0, [], [_lzCenter, _lzCenter]] call BIS_fnc_findSafePos;
+private _lz = [_lzCenter, 0, _lzSearch, 15, 0, 0.25, 0, [], [_lzCenter, _lzCenter]] call BIS_fnc_findSafePos;
 _lz = [_lz select 0, _lz select 1, 0];
 private _padB = createVehicle ["Land_HelipadEmpty_F", _lz, [], 0, "CAN_COLLIDE"];
 
 [_hGrp] call CAI_fnc_clearWaypoints;
-_heli flyInHeight 60;
+_heli flyInHeight _flyHeight;
 [_hGrp, _lz, "MOVE", "CARELESS", "BLUE", "FULL", 150] call CAI_fnc_addWaypoint;
 _heli land "NONE";
 
@@ -133,7 +151,7 @@ if (call _heliOk) then {
     waitUntil {sleep 1; !(call _heliOk) || {isTouchingGround _heli} || {((getPosATL _heli) select 2) < 2} || {time > _timeout}};
 };
 
-// --- 3. Unload ----------------------------------------------------------------
+// --- 4. Unload ----------------------------------------------------------------
 _inf leaveVehicle _heli;
 {
     unassignVehicle _x;
