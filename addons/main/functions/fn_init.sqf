@@ -23,7 +23,11 @@ if (hasInterface) then {
     [] spawn {
         waitUntil {sleep 0.5; !isNull player};
         [player] call CAI_fnc_playerActions;
-        player addEventHandler ["Respawn", {[_this select 0] call CAI_fnc_playerActions}];
+        [player] call CAI_fnc_playerContactEH;
+        player addEventHandler ["Respawn", {
+            [_this select 0] call CAI_fnc_playerActions;
+            [_this select 0] call CAI_fnc_playerContactEH;
+        }];
     };
 };
 

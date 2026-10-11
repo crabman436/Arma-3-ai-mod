@@ -61,6 +61,9 @@ class CfgFunctions {
             class pickPos {};
             class paraDrop {};
             class selectResponders {};
+            class activeResponders {};
+            class markContact {};
+            class playerContactEH {};
             class playerActions {};
             class playerRequest {};
             class boundAdvance {};

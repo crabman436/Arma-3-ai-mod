@@ -13,16 +13,23 @@
         4: BOOL true = wants a view of the objective, false = wants cover from it
         5: NUMBER objective radius (to also check its edges)
         6: NUMBER sector half-width in degrees (default 35)
+        7: ARRAY point the view (or cover) is measured against instead of the objective,
+           e.g. a point out on an approach for defensive positions (default: the objective)
     Returns: ARRAY position [x, y, 0]
 */
 
-params ["_center", "_dir", "_minD", "_maxD", "_wantView", ["_radius", 100], ["_spread", 35]];
+params ["_center", "_dir", "_minD", "_maxD", "_wantView", ["_radius", 100], ["_spread", 35], ["_viewTarget", []]];
 
-private _targets = [
-    _center,
-    _center getPos [_radius * 0.4, _dir + 90],
-    _center getPos [_radius * 0.4, _dir - 90]
-] apply {AGLToASL [_x select 0, _x select 1, 2]};
+private _targets = if (_viewTarget isEqualTo []) then {
+    [
+        _center,
+        _center getPos [_radius * 0.4, _dir + 90],
+        _center getPos [_radius * 0.4, _dir - 90]
+    ]
+} else {
+    [_viewTarget, _viewTarget getPos [150, _dir + 90], _viewTarget getPos [150, _dir - 90]]
+};
+_targets = _targets apply {AGLToASL [_x select 0, _x select 1, 2]};
 
 private _best = [];
 private _bestScore = -1e9;

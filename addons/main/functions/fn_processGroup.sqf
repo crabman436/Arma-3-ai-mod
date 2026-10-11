@@ -85,14 +85,14 @@ if (_assist isNotEqualTo [] && {!(_grp getVariable ["CAI_inTransit", false])}) t
     _assist params ["_caller", "_start", "_targetPos"];
 
     private _selfQuiet = _now - (_grp getVariable ["CAI_lastContact", -1e6]) > CAI_quietTime;
-    // Player-led callers aren't processed here, so their contact state is unknown:
-    // a QRF sent to a player stays until its own fight goes quiet.
+    // Player groups get CAI_lastContact from CAI_fnc_markContact (sent by the player's machine).
     private _callerQuiet = isNull _caller
         || {({alive _x} count units _caller) == 0}
-        || {isPlayer leader _caller && {_selfQuiet}}
-        || {!isPlayer leader _caller && {_now - (_caller getVariable ["CAI_lastContact", -1e6]) > CAI_quietTime}};
+        || {_now - (_caller getVariable ["CAI_lastContact", -1e6]) > CAI_quietTime};
+    // Don't turn back before getting there.
+    private _arrived = (leader _grp) distance2D _targetPos < 300;
 
-    if (_now - _start > CAI_assistTimeout || {_selfQuiet && _callerQuiet && {_now - _start > 120}}) then {
+    if (_now - _start > CAI_assistTimeout || {_selfQuiet && _callerQuiet && _arrived && {_now - _start > 120}}) then {
         [_grp] call CAI_fnc_returnHome;
     } else {
         // Follow the fight: move the search & destroy point to the caller's latest intel.

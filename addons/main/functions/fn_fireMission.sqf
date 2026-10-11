@@ -27,19 +27,21 @@ private _safeDist = switch (_kind) do {
     case "SMOKE": {60};
     default {0};
 };
-// HE can land up to (error + 20) m from the aim point, so keep that much extra clearance.
-if (_kind == "HE") then {_safeDist = _safeDist + _error + 20};
+// The point actually fired at (scatter from how well the target is located). The
+// danger-close check is made around this point, so CAI_artillerySafeDistance holds.
+private _aim = _targetPos getPos [random (_error + 20), random 360];
+_aim = [_aim select 0, _aim select 1, 0];
 if (_safeDist > 0) then {
     // Friendly soldiers or crewed friendly vehicles nearby. Parked empty cars don't count.
-    private _blocked = (_targetPos nearEntities [["CAManBase", "LandVehicle"], _safeDist]) findIf {
+    private _blocked = (_aim nearEntities [["CAManBase", "LandVehicle"], _safeDist]) findIf {
         alive _x
         && {_x isKindOf "CAManBase" || {(crew _x findIf {alive _x}) >= 0}}
         && {((side _x) getFriend _side) >= 0.6}
     };
     // Friendly paratroopers still in the air over the target (measured flat, they're high up).
     if (_blocked < 0) then {
-        _blocked = (_targetPos nearEntities [["ParachuteBase"], 1500]) findIf {
-            alive _x && {_x distance2D _targetPos < _safeDist + 150} && {((side _x) getFriend _side) >= 0.6}
+        _blocked = (_aim nearEntities [["ParachuteBase"], 1500]) findIf {
+            alive _x && {_x distance2D _aim < _safeDist + 150} && {((side _x) getFriend _side) >= 0.6}
         };
     };
     if (_blocked >= 0) then {_targetPos = []};
@@ -79,8 +81,7 @@ private _fired = false;
         }
     };
     private _mag = if (_idx < 0) then {""} else {_mags select _idx};
-    if (_mag != "" && {_targetPos inRangeOfArtillery [[_gun], _mag]}) exitWith {
-        private _aim = _targetPos getPos [random (_error + 20), random 360];
+    if (_mag != "" && {_aim inRangeOfArtillery [[_gun], _mag]}) exitWith {
         _gun doArtilleryFire [_aim, _mag, _rounds];
         _gun setVariable ["CAI_nextFire", time + _cooldown];
         CAI_fireMissions pushBack [_targetPos, time, _kind, [_cooldown, 120] select (_kind == "ILLUM")];

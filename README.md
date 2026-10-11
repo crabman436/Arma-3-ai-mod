@@ -44,8 +44,11 @@ group of the chosen side within the auto-assign radius (2 km by default).
 7. **Failed:** if everyone is broken or 20 minutes pass, the force regroups at the staging area and attacks again, as long as it still has at least 4 men.
 
 **Defend mission**
-- Half the infantry **garrison buildings** in the area (see *Realistic garrisons* below), facing known enemies or all-round.
-- 1–2 squads **patrol the perimeter**.
+- The commander works out **where the attack will come from**: known enemies, the direction of the last attack, the way the enemy retreated (after taking the place itself), or a road leading in.
+- **Outposts** (1 squad from 4 squads, 2 from 7): squads dig in 250–500 m out on the likely approach, at spots with a view down it. They give early warning (everything they spot goes to the whole force) and delay the enemy. They **fall back** to the objective when they're under fire and losing men, facing a strong force, or when the enemy gets into the objective behind them.
+- **Strongpoints:** half the remaining infantry **garrison buildings spread around the perimeter**, with the first ones on the threat side (see *Realistic garrisons* below). They face the enemy when it's known, otherwise all-round. A strongpoint that drops below 45 % strength under fire **falls back to the inner keep** (buildings near the center) instead of dying in place.
+- 1–2 squads **patrol the perimeter** once there are 5+ squads (enough to keep a reserve).
+- **Vehicles** take **overwatch positions inside the objective that look out along the approaches** (picked by line of sight).
 - The rest, plus vehicles and attack helicopters, form a **mobile reserve** (infantry reserves ride the commander's trucks to counter-attacks more than 800 m away). When anything is spotted within 700 m of the area, enough of the reserve to match the threat **counter-attacks from a flank**, and artillery fires on enemies outside the area. When things go quiet, the reserve returns to its positions.
 - After enemies got inside the area and were beaten back, up to 2 reserve squads **sweep the buildings** for stragglers.
 - If the area is **lost**, the commander switches to Attack to retake it.

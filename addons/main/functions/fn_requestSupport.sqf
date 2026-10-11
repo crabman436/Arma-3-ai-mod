@@ -50,9 +50,7 @@ if (CAI_artillery) then {
 };
 
 // --- Quick reaction forces ----------------------------------------------------
-private _responders = (_grp getVariable ["CAI_responders", []]) select {
-    !isNull _x && {alive leader _x} && {((_x getVariable ["CAI_assist", []]) param [0, grpNull]) == _grp}
-};
+private _responders = [_grp] call CAI_fnc_activeResponders;
 private _slots = CAI_maxResponders - count _responders;
 
 {

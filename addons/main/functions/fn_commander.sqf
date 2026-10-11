@@ -105,6 +105,30 @@ private _runAir = {
             _friendPos, _tic, _escortLZs apply {_x select 0}, _objName] call CAI_fnc_cmdAir;
     };
 };
+// A squad whose transport failed joins whatever the force is doing now.
+private _rejoinForce = {
+    private _g = _this;
+    switch (true) do {
+        // Assault under way: its own lane from where it is (the assault releases FORMUP squads).
+        case (_state == "ATTACK_ASSAULT"): {
+            private _dir = _center getDir leader _g;
+            private _formUp = [_center, _dir, _radius + 120, _radius + 260, false, _radius, 25] call CAI_fnc_pickPos;
+            _g setVariable ["CAI_cmdAxis", [_formUp, [_center getPos [_radius * 0.4, _dir], _center] call CAI_fnc_landPos, _dir]];
+            [_g, [[_formUp, "MOVE", "AWARE", "YELLOW", "FULL", 40]]] call CAI_fnc_cmdOrder;
+            [_g, "FORMUP"] call _setRole;
+        };
+        // Forming up or regrouping: the staging area.
+        case ((_state find "ATTACK") == 0 && {_staging isNotEqualTo []}): {
+            [_g, [[_staging getPos [random 100, random 360], "MOVE", "AWARE", "YELLOW", "FULL", 50]]] call CAI_fnc_cmdOrder;
+            [_g, "STAGING"] call _setRole;
+        };
+        // Defending (or no staging area yet): reinforce the objective.
+        default {
+            [_g, [[[_center getPos [random (_radius * 0.3), random 360], _center] call CAI_fnc_landPos, "MOVE", "AWARE", "YELLOW", "FULL", 30]]] call CAI_fnc_cmdOrder;
+            [_g, "RESERVE"] call _setRole;
+        };
+    };
+};
 // Nearest infantry squad that fits into an aircraft (squads already aboard count as distance 0).
 private _pickSquadFor = {
     params ["_av", "_exclude"];
@@ -220,6 +244,7 @@ private _nextIllum = 0;
 private _hHour = -1;
 private _paraUsed = false;
 private _heloUsed = false;
+private _lastThreatDir = -1;
 private _escortLZs = [];
 private _axes = [0];
 
@@ -243,9 +268,8 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
         if (_role == "PARA") then {
             private _attacking = (_state find "ATTACK") == 0;
             if (_x getVariable ["CAI_paraFailed", false]) then {
-                // Never got airborne: join the ground attack.
-                [_x, [[_staging getPos [random 100, random 360], "MOVE", "AWARE", "YELLOW", "FULL", 50]]] call CAI_fnc_cmdOrder;
-                [_x, ["RESERVE", "STAGING"] select (_state in ["ATTACK_STAGE", "ATTACK_PREP"])] call _setRole;
+                // Never got airborne: join the ground force.
+                _x call _rejoinForce;
             } else {
                 if ((_x getVariable ["CAI_paraLanded", -1]) > 0) then {
                     private _dz = _x getVariable ["CAI_paraDZ", _center];
@@ -277,26 +301,7 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
                 [_x, ["RESERVE", "ASSAULT"] select ((_state find "ATTACK") == 0)] call _setRole;
             } else {
                 // The helicopter never got them there: fit them into whatever the force is doing now.
-                switch (true) do {
-                    // Still forming up: join the staging area.
-                    case (_state in ["ATTACK_STAGE", "ATTACK_PREP"] && {_staging isNotEqualTo []}): {
-                        [_x, [[_staging getPos [random 100, random 360], "MOVE", "AWARE", "YELLOW", "FULL", 50]]] call CAI_fnc_cmdOrder;
-                        [_x, "STAGING"] call _setRole;
-                    };
-                    // Attack under way: become an assault squad on a lane from where they are.
-                    case ((_state find "ATTACK") == 0): {
-                        private _dir = _center getDir leader _x;
-                        private _formUp = [_center, _dir, _radius + 120, _radius + 260, false, _radius, 25] call CAI_fnc_pickPos;
-                        _x setVariable ["CAI_cmdAxis", [_formUp, [_center getPos [_radius * 0.4, _dir], _center] call CAI_fnc_landPos, _dir]];
-                        [_x, [[_formUp, "MOVE", "AWARE", "YELLOW", "FULL", 40]]] call CAI_fnc_cmdOrder;
-                        [_x, "FORMUP"] call _setRole;
-                    };
-                    // Defending: reinforce the objective.
-                    default {
-                        [_x, [[[_center getPos [random (_radius * 0.3), random 360], _center] call CAI_fnc_landPos, "MOVE", "AWARE", "YELLOW", "FULL", 30]]] call CAI_fnc_cmdOrder;
-                        [_x, "RESERVE"] call _setRole;
-                    };
-                };
+                _x call _rejoinForce;
             };
         };
         if (_role == "HELO_LIFT" && {!(_x getVariable ["CAI_busy", false])}) then {[_x, "LIFT"] call _setRole};
@@ -780,24 +785,57 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
             _sorted sort true;
             _inf = _sorted apply {_x select 2};
 
-            private _nGarrison = ceil ((count _inf) * 0.5);
-            // 1 patrol from 3 squads, 2 from 5 squads; the rest is the reserve.
-            private _nPatrol = parseNumber (count _inf >= 3) + parseNumber (count _inf >= 5);
-            _nPatrol = _nPatrol min ((count _inf - _nGarrison) max 0);
-            private _garrison = _inf select [0, _nGarrison];
-            private _patrol = _inf select [_nGarrison, _nPatrol];
-            private _reserve = _inf - _garrison - _patrol;
+            // Where will the attack come from? Known enemies, the last attack, the way the enemy
+            // retreated (opposite our own approach after we took the place), or an entry road.
+            if (_lastThreatDir < 0 && {_staging isNotEqualTo []}) then {_lastThreatDir = (_approachDir + 180) % 360};
+            private _threatDir = switch (true) do {
+                case (_threats isNotEqualTo []): {_center getDir (_threats call _centroid)};
+                case (_lastThreatDir >= 0): {_lastThreatDir};
+                default {
+                    private _roads = (_center nearRoads (_radius + 400)) select {_x distance2D _center > _radius};
+                    [random 360, _center getDir (selectRandom _roads)] select (_roads isNotEqualTo [])
+                };
+            };
+            // Garrisons only face one way when the enemy is actually known; otherwise all-round.
+            private _facing = [-1, _threatDir] select (_threats isNotEqualTo []);
 
-            // Face known enemies, otherwise all-round.
-            private _threatDir = if (_threats isEqualTo []) then {-1} else {_center getDir (_threats call _centroid)};
+            private _n = count _inf;
+            private _nOP = parseNumber (_n >= 4) + parseNumber (_n >= 7);
+            private _nGarrison = ceil ((_n - _nOP) * 0.5);
+            // Patrols only once there's enough for a reserve too (it does the counter-attacks).
+            private _nPatrol = (parseNumber (_n >= 5) + parseNumber (_n >= 8)) min ((_n - _nOP - _nGarrison - 1) max 0);
+            private _garrison = _inf select [0, _nGarrison];
+            private _ops = _inf select [_n - _nOP, _nOP];
+            private _patrol = (_inf - _garrison - _ops) select [0, _nPatrol];
+            private _reserve = _inf - _garrison - _ops - _patrol;
+
+            // Strongpoints spread around the perimeter, the first ones on the threat side.
+            private _offs = [0, -55, 55, -110, 110, 180, -150, 150];
             {
                 [_x, "GARRISON"] call _setRole;
-                if !([_x, _center, _radius * 0.7, _threatDir] call CAI_fnc_garrison) then {
-                    // No buildings: hold a spot in the objective.
-                    private _pos = [_center getPos [random (_radius * 0.5), random 360], _center] call CAI_fnc_landPos;
-                    [_x, [[_pos, "HOLD", "AWARE", "YELLOW", "NORMAL", 20]]] call CAI_fnc_cmdOrder;
+                _x setVariable ["CAI_fellBack", false];
+                private _sp = [_center getPos [_radius * 0.55, _threatDir + (_offs select (_forEachIndex % 8))], _center] call CAI_fnc_landPos;
+                if !([_x, _sp, _radius * 0.35, _facing] call CAI_fnc_garrison) then {
+                    if !([_x, _center, _radius * 0.7, _facing] call CAI_fnc_garrison) then {
+                        // No buildings: hold a spot in the objective.
+                        private _pos = [_center getPos [random (_radius * 0.5), random 360], _center] call CAI_fnc_landPos;
+                        [_x, [[_pos, "HOLD", "AWARE", "YELLOW", "NORMAL", 20]]] call CAI_fnc_cmdOrder;
+                    };
                 };
             } forEach _garrison;
+
+            // Outposts out on the likely approach: early warning, delay, then fall back.
+            {
+                private _dir = _threatDir + ([0, 40, -40] select (_forEachIndex % 3));
+                private _op = [_center, _dir, _radius + 250, _radius + 500, true, _radius, 20, _center getPos [_radius + 1200, _dir]] call CAI_fnc_pickPos;
+                [_x, [
+                    [_op, "MOVE", "AWARE", "YELLOW", "FULL", 25],
+                    [_op, "HOLD", "AWARE", "YELLOW", "NORMAL", 15]
+                ]] call CAI_fnc_cmdOrder;
+                _x setVariable ["CAI_cmdAxis", [_op, _dir]];
+                _x setVariable ["CAI_opSet", false];
+                [_x, "OUTPOST"] call _setRole;
+            } forEach _ops;
 
             {
                 private _start = random 360;
@@ -818,10 +856,12 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
                 [_x, "RESERVE"] call _setRole;
             } forEach _reserve;
 
+            // Vehicles: overwatch positions inside the objective that look out along the approaches.
             private _veh = _alive select {([_x] call CAI_fnc_groupType) == "GROUND"};
             {
-                private _p = [_center getPos [_radius * 0.5, (360 / ((count _veh) max 1)) * _forEachIndex], _center] call CAI_fnc_landPos;
-                [_x, [[_p, "MOVE", "AWARE", "YELLOW", "NORMAL", 30]]] call CAI_fnc_cmdOrder;
+                private _dir = _threatDir + ([0, -45, 45, -90, 90, 180] select (_forEachIndex % 6));
+                private _p = [_center, _dir, _radius * 0.4, _radius * 0.9, true, _radius, 25, _center getPos [_radius + 600, _dir]] call CAI_fnc_pickPos;
+                [_x, [[_p, "MOVE", "AWARE", "YELLOW", "NORMAL", 25]]] call CAI_fnc_cmdOrder;
                 [_x, "RESERVE"] call _setRole;
             } forEach _veh;
 
@@ -836,8 +876,8 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
                 if (_type == "ARTY") then {[_x, "FIRES"] call _setRole};
             } forEach _alive;
 
-            format ["Defending %1: %2 squads garrisoned, %3 on patrol, %4 groups in reserve.",
-                _objName, count _garrison, count _patrol, count _reserve + count _veh] call _say;
+            format ["Defending %1: %2 strongpoints, %3 outposts to the %4, %5 on patrol, %6 groups in reserve.",
+                _objName, count _garrison, count _ops, _threatDir call _compass, count _patrol, count _reserve + count _veh] call _say;
             private _air = count (_alive call _airOf);
             if (_airSupport && {_air > 0}) then {
                 format ["%1 air units on standby at base.", _air] call _say;
@@ -942,6 +982,50 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
             } forEach _alive;
 
             [_threats isNotEqualTo [], _threats] call _runAir;
+
+            // Remember where attacks come from (used when setting up again).
+            if (_threats isNotEqualTo []) then {_lastThreatDir = _center getDir (_threats call _centroid)};
+
+            // Outposts: settle in, report, and fall back to the objective when pressed.
+            {
+                private _g = _x;
+                if ((_g call _roleOf) == "OUTPOST") then {
+                    private _op = (_g getVariable ["CAI_cmdAxis", []]) param [0, getPosATL leader _g];
+                    if (!(_g getVariable ["CAI_opSet", false]) && {(leader _g) distance2D _op < 40}) then {
+                        _g setVariable ["CAI_opSet", true];
+                        {if (alive _x && {!isPlayer _x}) then {_x setUnitPos "MIDDLE"}} forEach units _g;
+                    };
+                    private _lp = getPosATL leader _g;
+                    private _close = [];
+                    {_close pushBackUnique vehicle _x} forEach (_threats select {_x distance2D _lp < 500});
+                    private _power = 0;
+                    {_power = _power + ([_x] call CAI_fnc_threatValue)} forEach _close;
+                    private _inContact = time - (_g getVariable ["CAI_lastContact", -1e6]) < 30;
+                    if ((_inContact && {([_g] call _strength) < 0.6 || {_power >= 6}}) || {_inArea isNotEqualTo []}) then {
+                        private _p = [_center getPos [random (_radius * 0.3), random 360], _center] call CAI_fnc_landPos;
+                        [_g, [[_p, "MOVE", "AWARE", "YELLOW", "FULL", 30]]] call CAI_fnc_cmdOrder;
+                        [_g, "RESERVE"] call _setRole;
+                        format ["Outpost %1 falling back to %2%3.", groupId _g, _objName,
+                            ["", format [", enemy strength %1 to the %2", _power, (_center getDir _lp) call _compass]] select (_power > 0)] call _say;
+                    };
+                };
+            } forEach _alive;
+
+            // Strongpoints that are breaking fall back to the inner keep.
+            {
+                if ((_x call _roleOf) == "GARRISON"
+                    && {!(_x getVariable ["CAI_fellBack", false])}
+                    && {([_x] call _strength) < 0.45}
+                    && {time - (_x getVariable ["CAI_lastContact", -1e6]) < 30}
+                ) then {
+                    _x setVariable ["CAI_fellBack", true];
+                    if !([_x, _center, _radius * 0.3, _lastThreatDir] call CAI_fnc_garrison) then {
+                        [_x, [[[_center getPos [random 30, random 360], _center] call CAI_fnc_landPos, "HOLD", "COMBAT", "YELLOW", "FULL", 15]]] call CAI_fnc_cmdOrder;
+                    };
+                    [_x, "GARRISON"] call _setRole;
+                    format ["%1 is falling back to the inner positions.", groupId _x] call _say;
+                };
+            } forEach _alive;
 
             // Lost the objective? Retake it.
             if (_inArea isNotEqualTo [] && {_friendIn == 0}) then {

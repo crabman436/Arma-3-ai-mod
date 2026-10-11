@@ -23,8 +23,8 @@ params [["_player", objNull, [objNull]], ["_kind", ""], ["_pos", [], [[]]], ["_k
 
 if (!isServer || {isNull _player} || {!alive _player} || {count _pos < 2}) exitWith {};
 if (!CAI_enabled || {!CAI_playerRequests}) exitWith {};
-// Only the player's own machine may ask on their behalf.
-if (isRemoteExecuted && {remoteExecutedOwner != owner _player}) exitWith {};
+// In multiplayer only the player's own machine may ask on their behalf.
+if (isMultiplayer && {isRemoteExecuted} && {remoteExecutedOwner != owner _player}) exitWith {};
 
 private _reply = {_this remoteExecCall ["hint", _player]};
 _pos = [_pos select 0, _pos select 1, 0];
@@ -32,9 +32,13 @@ private _side = side group _player;
 
 if (_player distance2D _pos > 4000) exitWith {"Request denied: aim point is more than 4 km away." call _reply};
 
-// Cooldowns are kept per player (by UID) on the server, so respawning doesn't reset them.
+// Cooldowns are kept per player (by UID, or name where there is no UID) on the server,
+// so respawning doesn't reset them. Expired entries are dropped.
 if (isNil "CAI_reqCooldowns") then {CAI_reqCooldowns = createHashMap};
-private _key = format ["%1_%2", getPlayerUID _player, _kind];
+{CAI_reqCooldowns deleteAt _x} forEach ((keys CAI_reqCooldowns) select {(CAI_reqCooldowns get _x) < time});
+private _uid = getPlayerUID _player;
+if (_uid == "") then {_uid = name _player};
+private _key = format ["%1_%2", _uid, _kind];
 private _wait = (CAI_reqCooldowns getOrDefault [_key, 0]) - time;
 if (_wait > 0) exitWith {format ["Request denied: wait %1 s.", ceil _wait] call _reply};
 
@@ -54,15 +58,15 @@ switch (_kind) do {
         private _armor = (_contacts findIf {([_x] call CAI_fnc_threatValue) >= 5}) >= 0;
 
         // Respect the responder cap across repeated requests.
-        private _responders = (_grp getVariable ["CAI_responders", []]) select {
-            !isNull _x && {alive leader _x} && {((_x getVariable ["CAI_assist", []]) param [0, grpNull]) == _grp}
-        };
+        private _responders = [_grp] call CAI_fnc_activeResponders;
         private _slots = CAI_maxResponders - count _responders;
         if (_slots < 1) exitWith {format ["%1 groups are already on their way to you.", count _responders] call _reply};
 
         private _sent = [_grp, _pos, _slots, _armor] call CAI_fnc_selectResponders;
         if (_sent isEqualTo []) exitWith {"No reinforcements available right now." call _reply};
         {[_x, _grp, _pos, _contacts] call CAI_fnc_dispatchResponder} forEach _sent;
+        // The player is asking for help, so their group counts as in contact now.
+        _grp setVariable ["CAI_lastContact", time];
         _grp setVariable ["CAI_responders", _responders + _sent];
         CAI_reqCooldowns set [_key, time + 120];
         format ["Reinforcements on the way to grid %1: %2.", mapGridPosition _pos,
