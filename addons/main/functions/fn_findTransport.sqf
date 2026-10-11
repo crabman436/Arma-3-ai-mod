@@ -9,8 +9,9 @@
 
 params ["_inf", "_targetPos", ["_kind", "HELI_TRANSPORT"], ["_maxDist", -1]];
 
-private _need = {alive _x} count units _inf;
 private _pos = getPosATL leader _inf;
+// Already sitting in one (e.g. placed aboard in the editor): that one, if it is free.
+private _inV = objectParent leader _inf;
 private _best = objNull;
 private _bestDist = [_maxDist, CAI_airRadius] select (_maxDist < 0);
 
@@ -26,7 +27,8 @@ if (time - (_cache select 0) > 5) then {
 {
     if (!isNull _x && {alive leader _x}) then {
         private _v = vehicle leader _x;
-        private _d = _v distance2D _pos;
+        private _d = [_v distance2D _pos, -1] select (_v == _inV);
+        private _need = {alive _x && {vehicle _x != _v}} count units _inf;
         if (_d < _bestDist
             && {(side _x getFriend side _inf) >= 0.6}
             && {_v emptyPositions "Cargo" >= _need}

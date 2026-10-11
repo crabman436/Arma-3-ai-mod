@@ -60,6 +60,8 @@ group of the chosen side within the auto-assign radius (2 km by default).
 - When the attack forms up, each **transport helicopter** under the commander picks up an infantry squad (or uses one already aboard) and waits.
 - At **H-hour** they all lift off together, fly in **low and fast** (35 m), land at **tight landing zones** (within 100 m of the chosen spot) on the lanes, either **at the edge of the objective** or **into it (hot LZ)**, unload and leave straight away. The squads go straight into the attack and the house clearing.
 - **Gunships escort the landing zones** for 5 minutes: any enemy near an LZ becomes their top target, and if none is known they overwatch the LZ anyway.
+- **Armed helicopters carrying troops** (e.g. a squad placed in the back of a Mi-48 Kajman or an armed Orca) act as **transports first**: no attack runs while anyone is aboard. They insert the squad, and once empty they join the close air support rotation.
+- The transporting crew and the squad it carries are **separate groups**: a helicopter or truck crew can carry any infantry squad of its side. Squads placed aboard in the editor fly on the helicopter they're in.
 - If both the paradrop and the air assault are on, helicopters fly the air assault and transport planes do the paradrop.
 
 **Coordinated helicopter CAS:**

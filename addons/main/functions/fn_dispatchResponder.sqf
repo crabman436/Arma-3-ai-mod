@@ -30,7 +30,7 @@ private _how = "";
 switch (_type) do {
     case "INF": {
         private _heli = objNull;
-        if (CAI_airLift && {_dist > CAI_airLiftMinDistance}) then {
+        if (CAI_airLift && {_dist > CAI_airLiftMinDistance || {(objectParent _leader) isKindOf "Helicopter"}}) then {
             _heli = [_grp, _targetPos] call CAI_fnc_findTransport;
         };
         private _truck = objNull;

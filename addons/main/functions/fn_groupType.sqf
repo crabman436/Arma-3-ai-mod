@@ -5,6 +5,8 @@
     Returns: "INF", "GROUND", "TRUCK", "UNARMED", "HELI_ATTACK", "HELI_TRANSPORT", "JET", "PLANE_TRANSPORT" or "ARTY"
         TRUCK   = unarmed ground vehicle with at least 4 passenger seats
         UNARMED = other unarmed ground vehicles (fuel/ammo/repair trucks...)
+    An armed helicopter carrying troops of another group is a HELI_TRANSPORT until
+    they are out: it inserts them first and only then flies close air support.
     A squad of more than 3 where most men are passengers or on foot counts as INF.
 */
 
@@ -14,8 +16,15 @@ private _leader = leader _grp;
 private _veh = vehicle _leader;
 
 // Cached per vehicle: this is called a lot and the weapon checks aren't free.
+// Gunship with passengers aboard: transport first (checked every time, passengers come and go).
+private _loaded = {
+    _veh isKindOf "Helicopter" && {((crew _veh) findIf {alive _x && {group _x != _grp}}) >= 0}
+};
 private _cache = _grp getVariable ["CAI_typeCache", []];
-if (_cache isNotEqualTo [] && {(_cache select 0) isEqualTo _veh} && {(_cache select 1) isEqualTo _leader}) exitWith {_cache select 2};
+if (_cache isNotEqualTo [] && {(_cache select 0) isEqualTo _veh} && {(_cache select 1) isEqualTo _leader}) exitWith {
+    private _t = _cache select 2;
+    if (_t == "HELI_ATTACK" && {call _loaded}) then {"HELI_TRANSPORT"} else {_t}
+};
 
 private _type = call {
     if (_veh == _leader) exitWith {"INF"};
@@ -64,4 +73,4 @@ private _type = call {
 };
 
 _grp setVariable ["CAI_typeCache", [_veh, _leader, _type]];
-_type
+if (_type == "HELI_ATTACK" && {call _loaded}) then {"HELI_TRANSPORT"} else {_type}

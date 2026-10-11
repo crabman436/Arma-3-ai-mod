@@ -62,6 +62,8 @@ private _cleanup = {
 };
 
 // --- 1. Pick-up ---------------------------------------------------------------
+// Squad already aboard (placed in the helicopter, or a loaded gunship): no pick-up needed.
+private _preloaded = (units _inf findIf {alive _x && {vehicle _x != _heli}}) < 0;
 private _infPos = getPosATL leader _inf;
 private _pickup = [_infPos, 0, 150, 12, 0, 0.25, 0, [], [_infPos, _infPos]] call BIS_fnc_findSafePos;
 _pickup = [_pickup select 0, _pickup select 1, 0];
@@ -70,18 +72,20 @@ private _padA = createVehicle ["Land_HelipadEmpty_F", _pickup, [], 0, "CAN_COLLI
 format ["Air lift: %1 picking up %2", groupId _hGrp, groupId _inf] call CAI_fnc_log;
 
 if (isTouchingGround _heli) then {_heli engineOn true};
-[_hGrp, _pickup, "MOVE", "CARELESS", "BLUE", "FULL", 100] call CAI_fnc_addWaypoint;
-// Drop whatever the infantry were doing and head for the pick-up.
-[_inf, [[_pickup, "MOVE", "AWARE", "YELLOW", "FULL", 20]]] call CAI_fnc_cmdOrder;
+if (!_preloaded) then {
+    [_hGrp, _pickup, "MOVE", "CARELESS", "BLUE", "FULL", 100] call CAI_fnc_addWaypoint;
+    // Drop whatever the infantry were doing and head for the pick-up.
+    [_inf, [[_pickup, "MOVE", "AWARE", "YELLOW", "FULL", 20]]] call CAI_fnc_cmdOrder;
+};
 
 private _timeout = time + 240;
-waitUntil {sleep 2; !(call _heliOk) || {!(call _infAlive)} || {_heli distance2D _pickup < 250} || {time > _timeout}};
+waitUntil {sleep 2; _preloaded || {!(call _heliOk)} || {!(call _infAlive)} || {_heli distance2D _pickup < 250} || {time > _timeout}};
 if (!(call _heliOk) || {!(call _infAlive)} || {time > _timeout}) exitWith {
     call _onFoot;
     [[_padA]] call _cleanup;
 };
 
-_heli land "GET IN";
+if (!_preloaded) then {_heli land "GET IN"};
 private _boarders = units _inf select {alive _x};
 {_x assignAsCargo _heli} forEach _boarders;
 _boarders orderGetIn true;
