@@ -16,7 +16,7 @@ if (CAI_skillFloor && {(_grp getVariable ["CAI_skilledCount", -1]) != count unit
 };
 
 // --- Contact detection ---------------------------------------------------
-private _range = [2000, 4000] select (_type in ["HELI_ATTACK", "HELI_TRANSPORT", "JET"]);
+private _range = [2000, 4000] select (_type in ["HELI_ATTACK", "HELI_TRANSPORT", "JET", "PLANE_TRANSPORT"]);
 private _contacts = (_leader targets [true, _range, [], CAI_shareMaxAge]) select {
     alive _x && {(_leader knowsAbout _x) >= 1.5}
 };
@@ -35,7 +35,7 @@ if (_contacts isNotEqualTo []) then {
         [_grp, _contacts] call CAI_fnc_shareIntel;
     };
 
-    if (_type != "ARTY" && {_type != "HELI_TRANSPORT"}) then {
+    if !(_type in ["ARTY", "HELI_TRANSPORT", "PLANE_TRANSPORT"]) then {
         // Call for reinforcements / fire support.
         if (_now >= (_grp getVariable ["CAI_nextRequest", 0])) then {
             private _sent = [_grp, _contacts] call CAI_fnc_requestSupport;

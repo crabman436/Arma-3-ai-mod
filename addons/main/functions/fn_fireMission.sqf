@@ -34,6 +34,12 @@ if (_safeDist > 0) then {
         && {_x isKindOf "CAManBase" || {(crew _x findIf {alive _x}) >= 0}}
         && {((side _x) getFriend _side) >= 0.6}
     };
+    // Friendly paratroopers still in the air over the target (measured flat, they're high up).
+    if (_blocked < 0) then {
+        _blocked = (_targetPos nearEntities [["ParachuteBase"], 1500]) findIf {
+            alive _x && {_x distance2D _targetPos < _safeDist + 150} && {((side _x) getFriend _side) >= 0.6}
+        };
+    };
     if (_blocked >= 0) then {_targetPos = []};
 };
 if (_targetPos isEqualTo []) exitWith {false};

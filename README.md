@@ -50,6 +50,14 @@ group of the chosen side within the auto-assign radius (2 km by default).
 - After enemies got inside the area and were beaten back, up to 2 reserve squads **sweep the buildings** for stragglers.
 - If the area is **lost**, the commander switches to Attack to retake it.
 
+**Opening paradrop** (option, attack only):
+- When the attack forms up, each **transport helicopter or transport plane** under the commander loads one infantry squad: a squad already sitting in its cargo seats, or the nearest one (helicopters fly to it and land; planes on a runway are walked to).
+- When the preparatory fires start they take off, fly over the drop zone at 200 m (helicopters) or 300 m (planes), and the squad **jumps in a stick**, half a second apart, so it lands spread out. The aircraft fly home.
+- **Onto the objective:** a shock drop straight into the town. The paratroopers start fighting and clearing at once while the ground assault comes in.
+- **Behind the objective:** they land beyond the far side, cut it off, and **assault from the rear at H-hour** together with the ground force.
+- Artillery never fires HE under friendly parachutes. If a squad can't board or its aircraft is lost before the drop, it joins the ground attack.
+- Tip: put the paratroopers in the cargo seats of a Huron or a Blackfish (transport) parked behind the lines, and sync both to the commander.
+
 **Fire support** (any friendly mortars or artillery with AI gunners, synced or not):
 - Preparatory barrage, then continuous fire missions on whatever the side has spotted, during the attack and when defending.
 - Targets are prioritised: **enemy AA first** (to clear the sky for helicopters), then armor and vehicles, then groups of infantry.
@@ -65,7 +73,7 @@ group of the chosen side within the auto-assign radius (2 km by default).
 - When defending, aircraft wait at base and launch as soon as enemies are spotted near the objective.
 
 **Options:** mission (attack/defend), side, auto-assign radius, reserve %, fire
-support (off/normal/heavy), air support, aircraft rearm at base, clear buildings, radio messages
+support (off/normal/heavy), air support, aircraft rearm at base, clear buildings, opening paradrop, radio messages
 (players on that side hear the orders in side chat) and map markers
 (objective area + live status).
 
@@ -227,6 +235,7 @@ addons/main/
     fn_moduleGarrison.sqf / fn_moduleClear.sqf
     fn_cmdFires.sqf / fn_cmdAir.sqf / fn_isAA.sqf   commander fire plan and air tasking
     fn_boundAdvance.sqf / fn_pickPos.sqf            bounding overwatch, attack and overwatch positions
+    fn_paraDrop.sqf                                 paradrop (load, fly, jump in a stick, rally)
     ...
 mod.cpp
 .hemtt/project.toml

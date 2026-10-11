@@ -59,6 +59,7 @@ class CfgFunctions {
             class fireMission {};
             class landPos {};
             class pickPos {};
+            class paraDrop {};
             class boundAdvance {};
         };
     };
@@ -316,6 +317,18 @@ class CfgVehicles {
                 tooltip = "Aircraft that run out of ammo or fuel, or are badly damaged, fly back to where they started, get rearmed, refueled and repaired after 90 seconds, then return to the fight.";
                 typeName = "BOOL";
                 defaultValue = "true";
+            };
+            class Paradrop: Combo {
+                property = "CAI_ModuleCommander_Paradrop";
+                displayName = "Opening paradrop";
+                tooltip = "Attack only. When the attack forms up, each transport helicopter or transport plane under this commander loads one infantry squad (or uses one already aboard). When the preparatory fires start they fly over the drop zone and the squad jumps. Onto the objective: shock drop straight into it. Behind it: cuts it off, then assaults from the rear at H-hour.";
+                typeName = "NUMBER";
+                defaultValue = "0";
+                class Values {
+                    class Off { name = "Off"; value = 0; };
+                    class Onto { name = "Onto the objective (shock drop)"; value = 1; };
+                    class Behind { name = "Behind the objective (cut it off)"; value = 2; };
+                };
             };
             class ClearBuildings: Checkbox {
                 property = "CAI_ModuleCommander_ClearBuildings";

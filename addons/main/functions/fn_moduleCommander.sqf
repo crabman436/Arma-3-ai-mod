@@ -27,6 +27,7 @@ private _fireLevel = _logic getVariable ["FireSupport", 1];
 private _airSupport = _logic getVariable ["AirSupport", true];
 private _refit = _logic getVariable ["Refit", true];
 private _clear = _logic getVariable ["ClearBuildings", true];
+private _para = _logic getVariable ["Paradrop", 0];
 
 private _area = _logic getVariable ["objectArea", [250, 250, 0, false, -1]];
 private _radius = ((_area select 0) max (_area select 1)) max 50;
@@ -80,4 +81,4 @@ if (_groups isEqualTo []) exitWith {
 // Claim the groups right away so other commanders starting at the same moment can't take them.
 {_x setVariable ["CAI_commander", _logic, true]} forEach _groups;
 
-[_logic, _side, _groups, _mode, _radius, _reserve, _radio, _markers, [_fireLevel, _airSupport, _refit, _clear]] spawn CAI_fnc_commander;
+[_logic, _side, _groups, _mode, _radius, _reserve, _radio, _markers, [_fireLevel, _airSupport, _refit, _clear, _para]] spawn CAI_fnc_commander;
