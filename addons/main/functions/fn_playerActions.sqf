@@ -15,11 +15,16 @@ private _cond = "CAI_enabled && {CAI_playerRequests} && {alive _this} && {_this 
 
 _unit addAction [
     "<t color='#FFB000'>CAI: Fire mission on aim point</t>",
-    {[player, "FIRE", screenToWorld [0.5, 0.5]] remoteExecCall ["CAI_fnc_playerRequest", 2]},
+    {[player, "FIRE", screenToWorld [0.5, 0.5], []] remoteExecCall ["CAI_fnc_playerRequest", 2]},
     nil, 0.4, false, true, "", _cond
 ];
 _unit addAction [
     "<t color='#FFB000'>CAI: Request reinforcements to aim point</t>",
-    {[player, "QRF", screenToWorld [0.5, 0.5]] remoteExecCall ["CAI_fnc_playerRequest", 2]},
+    {
+        // Target knowledge lives where the player is local, so send what we know.
+        private _pos = screenToWorld [0.5, 0.5];
+        private _known = (player targets [true, 600, [], 120, _pos]) select {alive _x};
+        [player, "QRF", _pos, _known] remoteExecCall ["CAI_fnc_playerRequest", 2];
+    },
     nil, 0.39, false, true, "", _cond
 ];

@@ -27,6 +27,8 @@ private _safeDist = switch (_kind) do {
     case "SMOKE": {60};
     default {0};
 };
+// HE can land up to (error + 20) m from the aim point, so keep that much extra clearance.
+if (_kind == "HE") then {_safeDist = _safeDist + _error + 20};
 if (_safeDist > 0) then {
     // Friendly soldiers or crewed friendly vehicles nearby. Parked empty cars don't count.
     private _blocked = (_targetPos nearEntities [["CAManBase", "LandVehicle"], _safeDist]) findIf {

@@ -186,7 +186,9 @@ Every player gets two entries in the **action menu (scroll wheel)**:
 - **CAI: Fire mission on aim point**: your side's idle mortars or artillery fire on the spot you're looking at. It's refused if friendlies are within 200 m of the spot, no gun is in range, or the spot was just hit. 60 s cooldown.
 - **CAI: Request reinforcements to aim point**: the best available AI groups (vehicles, helicopters, infantry by truck or air lift) move there and search & destroy, picked the same way the AI picks its QRFs. 120 s cooldown.
 
-A hint tells you what's coming. Turn this off with *Player support requests* in the Settings module, or `CAI_playerRequests = false;`.
+A hint tells you what's coming. At most `CAI_maxResponders` groups (3) are on their way to your group at once, and cooldowns are per player, so respawning doesn't reset them. Turn this off with *Player support requests* in the Settings module, or `CAI_playerRequests = false;`.
+
+*Headless clients:* only AI groups running on the server answer player requests. Groups you move to a headless client still coordinate among themselves.
 
 ### Per-group control (unit init field)
 

@@ -276,10 +276,27 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
                 _x setVariable ["CAI_cmdProg", [time, (leader _x) distance2D _center]];
                 [_x, ["RESERVE", "ASSAULT"] select ((_state find "ATTACK") == 0)] call _setRole;
             } else {
-                // The helicopter never got them there: join the ground attack instead of walking in alone.
-                private _rally = if (_staging isEqualTo []) then {_center} else {_staging getPos [random 100, random 360]};
-                [_x, [[_rally, "MOVE", "AWARE", "YELLOW", "FULL", 50]]] call CAI_fnc_cmdOrder;
-                [_x, ["RESERVE", "STAGING"] select (_state in ["ATTACK_STAGE", "ATTACK_PREP"])] call _setRole;
+                // The helicopter never got them there: fit them into whatever the force is doing now.
+                switch (true) do {
+                    // Still forming up: join the staging area.
+                    case (_state in ["ATTACK_STAGE", "ATTACK_PREP"] && {_staging isNotEqualTo []}): {
+                        [_x, [[_staging getPos [random 100, random 360], "MOVE", "AWARE", "YELLOW", "FULL", 50]]] call CAI_fnc_cmdOrder;
+                        [_x, "STAGING"] call _setRole;
+                    };
+                    // Attack under way: become an assault squad on a lane from where they are.
+                    case ((_state find "ATTACK") == 0): {
+                        private _dir = _center getDir leader _x;
+                        private _formUp = [_center, _dir, _radius + 120, _radius + 260, false, _radius, 25] call CAI_fnc_pickPos;
+                        _x setVariable ["CAI_cmdAxis", [_formUp, [_center getPos [_radius * 0.4, _dir], _center] call CAI_fnc_landPos, _dir]];
+                        [_x, [[_formUp, "MOVE", "AWARE", "YELLOW", "FULL", 40]]] call CAI_fnc_cmdOrder;
+                        [_x, "FORMUP"] call _setRole;
+                    };
+                    // Defending: reinforce the objective.
+                    default {
+                        [_x, [[[_center getPos [random (_radius * 0.3), random 360], _center] call CAI_fnc_landPos, "MOVE", "AWARE", "YELLOW", "FULL", 30]]] call CAI_fnc_cmdOrder;
+                        [_x, "RESERVE"] call _setRole;
+                    };
+                };
             };
         };
         if (_role == "HELO_LIFT" && {!(_x getVariable ["CAI_busy", false])}) then {[_x, "LIFT"] call _setRole};

@@ -85,9 +85,12 @@ if (_assist isNotEqualTo [] && {!(_grp getVariable ["CAI_inTransit", false])}) t
     _assist params ["_caller", "_start", "_targetPos"];
 
     private _selfQuiet = _now - (_grp getVariable ["CAI_lastContact", -1e6]) > CAI_quietTime;
+    // Player-led callers aren't processed here, so their contact state is unknown:
+    // a QRF sent to a player stays until its own fight goes quiet.
     private _callerQuiet = isNull _caller
         || {({alive _x} count units _caller) == 0}
-        || {_now - (_caller getVariable ["CAI_lastContact", -1e6]) > CAI_quietTime};
+        || {isPlayer leader _caller && {_selfQuiet}}
+        || {!isPlayer leader _caller && {_now - (_caller getVariable ["CAI_lastContact", -1e6]) > CAI_quietTime}};
 
     if (_now - _start > CAI_assistTimeout || {_selfQuiet && _callerQuiet && {_now - _start > 120}}) then {
         [_grp] call CAI_fnc_returnHome;

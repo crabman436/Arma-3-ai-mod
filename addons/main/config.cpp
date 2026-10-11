@@ -99,7 +99,7 @@ class CfgVehicles {
         category = "CAI_Modules";
         function = "CAI_fnc_moduleSettings";
         functionPriority = 1;
-        isGlobal = 1;
+        isGlobal = 2;
         isTriggerActivated = 0;
         isDisposable = 0;
         is3DEN = 0;
