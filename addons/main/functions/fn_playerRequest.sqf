@@ -62,9 +62,10 @@ switch (_kind) do {
         private _slots = CAI_maxResponders - count _responders;
         if (_slots < 1) exitWith {format ["%1 groups are already on their way to you.", count _responders] call _reply};
 
-        private _sent = [_grp, _pos, _slots, _armor] call CAI_fnc_selectResponders;
+        private _sent = ([_grp, _pos, _slots, _armor] call CAI_fnc_selectResponders) select {
+            [_x, _grp, _pos, _contacts] call CAI_fnc_dispatchResponder
+        };
         if (_sent isEqualTo []) exitWith {"No reinforcements available right now." call _reply};
-        {[_x, _grp, _pos, _contacts] call CAI_fnc_dispatchResponder} forEach _sent;
         // The player is asking for help, so their group counts as in contact now.
         _grp setVariable ["CAI_lastContact", time];
         _grp setVariable ["CAI_responders", _responders + _sent];

@@ -5,6 +5,8 @@
     Vehicles and attack helicopters come in from a flank and search & destroy.
 
     Params: 0: GROUP responder, 1: GROUP caller, 2: ARRAY target pos, 3: ARRAY known enemies
+    Returns: BOOL - false if it couldn't go after all (far-away infantry whose ride was
+             taken by another squad); the group then stays on its own orders.
 */
 
 params ["_grp", "_caller", "_targetPos", "_contacts"];
@@ -27,6 +29,7 @@ _grp setVariable ["CAI_assist", [_caller, time, _targetPos]];
 _grp setBehaviour "AWARE";
 
 private _how = "";
+private _ok = true;
 switch (_type) do {
     case "INF": {
         private _heli = objNull;
@@ -60,6 +63,8 @@ switch (_type) do {
                 if (CAI_grabVehicles && {_dist > 500}) then {
                     if ([_grp, false] call CAI_fnc_grabVehicles) then {_how = "by vehicle"};
                 };
+                // Too far to walk and no ride left: don't go (and don't use up a responder slot).
+                if (_how == "" && {_dist > CAI_infantryRadius}) exitWith {_ok = false};
                 private _approach = [_targetPos, _callerPos, getPosATL _leader, 200] call CAI_fnc_flankPosition;
                 private _wp = [_grp, _approach, "MOVE", "AWARE", "YELLOW", "FULL", 40] call CAI_fnc_addWaypoint;
                 [_grp, _sadPos, "SAD", "COMBAT", "RED", "NORMAL", 60] call CAI_fnc_addWaypoint;
@@ -91,5 +96,11 @@ switch (_type) do {
     };
 };
 
+if (!_ok) exitWith {
+    [_grp] call CAI_fnc_returnHome;
+    false
+};
+
 format ["QRF: %1 (%2) moving to support %3 %4, %5m away",
     groupId _grp, _type, groupId _caller, _how, round _dist] call CAI_fnc_log;
+true

@@ -29,7 +29,10 @@ if (time - (_cache select 0) > 5) then {
         private _v = vehicle leader _x;
         private _d = [_v distance2D _pos, -1] select (_v == _inV);
         private _need = {alive _x && {vehicle _x != _v}} count units _inf;
-        if (_d < _bestDist
+        private _crewGrp = _x;
+        // Already carrying another squad: not available.
+        private _otherAboard = (crew _v findIf {alive _x && {group _x != _crewGrp} && {group _x != _inf}}) >= 0;
+        if (!_otherAboard && {_d < _bestDist}
             && {(side _x getFriend side _inf) >= 0.6}
             && {_v emptyPositions "Cargo" >= _need}
             && {[_x, _inf, _targetPos, false] call CAI_fnc_isAvailableResponder}

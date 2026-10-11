@@ -49,13 +49,15 @@ private _onFoot = {
 };
 
 // Send the truck home.
+// Free the crew even if its leader just died (survivors must not stay CARELESS and booked).
 private _release = {
-    if (!isNull _tGrp && {alive leader _tGrp}) then {
-        {if (alive _x) then {_x doFollow leader _tGrp}} forEach units _tGrp;
-        _tGrp setBehaviour "AWARE";
-        [_tGrp] call CAI_fnc_returnHome;
-    } else {
+    if (!isNull _tGrp) then {
         _tGrp setVariable ["CAI_busy", false];
+        if (({alive _x} count units _tGrp) > 0) then {
+            {if (alive _x) then {_x doFollow leader _tGrp}} forEach units _tGrp;
+            _tGrp setBehaviour "AWARE";
+            [_tGrp] call CAI_fnc_returnHome;
+        };
     };
 };
 
@@ -75,7 +77,8 @@ if (!(call _truckOk) || {!(call _infAlive)} || {time > _timeout}) exitWith {
 
 doStop (driver _truck);
 private _seats = _truck emptyPositions "Cargo";
-private _boarders = (units _inf select {alive _x}) select [0, _seats];
+// Men already aboard stay where they are and don't take a seat from the others.
+private _boarders = (units _inf select {alive _x && {vehicle _x != _truck}}) select [0, _seats];
 {_x assignAsCargo _truck} forEach _boarders;
 _boarders orderGetIn true;
 
@@ -86,7 +89,7 @@ waitUntil {
 };
 
 private _aboard = {alive _x && {vehicle _x == _truck}} count units _inf;
-if (!(call _truckOk) || {_aboard < ({alive _x} count units _inf) / 2}) exitWith {
+if (!(call _truckOk) || {_aboard == 0} || {_aboard < ({alive _x} count units _inf) / 2}) exitWith {
     {unassignVehicle _x} forEach units _inf;
     (units _inf) orderGetIn false;
     {if (vehicle _x == _truck) then {doGetOut _x}} forEach units _inf;
@@ -97,7 +100,7 @@ if (!(call _truckOk) || {_aboard < ({alive _x} count units _inf) / 2}) exitWith 
 private _left = units _inf select {alive _x && {vehicle _x != _truck}};
 if (_left isNotEqualTo []) then {
     {unassignVehicle _x} forEach _left;
-    _left joinSilent createGroup [side _inf, true];
+    [_inf, _left, _finalWps, _dropPos] call CAI_fnc_splitOff;
 };
 
 // --- 2. Drive to the drop-off -----------------------------------------------

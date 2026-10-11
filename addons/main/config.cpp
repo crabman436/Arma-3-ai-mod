@@ -21,6 +21,8 @@ class CfgFunctions {
             class isValidGroup {};
             class groupType {};
             class dismount {};
+            class releaseGroup {};
+            class splitOff {};
             class threatValue {};
             class revealTo {};
             class processGroup {};
@@ -99,6 +101,7 @@ class CfgVehicles {
 
     class CAI_ModuleSettings: Module_F {
         scope = 2;
+        scopeCurator = 0;
         displayName = "Coordinated AI Settings";
         icon = "\a3\ui_f\data\igui\cfg\simpletasks\types\radio_ca.paa";
         category = "CAI_Modules";
@@ -225,6 +228,7 @@ class CfgVehicles {
 
     class CAI_ModuleExclude: Module_F {
         scope = 2;
+        scopeCurator = 0;
         displayName = "Coordinated AI Exclude Groups";
         icon = "\a3\ui_f\data\igui\cfg\simpletasks\types\danger_ca.paa";
         category = "CAI_Modules";
@@ -258,6 +262,7 @@ class CfgVehicles {
 
     class CAI_ModuleCommander: Module_F {
         scope = 2;
+        scopeCurator = 0;
         displayName = "Coordinated AI Commander";
         icon = "\a3\ui_f\data\igui\cfg\simpletasks\types\attack_ca.paa";
         category = "CAI_Modules";
@@ -396,6 +401,7 @@ class CfgVehicles {
 
     class CAI_ModuleGarrison: Module_F {
         scope = 2;
+        scopeCurator = 0;
         displayName = "Coordinated AI Garrison";
         icon = "\a3\ui_f\data\igui\cfg\simpletasks\types\defend_ca.paa";
         category = "CAI_Modules";
@@ -436,6 +442,7 @@ class CfgVehicles {
 
     class CAI_ModuleClear: Module_F {
         scope = 2;
+        scopeCurator = 0;
         displayName = "Coordinated AI Clear Area";
         icon = "\a3\ui_f\data\igui\cfg\simpletasks\types\search_ca.paa";
         category = "CAI_Modules";

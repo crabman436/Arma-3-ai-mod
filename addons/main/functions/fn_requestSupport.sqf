@@ -54,9 +54,10 @@ private _responders = [_grp] call CAI_fnc_activeResponders;
 private _slots = CAI_maxResponders - count _responders;
 
 {
-    [_x, _grp, _targetPos, _contacts] call CAI_fnc_dispatchResponder;
-    _responders pushBack _x;
-    _sent = true;
+    if ([_x, _grp, _targetPos, _contacts] call CAI_fnc_dispatchResponder) then {
+        _responders pushBack _x;
+        _sent = true;
+    };
 } forEach ([_grp, _targetPos, _slots, _enemyArmor] call CAI_fnc_selectResponders);
 
 _grp setVariable ["CAI_responders", _responders];

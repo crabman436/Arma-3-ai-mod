@@ -31,6 +31,8 @@ private _type = call {
     // Riding in someone else's vehicle (or as a passenger): still infantry.
     if ((toLower ((assignedVehicleRole _leader) param [0, ""])) == "cargo" || {group effectiveCommander _veh != _grp}) exitWith {"INF"};
     if (getNumber (configOf _veh >> "artilleryScanner") == 1) exitWith {"ARTY"};
+    // A squad driving a vehicle it grabbed (CAI_fnc_grabVehicles) is infantry on wheels.
+    if ((_veh getVariable ["CAI_claimedBy", grpNull]) == _grp) exitWith {"INF"};
     // Motorized infantry: a full squad riding in its own vehicle(s) is still a rifle squad.
     private _men = (units _grp) select {alive _x};
     if (count _men > 3 && {({isNull objectParent _x || {(toLower ((assignedVehicleRole _x) param [0, ""])) == "cargo"}} count _men) > (count _men) / 2}) exitWith {"INF"};

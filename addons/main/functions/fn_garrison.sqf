@@ -23,12 +23,22 @@ params ["_grp", "_center", ["_radius", 60], ["_threatDir", -1]];
 
 // Mounted squads get out first (the crew of an armed vehicle stays with it).
 [_grp, false] call CAI_fnc_dismount;
+// Give up any buildings held from an earlier garrison first, so booking the new ones below
+// isn't undone when the move order releases the old list.
+[_grp] call CAI_fnc_releaseGroup;
 private _units = units _grp select {alive _x && {!isPlayer _x} && {isNull objectParent _x || {(assignedVehicleRole _x) isEqualTo []}}};
 if (_units isEqualTo []) exitWith {false};
 
 private _key = format ["CAI_garrisonTaken_%1", side _grp];
+private _byKey = format ["CAI_garrisonBy_%1", side _grp];
 private _taken = missionNamespace getVariable [_key, []];
-_taken = _taken select {alive _x};
+// Still standing and held by a squad that still has men.
+_taken = _taken select {
+    alive _x && {
+        private _h = _x getVariable [_byKey, grpNull];
+        !isNull _h && {_h != _grp} && {({alive _x} count units _h) > 0}
+    }
+};
 
 private _buildings = ([_center, _radius, 3] call CAI_fnc_buildingsIn) - _taken;
 if (_buildings isEqualTo []) exitWith {false};
@@ -47,6 +57,7 @@ private _positions = _main buildingPos -1;
 
 _taken append _use;
 missionNamespace setVariable [_key, _taken];
+{_x setVariable [_byKey, _grp]} forEach _use;
 
 // Score positions by their view out of the building.
 private _dirs = if (_threatDir < 0) then {

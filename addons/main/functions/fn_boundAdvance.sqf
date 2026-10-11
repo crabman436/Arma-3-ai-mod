@@ -21,11 +21,14 @@
         1: ARRAY destination
         2: ARRAY position to watch (default: the destination)
         3: NUMBER max time (default 600)
+        4: NUMBER the group's CAI_orderId when this was ordered (default -1 = don't check):
+           if the group got other orders before this script started, it doesn't start
 */
 
-params ["_grp", "_dest", ["_lookAt", []], ["_maxTime", 600]];
+params ["_grp", "_dest", ["_lookAt", []], ["_maxTime", 600], ["_oid", -1]];
 
 if (isNull _grp) exitWith {};
+if (_oid >= 0 && {(_grp getVariable ["CAI_orderId", 0]) != _oid}) exitWith {};
 if (_lookAt isEqualTo []) then {_lookAt = _dest};
 _dest = [_dest select 0, _dest select 1, 0];
 
@@ -33,7 +36,8 @@ _dest = [_dest select 0, _dest select 1, 0];
 _grp setVariable ["CAI_bounding", true];
 private _bid = (_grp getVariable ["CAI_boundId", 0]) + 1;
 _grp setVariable ["CAI_boundId", _bid];
-// Bounding is done on foot: a mounted squad gets out first.
+// Bounding is done on foot: a garrison lets go, a mounted squad gets out first.
+[_grp] call CAI_fnc_releaseGroup;
 [_grp] call CAI_fnc_dismount;
 _grp setBehaviour "AWARE";
 _grp setCombatMode "YELLOW";
@@ -51,9 +55,10 @@ private _avgPos = {
     {_sum = _sum vectorAdd (getPosATL _x)} forEach _this;
     _sum vectorMultiply (1 / ((count _this) max 1))
 };
-// Enemies the squad knows about within a distance of its leader.
+// Enemies the squad knows about (seen in the last minute, reasonably well) within a distance of its leader.
 private _enemiesNear = {
-    ((leader _grp) targets [true, _this]) select {alive _x}
+    private _l = leader _grp;
+    (_l targets [true, _this, [], 60]) select {alive _x && {(_l knowsAbout _x) >= 1.5}}
 };
 
 // Two teams for the bounds (squads of 4 or more). Machine gunners start on
@@ -110,7 +115,9 @@ while {call _active && {!_done}} do {
         };
         if (call _active) then {
             [_grp] call CAI_fnc_clearWaypoints;
-            {if (alive _x) then {doStop _x}} forEach (call _men);
+            // The bounding teams halt; anyone not in a team (got out late) keeps following the leader.
+            private _inTeams = if (_teams isEqualTo []) then {call _men} else {(_teams select 0) + (_teams select 1)};
+            {if (alive _x) then {doStop _x}} forEach _inTeams;
         };
     } else {
         if (_teams isEqualTo []) then {
@@ -181,10 +188,8 @@ if (!isNull _grp && {(_grp getVariable ["CAI_boundId", 0]) == _bid}) then {
             if (_grp getVariable ["CAI_bounding", false]) then {_x doFollow (leader _grp)};
         };
     } forEach units _grp;
-    if (_grp getVariable ["CAI_bounding", false]) then {
-        [_grp] call CAI_fnc_clearWaypoints;
-        if (_form0 != "") then {_grp setFormation _form0};
-    };
+    if (_grp getVariable ["CAI_bounding", false]) then {[_grp] call CAI_fnc_clearWaypoints};
+    if (_form0 != "") then {_grp setFormation _form0};
     _grp setVariable ["CAI_bounding", false];
     _grp setVariable ["CAI_boundDone", time];
 };

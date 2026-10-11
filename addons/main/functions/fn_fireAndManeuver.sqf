@@ -56,6 +56,9 @@ format ["%1 fire & maneuver: %2 suppressing, %3 flanking (%4m)", groupId _grp, c
 [_grp, _fire, _move, _target, _targetPos, _flank] spawn {
     params ["_grp", "_fire", "_move", "_target", "_targetPos", "_flank"];
 
+    // New orders for the squad (CAI_fnc_clearWaypoints) end the maneuver.
+    private _oid = _grp getVariable ["CAI_orderId", 0];
+    private _same = {(_grp getVariable ["CAI_orderId", 0]) == _oid};
     private _supPos = AGLToASL [_targetPos select 0, _targetPos select 1, 1];
     {_x assignTeam "RED"} forEach _fire;
     {_x assignTeam "BLUE"} forEach _move;
@@ -78,6 +81,7 @@ format ["%1 fire & maneuver: %2 suppressing, %3 flanking (%4m)", groupId _grp, c
     private _holdUntil = 0;
     while {
         !isNull _grp
+        && {call _same}
         && {(_move findIf {alive _x}) >= 0}
         && {alive _target}
         && {time < _arriveBy || {_arrived && {time < _holdUntil}}}
@@ -86,7 +90,7 @@ format ["%1 fire & maneuver: %2 suppressing, %3 flanking (%4m)", groupId _grp, c
             if (alive _x) then {_x doSuppressiveFire _supPos};
         } forEach _fire;
 
-        if (!_arrived && {(_move findIf {alive _x && {_x distance2D _flank > 25}}) < 0}) then {
+        if (!_arrived && {call _same} && {(_move findIf {alive _x && {_x distance2D _flank > 25}}) < 0}) then {
             _arrived = true;
             _holdUntil = time + 30;
             {if (alive _x) then {doStop _x; _x doTarget _target}} forEach _move;
@@ -95,12 +99,13 @@ format ["%1 fire & maneuver: %2 suppressing, %3 flanking (%4m)", groupId _grp, c
     };
 
     if (isNull _grp) exitWith {};
-    // Regroup, unless the squad has been given a building to clear or hold in the meantime.
-    private _busy = _grp getVariable ["CAI_clearing", false] || {_grp getVariable ["CAI_garrisoned", false]} || {_grp getVariable ["CAI_bounding", false]};
+    // Regroup, unless the squad has been given new orders in the meantime.
+    private _busy = !(call _same) || {_grp getVariable ["CAI_clearing", false]} || {_grp getVariable ["CAI_garrisoned", false]} || {_grp getVariable ["CAI_bounding", false]};
     {
         if (alive _x) then {
             if (!_busy) then {_x doFollow leader _grp};
-            _x assignTeam "MAIN";
+            // Bounding uses the team colours too.
+            if !(_grp getVariable ["CAI_bounding", false]) then {_x assignTeam "MAIN"};
         };
     } forEach (_fire + _move);
     _grp setVariable ["CAI_maneuvering", false];

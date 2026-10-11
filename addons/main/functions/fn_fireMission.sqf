@@ -32,8 +32,9 @@ private _safeDist = switch (_kind) do {
 private _aim = _targetPos getPos [random (_error + 20), random 360];
 _aim = [_aim select 0, _aim select 1, 0];
 if (_safeDist > 0) then {
-    // Friendly soldiers or crewed friendly vehicles nearby. Parked empty cars don't count.
-    private _blocked = (_aim nearEntities [["CAManBase", "LandVehicle"], _safeDist]) findIf {
+    // Friendly soldiers or crewed friendly vehicles (helicopters landing or hovering too) nearby.
+    // Parked empty cars don't count.
+    private _blocked = (_aim nearEntities [["CAManBase", "LandVehicle", "Air", "Ship"], _safeDist]) findIf {
         alive _x
         && {_x isKindOf "CAManBase" || {(crew _x findIf {alive _x}) >= 0}}
         && {((side _x) getFriend _side) >= 0.6}

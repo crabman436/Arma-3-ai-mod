@@ -54,10 +54,14 @@ private _onFoot = {
 private _cleanup = {
     params ["_pads"];
     {deleteVehicle _x} forEach _pads;
-    if (!isNull _hGrp && {alive leader _hGrp}) then {
-        _hGrp setBehaviour "AWARE";
-        _hGrp setCombatMode "YELLOW";
-        [_hGrp] call CAI_fnc_returnHome;
+    // Free the crew even if its leader just died (survivors must not stay CARELESS and booked).
+    if (!isNull _hGrp) then {
+        _hGrp setVariable ["CAI_busy", false];
+        if (({alive _x} count units _hGrp) > 0) then {
+            _hGrp setBehaviour "AWARE";
+            _hGrp setCombatMode "YELLOW";
+            [_hGrp] call CAI_fnc_returnHome;
+        };
     };
 };
 
@@ -73,7 +77,7 @@ format ["Air lift: %1 picking up %2", groupId _hGrp, groupId _inf] call CAI_fnc_
 
 if (isTouchingGround _heli) then {_heli engineOn true};
 if (!_preloaded) then {
-    [_hGrp, _pickup, "MOVE", "CARELESS", "BLUE", "FULL", 100] call CAI_fnc_addWaypoint;
+    _hGrp setCurrentWaypoint ([_hGrp, _pickup, "MOVE", "CARELESS", "BLUE", "FULL", 100] call CAI_fnc_addWaypoint);
     // Drop whatever the infantry were doing and head for the pick-up.
     [_inf, [[_pickup, "MOVE", "AWARE", "YELLOW", "FULL", 20]]] call CAI_fnc_cmdOrder;
 };
@@ -86,7 +90,8 @@ if (!(call _heliOk) || {!(call _infAlive)} || {time > _timeout}) exitWith {
 };
 
 if (!_preloaded) then {_heli land "GET IN"};
-private _boarders = units _inf select {alive _x};
+// Men already aboard (any seat) stay where they are.
+private _boarders = units _inf select {alive _x && {vehicle _x != _heli}};
 {_x assignAsCargo _heli} forEach _boarders;
 _boarders orderGetIn true;
 
@@ -97,7 +102,7 @@ waitUntil {
 };
 
 private _aboard = {alive _x && {vehicle _x == _heli}} count units _inf;
-if (!(call _heliOk) || {_aboard < ({alive _x} count units _inf) / 2}) exitWith {
+if (!(call _heliOk) || {_aboard == 0} || {_aboard < ({alive _x} count units _inf) / 2}) exitWith {
     {unassignVehicle _x} forEach units _inf;
     (units _inf) orderGetIn false;
     if (alive _heli && {isTouchingGround _heli}) then {
@@ -110,7 +115,7 @@ if (!(call _heliOk) || {_aboard < ({alive _x} count units _inf) / 2}) exitWith {
 private _left = units _inf select {alive _x && {vehicle _x != _heli}};
 if (_left isNotEqualTo []) then {
     {unassignVehicle _x} forEach _left;
-    _left joinSilent createGroup [side _inf, true];
+    [_inf, _left, _finalWps, _targetPos] call CAI_fnc_splitOff;
 };
 
 // --- 2. Wait for the go (timed insertions) -----------------------------------
@@ -141,7 +146,7 @@ private _padB = createVehicle ["Land_HelipadEmpty_F", _lz, [], 0, "CAN_COLLIDE"]
 
 [_hGrp] call CAI_fnc_clearWaypoints;
 _heli flyInHeight _flyHeight;
-[_hGrp, _lz, "MOVE", "CARELESS", "BLUE", "FULL", 150] call CAI_fnc_addWaypoint;
+_hGrp setCurrentWaypoint ([_hGrp, _lz, "MOVE", "CARELESS", "BLUE", "FULL", 150] call CAI_fnc_addWaypoint);
 _heli land "NONE";
 
 format ["Air lift: %1 inbound to LZ with %2 (%3 troops)", groupId _hGrp, groupId _inf, _aboard] call CAI_fnc_log;
@@ -164,6 +169,15 @@ _inf leaveVehicle _heli;
 
 _timeout = time + 20;
 waitUntil {sleep 1; (units _inf findIf {alive _x && {vehicle _x == _heli}}) < 0 || {time > _timeout}};
+// Still hovering with troops aboard: try to set down once more before giving up.
+if ((call _heliOk) && {(units _inf findIf {alive _x && {vehicle _x == _heli}}) >= 0} && {((getPosATL _heli) select 2) >= 3}) then {
+    _heli land "GET OUT";
+    _timeout = time + 45;
+    waitUntil {sleep 1; !(call _heliOk) || {isTouchingGround _heli} || {((getPosATL _heli) select 2) < 2} || {time > _timeout}};
+    {if (vehicle _x == _heli) then {doGetOut _x}} forEach units _inf;
+    _timeout = time + 15;
+    waitUntil {sleep 1; (units _inf findIf {alive _x && {vehicle _x == _heli}}) < 0 || {time > _timeout}};
+};
 if (alive _heli && {((getPosATL _heli) select 2) < 3}) then {
     {if (vehicle _x == _heli) then {moveOut _x}} forEach units _inf;
 };

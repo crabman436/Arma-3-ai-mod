@@ -219,6 +219,7 @@ A hint tells you what's coming. At most `CAI_maxResponders` groups (3) are on th
 | `CAI_tickRate` | `4` | Seconds between updates |
 | `CAI_shareRadius` | `1500` | Intel sharing range (m) |
 | `CAI_shareInterval` | `8` | Seconds between radio reports per group |
+| `CAI_shareMaxAge` | `60` | Only contacts seen in the last N seconds are reported |
 | `CAI_alertRadius` | `500` | Range at which deaths alert friendly groups |
 | `CAI_maxResponders` | `3` | Max QRF groups per group in contact |
 | `CAI_requestCooldown` | `45` | Seconds between support calls per group |
@@ -234,11 +235,15 @@ A hint tells you what's coming. At most `CAI_maxResponders` groups (3) are on th
 | `CAI_assistTimeout` | `600` | Seconds before a QRF gives up and goes home |
 | `CAI_quietTime` | `90` | Seconds without contact before a fight counts as over |
 | `CAI_maneuver` | `true` | Squad fire & maneuver |
+| `CAI_maneuverCooldown` | `75` | Seconds between flanking moves per squad |
 | `CAI_smoke` | `true` | Smoke when pinned down or flanking |
+| `CAI_smokeCooldown` | `60` | Seconds between smoke throws per squad |
 | `CAI_spacing` | `5` | In firefights, soldiers closer than this (m) spread out; `0` = off |
 | `CAI_artillery` | `true` | Mortar / artillery support |
 | `CAI_artilleryRounds` | `3` | Rounds per fire mission |
-| `CAI_artillerySafeDistance` | `200` | No fire with friendlies this close to the target |
+| `CAI_artilleryCooldown` | `90` | Seconds before a gun takes another mission |
+| `CAI_artillerySafeDistance` | `200` | No HE with friendlies (soldiers, crewed vehicles, helicopters) this close to where the rounds are aimed |
+| `CAI_artilleryMaxError` | `60` | Only fire on targets located better than this (m); the commander accepts twice this |
 | `CAI_skillFloor` | `true` | Raise teamwork skills to a minimum |
 | `CAI_playerRequests` | `true` | Action-menu fire missions and reinforcements for players |
 

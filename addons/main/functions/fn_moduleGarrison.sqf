@@ -7,6 +7,8 @@
 params [["_logic", objNull, [objNull]], ["_units", []], ["_activated", true]];
 
 if (!isServer || {!_activated} || {isNull _logic}) exitWith {};
+if (_logic getVariable ["CAI_garrisonStarted", false]) exitWith {};
+_logic setVariable ["CAI_garrisonStarted", true];
 
 private _area = _logic getVariable ["objectArea", [75, 75, 0, false, -1]];
 private _radius = ((_area select 0) max (_area select 1)) max 20;

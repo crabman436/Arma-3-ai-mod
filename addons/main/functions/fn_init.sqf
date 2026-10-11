@@ -18,16 +18,16 @@ addMissionEventHandler ["EntityKilled", {
     [_unit, _instigator] call CAI_fnc_alertNearby;
 }];
 
-// Player support requests (action menu), re-added after respawn.
+// Player support requests (action menu): added to whatever unit the player is,
+// so they follow respawn, team switch and selectPlayer.
 if (hasInterface) then {
     [] spawn {
-        waitUntil {sleep 0.5; !isNull player};
-        [player] call CAI_fnc_playerActions;
-        [player] call CAI_fnc_playerContactEH;
-        player addEventHandler ["Respawn", {
-            [_this select 0] call CAI_fnc_playerActions;
-            [_this select 0] call CAI_fnc_playerContactEH;
-        }];
+        while {true} do {
+            waitUntil {sleep 1; !isNull player && {!(player getVariable ["CAI_playerSetup", false])}};
+            player setVariable ["CAI_playerSetup", true];
+            [player] call CAI_fnc_playerActions;
+            [player] call CAI_fnc_playerContactEH;
+        };
     };
 };
 

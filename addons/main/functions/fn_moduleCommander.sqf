@@ -84,10 +84,19 @@ private _free = {
     && {!unitIsUAV vehicle _l}
     && {(CAI_excludedTypes findIf {(vehicle _l) isKindOf _x}) < 0}
     && {isNull (_g getVariable ["CAI_commander", objNull])}
+    && {(_g getVariable ["CAI_assist", []]) isEqualTo []}
     && {(units _g findIf {isPlayer _x}) < 0}
 };
 
 _groups = _groups select {side _x == _side && {[_x] call _free}};
+
+// Squads synced to a Garrison or Clear Area module have a job already.
+private _moduleTasked = {
+    params ["_g"];
+    (units _g findIf {
+        ((synchronizedObjects _x) findIf {typeOf _x in ["CAI_ModuleGarrison", "CAI_ModuleClear"]}) >= 0
+    }) >= 0
+};
 
 if (_groups isEqualTo []) then {
     _groups = allGroups select {
@@ -95,6 +104,9 @@ if (_groups isEqualTo []) then {
         && {(leader _x) distance2D _logic < _autoRadius}
         && {[_x] call _free}
         && {!(_x getVariable ["CAI_noQRF", false])}
+        && {!(_x getVariable ["CAI_garrisoned", false])}
+        && {!(_x getVariable ["CAI_clearing", false])}
+        && {!([_x] call _moduleTasked)}
     };
 };
 

@@ -23,10 +23,12 @@ private _known = [];
 _known = _known arrayIntersect _known;
 
 private _threats = _known select {alive _x && {_x distance2D _center < _outer}};
-private _inArea = _threats select {_x distance2D _center < _radius};
+// Aircraft flying over don't hold ground: they don't count as being in the objective.
+private _onGround = {private _v = vehicle _this; !(_v isKindOf "Air") || {isTouchingGround _v}};
+private _inArea = _threats select {_x distance2D _center < _radius && {_x call _onGround}};
 
 private _friendIn = {
-    alive _x && {(side group _x) == _side} && {_x distance2D _center < _radius}
+    alive _x && {(side group _x) == _side} && {_x distance2D _center < _radius} && {_x call _onGround}
 } count allUnits;
 
 private _assets = [];

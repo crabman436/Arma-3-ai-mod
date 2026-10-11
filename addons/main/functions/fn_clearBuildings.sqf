@@ -15,11 +15,14 @@
         1: ARRAY center of the area
         2: NUMBER radius
         3: NUMBER max time in seconds (default 1800)
+        4: NUMBER the group's CAI_orderId when this was ordered (default -1 = don't check):
+           if the group got other orders before this script started, it doesn't start
 */
 
-params ["_grp", "_center", "_radius", ["_maxTime", 1800]];
+params ["_grp", "_center", "_radius", ["_maxTime", 1800], ["_oid", -1]];
 
 if (isNull _grp) exitWith {};
+if (_oid >= 0 && {(_grp getVariable ["CAI_orderId", 0]) != _oid}) exitWith {};
 
 private _side = side _grp;
 private _clearedVar = format ["CAI_cleared_%1", _side];
@@ -27,6 +30,8 @@ private _claimVar = format ["CAI_claim_%1", _side];
 private _end = time + _maxTime;
 
 [_grp] call CAI_fnc_clearWaypoints;
+// A garrison that is sent to clear gives up its buildings first.
+[_grp] call CAI_fnc_releaseGroup;
 _grp setVariable ["CAI_clearing", true];
 // Own run id: if the squad is told to clear again, this older run stops.
 private _cid = (_grp getVariable ["CAI_clearId", 0]) + 1;
@@ -131,7 +136,10 @@ while {call _active} do {
     private _friendsInside = (_building nearEntities [["CAManBase"], _bRadius]) select {
         alive _x && {((side group _x) getFriend _side) >= 0.6} && {!(_x in _entry)}
     };
-    if (_inside isNotEqualTo [] && {_friendsInside isEqualTo []}) then {
+    // Not at point blank: the team is already at the door.
+    if (call _active && {_inside isNotEqualTo []} && {_friendsInside isEqualTo []}
+        && {(_entry findIf {alive _x && {_x distance (_inside select 0) < 8}}) < 0}
+    ) then {
         if ([_entry, getPosATL (_inside select 0), "frag"] call CAI_fnc_throwSmoke) then {
             sleep 3;
         };
@@ -160,15 +168,23 @@ while {call _active} do {
         _count = _count + 1;
         format ["%1 cleared %2 (%3 buildings so far)", groupId _grp, getText (configOf _building >> "displayName"), _count] call CAI_fnc_log;
     };
-    _building setVariable [_claimVar, grpNull, true];
+    // Release the claim, unless a newer clearing run of this squad has taken the same building.
+    if ((_grp getVariable ["CAI_clearId", 0]) == _cid || {!(_grp getVariable ["CAI_clearing", false])}) then {
+        if ((_building getVariable [_claimVar, grpNull]) == _grp) then {_building setVariable [_claimVar, grpNull, true]};
+    };
 
     // Regroup on the leader before the next building.
-    {if (alive _x) then {_x doWatch objNull; _x doFollow (leader _grp)}} forEach (call _men);
-    sleep 2;
+    if (call _active) then {
+        {if (alive _x) then {_x doWatch objNull; _x doFollow (leader _grp)}} forEach (call _men);
+        sleep 2;
+    };
 };
 
 if (!isNull _grp && {(_grp getVariable ["CAI_clearId", 0]) == _cid}) then {
-    {if (alive _x) then {_x doWatch objNull; _x doFollow (leader _grp)}} forEach units _grp;
+    // Regroup only if nobody gave the squad new orders meanwhile (CAI_fnc_cmdOrder clears the flag).
+    if (_grp getVariable ["CAI_clearing", false]) then {
+        {if (alive _x) then {_x doWatch objNull; _x doFollow (leader _grp)}} forEach units _grp;
+    };
     _grp setVariable ["CAI_clearing", false];
     _grp setVariable ["CAI_clearDone", time];
     format ["%1 finished clearing (%2 buildings)", groupId _grp, _count] call CAI_fnc_log;

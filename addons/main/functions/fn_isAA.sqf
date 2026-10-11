@@ -11,11 +11,14 @@ params [["_obj", objNull, [objNull]]];
 private _v = vehicle _obj;
 if (isNull _v || {!alive _v}) exitWith {false};
 
+// Cached: vehicles for good, soldiers for a minute (they can pick up a launcher).
 private _cached = _v getVariable "CAI_isAA";
-if (!isNil "_cached") exitWith {_cached};
+if (!isNil "_cached" && {(_cached select 1) > time}) exitWith {_cached select 0};
 
-private _mags = if (_v isKindOf "CAManBase") then {
-    magazines _v
+private _man = _v isKindOf "CAManBase";
+private _mags = if (_man) then {
+    // Includes the missile loaded in the launcher.
+    (magazinesAmmoFull _v) apply {_x select 0}
 } else {
     (magazinesAllTurrets _v) apply {_x select 0}
 };
@@ -25,5 +28,5 @@ private _aa = ((toLower typeOf _v) find "_aa") >= 0 || {
     }) >= 0
 };
 
-_v setVariable ["CAI_isAA", _aa];
+_v setVariable ["CAI_isAA", [_aa, [1e9, time + 60] select _man]];
 _aa

@@ -36,12 +36,26 @@ private _scored = [];
 } forEach _assets;
 _scored sort false;
 
+// Fire where our side thinks the target is, with that report's error, not at its true position.
+private _leaders = (allGroups select {
+    alive leader _x && {side _x in [west, east, independent]} && {((side _x) getFriend _side) >= 0.6}
+}) apply {leader _x};
 private _sent = 0;
 {
     if (_sent >= _max) exitWith {};
     private _t = _x select 2;
-    if ([_side, getPosATL _t, 40, _caller, _rounds, "HE", _cooldown] call CAI_fnc_fireMission) then {
-        _sent = _sent + 1;
+    private _pos = [];
+    private _err = 1e9;
+    {
+        if (_x distance2D _t < 3000) then {
+            private _tk = _x targetKnowledge _t;
+            if ((_tk select 0) && {(_tk select 5) < _err}) then {_err = _tk select 5; _pos = _tk select 6};
+        };
+    } forEach _leaders;
+    if (_pos isNotEqualTo [] && {_err <= CAI_artilleryMaxError * 2}) then {
+        if ([_side, _pos, (_err max 25), _caller, _rounds, "HE", _cooldown] call CAI_fnc_fireMission) then {
+            _sent = _sent + 1;
+        };
     };
 } forEach _scored;
 

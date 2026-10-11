@@ -19,7 +19,7 @@ private _report = {
 };
 _unit setVariable ["CAI_contactReport", _report];
 
-_unit addEventHandler ["Fired", {
+_unit addEventHandler ["FiredMan", {
     params ["_u"];
     [_u] call (_u getVariable ["CAI_contactReport", {}]);
 }];

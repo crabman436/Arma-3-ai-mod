@@ -62,7 +62,7 @@ if (_contacts isNotEqualTo []) then {
 
         if (_type == "INF") then {
             // Pop smoke when pinned down.
-            if (CAI_smoke && {_now >= (_grp getVariable ["CAI_nextSmoke", 0])}) then {
+            if (CAI_smoke && {_now >= (_grp getVariable ["CAI_nextSmoke", 0])} && {!(_grp getVariable ["CAI_garrisoned", false])}) then {
                 private _alive = units _grp select {alive _x};
                 private _supp = 0;
                 {_supp = _supp + getSuppression _x} forEach _alive;
@@ -126,7 +126,14 @@ if (_assist isNotEqualTo [] && {!(_grp getVariable ["CAI_inTransit", false])}) t
                 private _last = count waypoints _grp - 1;
                 if (_last >= 0 && {waypointType [_grp, _last] == "SAD"}) then {
                     // Each QRF gets its own spot near the intel so they don't all converge on one point.
-                    [_grp, _last] setWaypointPosition [_intel getPos [random 40, random 360], 0];
+                    private _p = _intel getPos [random 40, random 360];
+                    if (currentWaypoint _grp > _last) then {
+                        // Already searched the old spot: a new search & destroy there.
+                        private _wp = [_grp, _p, "SAD", "COMBAT", "RED", "NORMAL", 60] call CAI_fnc_addWaypoint;
+                        _grp setCurrentWaypoint _wp;
+                    } else {
+                        [_grp, _last] setWaypointPosition [_p, 0];
+                    };
                     _assist set [2, _intel];
                     _grp setVariable ["CAI_assist", _assist];
                 };

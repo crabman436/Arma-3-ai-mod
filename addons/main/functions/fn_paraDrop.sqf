@@ -37,13 +37,15 @@ _inf setVariable ["CAI_paraLanded", -1];
 _inf setVariable ["CAI_paraFailed", false];
 [_aGrp] call CAI_fnc_saveHome;
 
+// Free the crew even if its leader just died (survivors must not stay CARELESS and booked).
 private _release = {
-    if (!isNull _aGrp && {alive leader _aGrp}) then {
-        _aGrp setBehaviour "AWARE";
-        _aGrp setCombatMode "YELLOW";
-        [_aGrp] call CAI_fnc_returnHome;
-    } else {
+    if (!isNull _aGrp) then {
         _aGrp setVariable ["CAI_busy", false];
+        if (({alive _x} count units _aGrp) > 0) then {
+            _aGrp setBehaviour "AWARE";
+            _aGrp setCombatMode "YELLOW";
+            [_aGrp] call CAI_fnc_returnHome;
+        };
     };
 };
 private _fail = {
@@ -81,7 +83,8 @@ if (_need isNotEqualTo []) then {
         _need = units _inf select {alive _x && {vehicle _x != _veh}};
         {_x assignAsCargo _veh} forEach _need;
         _need orderGetIn true;
-        private _t = time + 180;
+        // Long enough to walk to a parked aircraft.
+        private _t = time + 180 + ((_veh distance2D leader _inf) / 2);
         waitUntil {sleep 2; !(call _vehOk) || {time > _t} || {(units _inf findIf {alive _x && {vehicle _x != _veh}}) < 0}};
     };
 };
@@ -93,7 +96,7 @@ if (!(call _vehOk) || {count (call _aboard) < ({alive _x} count units _inf) / 2}
 private _left = units _inf select {alive _x && {vehicle _x != _veh}};
 if (_left isNotEqualTo []) then {
     {unassignVehicle _x} forEach _left;
-    _left joinSilent createGroup [side _inf, true];
+    [_inf, _left, [], _dz] call CAI_fnc_splitOff;
 };
 
 // --- 2. Wait for the go signal ---------------------------------------------
@@ -103,30 +106,50 @@ waitUntil {sleep 2; !(call _vehOk) || {_aGrp getVariable ["CAI_paraGo", false]} 
 if !(call _vehOk) exitWith {call _fail};
 
 // --- 3. Fly over the drop zone at altitude ---------------------------------
+// A plane that comes over too low (high ground) goes around higher, up to 3 passes.
 private _alt = [300, 200] select _isHeli;
-private _dir = (getPosATL _veh) getDir _dz;
-private _past = [_dz getPos [1500, _dir], _dz] call CAI_fnc_landPos;
 if (_isHeli) then {_veh land "NONE"};
 _veh engineOn true;
-_veh flyInHeight _alt;
-[_aGrp, [[_past, "MOVE", "CARELESS", "BLUE", "FULL", 300]]] call CAI_fnc_cmdOrder;
-_aGrp setBehaviourStrong "CARELESS";
-_aGrp setCombatMode "BLUE";
-
 format ["Paradrop: %1 inbound to the drop zone", groupId _aGrp] call CAI_fnc_log;
 
 private _t = time + 900;
-waitUntil {sleep 1; !(call _vehOk) || {_veh distance2D _dz < 250} || {time > _t}};
+private _height = 0;
+private _pass = 0;
+while {_pass < 3} do {
+    _pass = _pass + 1;
+    private _dir = (getPosATL _veh) getDir _dz;
+    private _past = [_dz getPos [1500, _dir], _dz] call CAI_fnc_landPos;
+    _veh flyInHeight (_alt + 150 * (_pass - 1));
+    [_aGrp, [[_past, "MOVE", "CARELESS", "BLUE", "FULL", 300]]] call CAI_fnc_cmdOrder;
+    _aGrp setBehaviourStrong "CARELESS";
+    _aGrp setCombatMode "BLUE";
+    // Over the drop zone: within 250 m, or the closest it gets (within 600 m) on this run.
+    private _minD = 1e9;
+    waitUntil {
+        sleep 1;
+        private _d = _veh distance2D _dz;
+        private _passed = _minD < 600 && {_d > _minD + 40};
+        _minD = _minD min _d;
+        !(call _vehOk) || {_d < 250} || {_passed} || {time > _t}
+    };
+    _height = (getPos _veh) select 2;
+    if (!(call _vehOk) || {_isHeli} || {_height > 90} || {time > _t}) exitWith {};
+    format ["Paradrop: %1 too low over the drop zone, going around", groupId _aGrp] call CAI_fnc_log;
+    // Fly on a bit before turning back in.
+    private _out = time + 40;
+    waitUntil {sleep 1; !(call _vehOk) || {_veh distance2D _dz > 1200} || {time > _out}};
+};
 
 private _jumpers = call _aboard;
-private _height = (getPos _veh) select 2;
 
 if (!(call _vehOk) && {!alive _veh}) exitWith {
     _inf setVariable ["CAI_inTransit", false];
     _inf setVariable ["CAI_paraFailed", true];
+    call _release;
 };
 
-if (_height > 90) then {
+// Planes can't land: after the go-arounds the stick jumps anyway (the chutes open at once).
+if (_height > 90 || {!_isHeli}) then {
     // --- 4a. Jump: a stick of paratroopers, half a second apart.
     {
         if (alive _x && {vehicle _x == _veh}) then {
@@ -146,8 +169,8 @@ if (_height > 90) then {
     // --- 4b. Too low to jump (helicopter couldn't climb): land and unload instead.
     if (_isHeli && {call _vehOk}) then {
         _veh land "GET OUT";
-        private _tl = time + 60;
-        waitUntil {sleep 1; !(call _vehOk) || {isTouchingGround _veh} || {time > _tl}};
+        private _tl = time + 90;
+        waitUntil {sleep 1; !(call _vehOk) || {isTouchingGround _veh} || {((getPosATL _veh) select 2) < 2} || {time > _tl}};
     };
     _inf leaveVehicle _veh;
     {unassignVehicle _x; if (vehicle _x == _veh) then {doGetOut _x}} forEach units _inf;
@@ -169,6 +192,12 @@ waitUntil {
 };
 
 _inf setVariable ["CAI_inTransit", false];
+// Anyone still inside the aircraft never got down: the squad didn't make it.
+if ((units _inf findIf {alive _x && {vehicle _x == _veh}}) >= 0) exitWith {
+    {unassignVehicle _x} forEach units _inf;
+    _inf setVariable ["CAI_paraFailed", true];
+    format ["Paradrop: %1 could not get %2 out over the drop zone", groupId _aGrp, groupId _inf] call CAI_fnc_log;
+};
 _inf setVariable ["CAI_paraLanded", time];
 if (call _infAlive) then {
     if (_finalWps isEqualTo []) then {
