@@ -280,4 +280,5 @@ addons/main/
     ...
 mod.cpp
 .hemtt/project.toml
+tests/run_tests.py        logic tests run in SQF-VM (see the file for how to run them)
 ```
