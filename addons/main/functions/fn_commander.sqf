@@ -157,7 +157,8 @@ private _isNight = {sunOrMoon < 0.3};
 // Put an infantry group on the nearest free commanded truck. Returns true if it worked.
 private _truckLift = {
     params ["_g", "_drop", "_final"];
-    if (!CAI_truckLift) exitWith {false};
+    // Squads already riding in their own vehicle just drive.
+    if (!CAI_truckLift || {!isNull objectParent leader _g}) exitWith {false};
     private _need = {alive _x} count units _g;
     private _best = grpNull;
     private _bestD = 3000;
@@ -185,7 +186,7 @@ private _truckLift = {
 // The helicopter picks the squad up where it is, lands at _lz and goes home (then it's free again).
 private _heliShuttle = {
     params ["_g", "_lz", "_final"];
-    if (!CAI_airLift) exitWith {false};
+    if (!CAI_airLift || {!isNull objectParent leader _g}) exitWith {false};
     private _need = {alive _x} count units _g;
     private _best = grpNull;
     private _bestD = CAI_airRadius;
@@ -508,8 +509,13 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
                 _secureSince = -1;
                 _hHour = -1;
                 _logic setVariable ["CAI_saidAdvance", false];
-                private _inf = _alive select {([_x] call CAI_fnc_groupType) == "INF" && {(_x call _roleOf) in ["STAGING", "AWAIT_LIFT"]}};
                 private _veh = _alive select {([_x] call CAI_fnc_groupType) == "GROUND" && {(_x call _roleOf) == "STAGING"}};
+                // Every other staged squad attacks on foot, also ones that drove up in a vehicle they found
+                // (they get out when they start bounding), so nobody is left without orders.
+                private _inf = (_alive - _veh) select {
+                    (_x call _roleOf) in ["STAGING", "AWAIT_LIFT"]
+                    && {!(([_x] call CAI_fnc_groupType) in ["HELI_ATTACK", "HELI_TRANSPORT", "JET", "PLANE_TRANSPORT", "ARTY"])}
+                };
                 private _nRes = floor ((count _inf) * _reservePct);
                 if (count _inf - _nRes < 1) then {_nRes = 0};
                 private _reserve = _inf select [count _inf - _nRes, _nRes];
@@ -673,6 +679,42 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
                 };
             } forEach _alive;
 
+            // --- Stuck squads: barely moved for 3 minutes and not fighting -> out of the vehicles, fresh orders.
+            {
+                private _g = _x;
+                private _role = _g call _roleOf;
+                if (_role in ["ASSAULT", "FORMUP", "COUNTER"]
+                    && {!(_g getVariable ["CAI_inTransit", false])}
+                    && {!(_g getVariable ["CAI_clearing", false])}
+                    && {!(_g getVariable ["CAI_garrisoned", false])}
+                    && {time - (_g getVariable ["CAI_lastContact", -1e6]) > 60}
+                ) then {
+                    private _lp = getPosATL leader _g;
+                    private _mv = _g getVariable ["CAI_cmdMoved", []];
+                    if (_mv isEqualTo [] || {(_mv select 0) < (_g getVariable ["CAI_cmdSince", 0])} || {_lp distance2D (_mv select 1) > 25}) then {
+                        _g setVariable ["CAI_cmdMoved", [time, _lp]];
+                    } else {
+                        if (time - (_mv select 0) > 180) then {
+                            _g setVariable ["CAI_cmdMoved", [time, _lp]];
+                            [_g, false] call CAI_fnc_dismount;
+                            private _axis = _g getVariable ["CAI_cmdAxis", []];
+                            if (_role == "FORMUP" && {_axis isNotEqualTo []}) then {
+                                [_g, [[_axis select 0, "MOVE", "AWARE", "YELLOW", "FULL", 40]]] call CAI_fnc_cmdOrder;
+                            } else {
+                                private _t = [_inArea, _lp] call _nearestTo;
+                                private _pos = if (isNull _t) then {
+                                    [_center getPos [random (_radius * 0.5), random 360], _center] call CAI_fnc_landPos
+                                } else {
+                                    (getPosATL _t) getPos [random 25, random 360]
+                                };
+                                [_g, [[_pos, "SAD", "COMBAT", "RED", "FULL", 60]]] call CAI_fnc_cmdOrder;
+                            };
+                            format ["%1 (%2) was stuck, new orders", groupId _g, _role] call CAI_fnc_log;
+                        };
+                    };
+                };
+            } forEach _alive;
+
             // --- Depleted squads (3 men or fewer) merge with a nearby squad.
             private _weak = _alive select {
                 ([_x] call CAI_fnc_groupType) == "INF"
@@ -819,12 +861,16 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
                     {
                         _x setVariable ["CAI_cmdInitial", {alive _x} count units _x];
                         private _type = [_x] call CAI_fnc_groupType;
-                        // Paratroopers still on their way keep their role.
-                        if !((_x call _roleOf) in ["PARA", "PARA_LIFT", "HELO", "HELO_LIFT"]) then {
-                        if (_type in ["INF", "GROUND"]) then {[_x, "STAGING"] call _setRole};
-                        if (_type in ["HELI_TRANSPORT", "PLANE_TRANSPORT"]) then {[_x, "LIFT"] call _setRole};
-                        if (_type == "TRUCK") then {[_x, "TRUCK"] call _setRole};
-                        if (_type == "ARTY") then {[_x, "FIRES"] call _setRole};
+                        // Paratroopers and air assault squads still on their way keep their role.
+                        // Commander-crewed trucks stay trucks; squads that drove off in a vehicle are infantry again.
+                        private _role = _x call _roleOf;
+                        if !(_role in ["PARA", "PARA_LIFT", "HELO", "HELO_LIFT", "LIFT_BUSY"]) then {
+                            switch (true) do {
+                                case (_type in ["HELI_TRANSPORT", "PLANE_TRANSPORT"]): {[_x, "LIFT"] call _setRole};
+                                case (_type == "ARTY"): {[_x, "FIRES"] call _setRole};
+                                case (_type in ["TRUCK", "UNARMED"] && {_role in ["TRUCK", "IDLE"]}): {};
+                                case (_type in ["INF", "GROUND", "TRUCK", "UNARMED"]): {[_x, "STAGING"] call _setRole};
+                            };
                         };
                     } forEach _alive;
                     format ["Attack on %1, attempt %2. Stand by.", _objName, _attempt] call _say;

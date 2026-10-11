@@ -24,6 +24,8 @@ _dest = [_dest select 0, _dest select 1, 0];
 _grp setVariable ["CAI_bounding", true];
 private _bid = (_grp getVariable ["CAI_boundId", 0]) + 1;
 _grp setVariable ["CAI_boundId", _bid];
+// Bounding is done on foot: a mounted squad gets out first.
+[_grp] call CAI_fnc_dismount;
 _grp setBehaviour "AWARE";
 _grp setCombatMode "YELLOW";
 

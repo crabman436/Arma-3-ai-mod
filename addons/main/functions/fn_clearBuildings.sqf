@@ -31,6 +31,8 @@ _grp setVariable ["CAI_clearing", true];
 // Own run id: if the squad is told to clear again, this older run stops.
 private _cid = (_grp getVariable ["CAI_clearId", 0]) + 1;
 _grp setVariable ["CAI_clearId", _cid];
+// Buildings are cleared on foot: a mounted squad gets out first.
+[_grp] call CAI_fnc_dismount;
 _grp setBehaviour "COMBAT";
 _grp setCombatMode "RED";
 {

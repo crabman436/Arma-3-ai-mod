@@ -20,6 +20,7 @@ class CfgFunctions {
             class log {};
             class isValidGroup {};
             class groupType {};
+            class dismount {};
             class threatValue {};
             class revealTo {};
             class processGroup {};

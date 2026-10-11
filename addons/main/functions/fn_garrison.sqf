@@ -21,7 +21,9 @@
 
 params ["_grp", "_center", ["_radius", 60], ["_threatDir", -1]];
 
-private _units = units _grp select {alive _x && {isNull objectParent _x} && {!isPlayer _x}};
+// Mounted squads get out first (the crew of an armed vehicle stays with it).
+[_grp, false] call CAI_fnc_dismount;
+private _units = units _grp select {alive _x && {!isPlayer _x} && {isNull objectParent _x || {(assignedVehicleRole _x) isEqualTo []}}};
 if (_units isEqualTo []) exitWith {false};
 
 private _key = format ["CAI_garrisonTaken_%1", side _grp];
@@ -103,7 +105,9 @@ format ["%1 garrisoning %2 (%3 positions)", groupId _grp, getText (configOf _mai
 [_grp, _units, _picked, _gid] spawn {
     params ["_grp", "_units", "_picked", "_gid"];
     private _mine = {!isNull _grp && {_grp getVariable ["CAI_garrisoned", false]} && {(_grp getVariable ["CAI_garrisonId", 0]) == _gid}};
-    sleep 1;
+    // Anyone still climbing out of a vehicle gets a moment.
+    private _t = time + 12;
+    waitUntil {sleep 1; time > _t || {(_units findIf {alive _x && {!isNull objectParent _x}}) < 0}};
     {
         private _spot = _picked select (_forEachIndex mod count _picked);
         _x doMove (_spot select 2);

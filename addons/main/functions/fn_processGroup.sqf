@@ -15,6 +15,24 @@ if (CAI_skillFloor && {(_grp getVariable ["CAI_skilledCount", -1]) != count unit
     [_grp] call CAI_fnc_skillFloor;
 };
 
+// --- Transit watchdog ------------------------------------------------------
+// A lift script that died (transport destroyed mid-way, deleted, ...) can leave the
+// squad flagged "in transit" forever, and then nobody gives it orders again.
+if (_grp getVariable ["CAI_inTransit", false]) then {
+    private _since = _grp getVariable ["CAI_transitSince", -1];
+    if (_since < 0) then {
+        _grp setVariable ["CAI_transitSince", _now];
+    } else {
+        if (_now - _since > 900 && {isNull objectParent _leader}) then {
+            _grp setVariable ["CAI_inTransit", false];
+            _grp setVariable ["CAI_transitSince", -1];
+            format ["%1 was stuck waiting for transport, released", groupId _grp] call CAI_fnc_log;
+        };
+    };
+} else {
+    _grp setVariable ["CAI_transitSince", -1];
+};
+
 // --- Contact detection ---------------------------------------------------
 private _range = [2000, 4000] select (_type in ["HELI_ATTACK", "HELI_TRANSPORT", "JET", "PLANE_TRANSPORT"]);
 private _contacts = (_leader targets [true, _range, [], CAI_shareMaxAge]) select {

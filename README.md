@@ -40,6 +40,8 @@ group of the chosen side within the auto-assign radius (2 km by default).
    - **Pinned squads** that stop making progress under fire get a smoke screen between them and the enemy, a fire mission on whatever is pinning them, and the vehicles' attention.
    - **Depleted squads** (3 men or fewer) **merge** with a nearby squad. Squads below 35 % strength fall back.
    - Once in the town, squads **clear the buildings room by room** (see below), splitting the buildings between them, with progress reported over the radio.
+   - **Mounted squads** (a squad that drove up in a vehicle it found, or that starts in its own truck) count as infantry: they **get out** before they bound, clear buildings or garrison. Armed vehicles keep their crew on the guns.
+   - **Stuck squads:** an assault squad that has barely moved for 3 minutes without a fight gets out of any vehicle and gets fresh orders. A squad left waiting for a transport that never came is released after 15 minutes.
    - **Reinforce success:** when the assault stalls (or after 4 minutes) the reserve goes to the lane that has got furthest in and bounds forward from there.
 6. **Secured:** when no known enemies are left in the area for 45 s **and at least 60 % of its buildings are cleared** (or after 25 minutes), the commander switches to **Defend**.
 7. **Failed:** if everyone is broken or 20 minutes pass, the force regroups at the staging area and attacks again, as long as it still has at least 4 men.
@@ -264,6 +266,7 @@ addons/main/
     fn_moduleGarrison.sqf / fn_moduleClear.sqf
     fn_cmdFires.sqf / fn_cmdAir.sqf / fn_isAA.sqf   commander fire plan and air tasking
     fn_boundAdvance.sqf / fn_pickPos.sqf            bounding overwatch, attack and overwatch positions
+    fn_dismount.sqf                                 squads get out of their own vehicles to fight on foot
     fn_paraDrop.sqf                                 paradrop (load, fly, jump in a stick, rally)
     ...
 mod.cpp

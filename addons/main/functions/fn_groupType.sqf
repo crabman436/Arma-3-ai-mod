@@ -5,6 +5,7 @@
     Returns: "INF", "GROUND", "TRUCK", "UNARMED", "HELI_ATTACK", "HELI_TRANSPORT", "JET", "PLANE_TRANSPORT" or "ARTY"
         TRUCK   = unarmed ground vehicle with at least 4 passenger seats
         UNARMED = other unarmed ground vehicles (fuel/ammo/repair trucks...)
+    A squad of more than 3 where most men are passengers or on foot counts as INF.
 */
 
 params [["_grp", grpNull, [grpNull]]];
@@ -21,6 +22,9 @@ private _type = call {
     // Riding in someone else's vehicle (or as a passenger): still infantry.
     if ((toLower ((assignedVehicleRole _leader) param [0, ""])) == "cargo" || {group effectiveCommander _veh != _grp}) exitWith {"INF"};
     if (getNumber (configOf _veh >> "artilleryScanner") == 1) exitWith {"ARTY"};
+    // Motorized infantry: a full squad riding in its own vehicle(s) is still a rifle squad.
+    private _men = (units _grp) select {alive _x};
+    if (count _men > 3 && {({isNull objectParent _x || {(toLower ((assignedVehicleRole _x) param [0, ""])) == "cargo"}} count _men) > (count _men) / 2}) exitWith {"INF"};
 
     if (_veh isKindOf "Helicopter") exitWith {
         // Door guns don't count: only pilot (-1) and main gunner (0) weapons make an attack helicopter.
