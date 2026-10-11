@@ -112,6 +112,14 @@ while {call _active} do {
     } forEach _positions;
     _sorted sort true;
     _positions = _sorted apply {_x select 3};
+    // Big buildings (hospitals, offices...) have dozens of positions: sweep a spread of
+    // up to 16 of them, still floor by floor, instead of stopping at every one.
+    if (count _positions > 16) then {
+        private _stepP = (count _positions) / 16;
+        private _sample = [];
+        for "_j" from 0 to 15 do {_sample pushBack (_positions select (floor (_j * _stepP)))};
+        _positions = _sample;
+    };
 
     // Stack up at the first position.
     {_x doMove (_positions select 0)} forEach _entry;
