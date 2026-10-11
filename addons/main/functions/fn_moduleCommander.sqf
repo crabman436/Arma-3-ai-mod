@@ -84,7 +84,6 @@ private _free = {
     && {!unitIsUAV vehicle _l}
     && {(CAI_excludedTypes findIf {(vehicle _l) isKindOf _x}) < 0}
     && {isNull (_g getVariable ["CAI_commander", objNull])}
-    && {(_g getVariable ["CAI_assist", []]) isEqualTo []}
     && {(units _g findIf {isPlayer _x}) < 0}
 };
 
@@ -104,6 +103,7 @@ if (_groups isEqualTo []) then {
         && {(leader _x) distance2D _logic < _autoRadius}
         && {[_x] call _free}
         && {!(_x getVariable ["CAI_noQRF", false])}
+        && {(_x getVariable ["CAI_assist", []]) isEqualTo []}
         && {!(_x getVariable ["CAI_garrisoned", false])}
         && {!(_x getVariable ["CAI_clearing", false])}
         && {!([_x] call _moduleTasked)}
@@ -115,6 +115,10 @@ if (_groups isEqualTo []) exitWith {
 };
 
 // Claim the groups right away so other commanders starting at the same moment can't take them.
-{_x setVariable ["CAI_commander", _logic, true]} forEach _groups;
+// A synced group that was out on quick reaction duty drops it: it's the commander's now.
+{
+    _x setVariable ["CAI_commander", _logic, true];
+    _x setVariable ["CAI_assist", []];
+} forEach _groups;
 
 [_logic, _side, _groups, _mode, _radius, _reserve, _radio, _markers, [_fireLevel, _airSupport, _refit, _clear, _para, _helo]] spawn CAI_fnc_commander;

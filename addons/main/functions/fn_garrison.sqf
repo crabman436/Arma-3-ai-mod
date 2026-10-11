@@ -23,9 +23,6 @@ params ["_grp", "_center", ["_radius", 60], ["_threatDir", -1]];
 
 // Mounted squads get out first (the crew of an armed vehicle stays with it).
 [_grp, false] call CAI_fnc_dismount;
-// Give up any buildings held from an earlier garrison first, so booking the new ones below
-// isn't undone when the move order releases the old list.
-[_grp] call CAI_fnc_releaseGroup;
 private _units = units _grp select {alive _x && {!isPlayer _x} && {isNull objectParent _x || {(assignedVehicleRole _x) isEqualTo []}}};
 if (_units isEqualTo []) exitWith {false};
 
@@ -42,6 +39,10 @@ _taken = _taken select {
 
 private _buildings = ([_center, _radius, 3] call CAI_fnc_buildingsIn) - _taken;
 if (_buildings isEqualTo []) exitWith {false};
+
+// There is somewhere to go: give up the buildings of an earlier garrison now, so booking the
+// new ones below isn't undone when the move order releases the old list.
+[_grp] call CAI_fnc_releaseGroup;
 
 // Pick one of the most central free buildings, then add neighbours until there's room.
 private _main = selectRandom (_buildings select [0, 4]);

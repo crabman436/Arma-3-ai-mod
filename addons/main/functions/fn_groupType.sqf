@@ -23,7 +23,7 @@ private _loaded = {
 private _cache = _grp getVariable ["CAI_typeCache", []];
 if (_cache isNotEqualTo [] && {(_cache select 0) isEqualTo _veh} && {(_cache select 1) isEqualTo _leader}) exitWith {
     private _t = _cache select 2;
-    if (_t == "HELI_ATTACK" && {call _loaded}) then {"HELI_TRANSPORT"} else {_t}
+    [_t, "HELI_TRANSPORT"] select (_t == "HELI_ATTACK" && {call _loaded})
 };
 
 private _type = call {
@@ -31,8 +31,6 @@ private _type = call {
     // Riding in someone else's vehicle (or as a passenger): still infantry.
     if ((toLower ((assignedVehicleRole _leader) param [0, ""])) == "cargo" || {group effectiveCommander _veh != _grp}) exitWith {"INF"};
     if (getNumber (configOf _veh >> "artilleryScanner") == 1) exitWith {"ARTY"};
-    // A squad driving a vehicle it grabbed (CAI_fnc_grabVehicles) is infantry on wheels.
-    if ((_veh getVariable ["CAI_claimedBy", grpNull]) == _grp) exitWith {"INF"};
     // Motorized infantry: a full squad riding in its own vehicle(s) is still a rifle squad.
     private _men = (units _grp) select {alive _x};
     if (count _men > 3 && {({isNull objectParent _x || {(toLower ((assignedVehicleRole _x) param [0, ""])) == "cargo"}} count _men) > (count _men) / 2}) exitWith {"INF"};
@@ -65,14 +63,16 @@ private _type = call {
             private _w = toLower _x;
             (["horn", "smokelauncher", "cmflare", "laserdesignator", "fake"] findIf {(_w find _x) >= 0}) < 0
         }) >= 0;
-        if (_armed) then {
-            "GROUND"
-        } else {
-            ["UNARMED", "TRUCK"] select ((count fullCrew [_veh, "cargo", true]) >= 4)
+        switch (true) do {
+            case (_armed): {"GROUND"};
+            // A squad driving an unarmed vehicle it grabbed (CAI_fnc_grabVehicles) is infantry on
+            // wheels, not a transport for others.
+            case ((_veh getVariable ["CAI_claimedBy", grpNull]) == _grp): {"INF"};
+            default {["UNARMED", "TRUCK"] select ((count fullCrew [_veh, "cargo", true]) >= 4)};
         };
     };
     "GROUND"
 };
 
 _grp setVariable ["CAI_typeCache", [_veh, _leader, _type]];
-if (_type == "HELI_ATTACK" && {call _loaded}) then {"HELI_TRANSPORT"} else {_type}
+[_type, "HELI_TRANSPORT"] select (_type == "HELI_ATTACK" && {call _loaded})

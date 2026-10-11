@@ -32,12 +32,16 @@ private _how = "";
 private _ok = true;
 switch (_type) do {
     case "INF": {
+        // Already in its own car or truck: just drive there (no lift).
+        private _mounted = !isNull objectParent _leader && {!((objectParent _leader) isKindOf "Helicopter")};
+        if (_mounted) then {_how = "by vehicle"};
+        // Ride thresholds never above the walking range, so a squad picked because it can ride does ride.
         private _heli = objNull;
-        if (CAI_airLift && {_dist > CAI_airLiftMinDistance || {(objectParent _leader) isKindOf "Helicopter"}}) then {
+        if (!_mounted && {CAI_airLift} && {_dist > (CAI_airLiftMinDistance min CAI_infantryRadius) || {(objectParent _leader) isKindOf "Helicopter"}}) then {
             _heli = [_grp, _targetPos] call CAI_fnc_findTransport;
         };
         private _truck = objNull;
-        if (isNull _heli && {CAI_truckLift} && {_dist > 600}) then {
+        if (!_mounted && {isNull _heli} && {CAI_truckLift} && {_dist > (600 min CAI_infantryRadius)}) then {
             _truck = [_grp, _targetPos, "TRUCK", CAI_truckRadius] call CAI_fnc_findTransport;
         };
         switch (true) do {
@@ -60,7 +64,7 @@ switch (_type) do {
                 _how = format ["by truck (%1)", getText (configOf _truck >> "displayName")];
             };
             default {
-                if (CAI_grabVehicles && {_dist > 500}) then {
+                if (!_mounted && {CAI_grabVehicles} && {_dist > (500 min CAI_infantryRadius)}) then {
                     if ([_grp, false] call CAI_fnc_grabVehicles) then {_how = "by vehicle"};
                 };
                 // Too far to walk and no ride left: don't go (and don't use up a responder slot).
