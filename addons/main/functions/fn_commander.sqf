@@ -100,7 +100,7 @@ private _runAir = {
         } forEach _groupsNow;
         _tic = _tic arrayIntersect _tic;
         _escortLZs = _escortLZs select {(_x select 1) > time};
-        private _friendPos = if (_staging isEqualTo [] || {(_state find "DEFEND") == 0}) then {_center} else {_staging};
+        private _friendPos = [_staging, _center] select (_staging isEqualTo [] || {(_state find "DEFEND") == 0});
         [_logic, _groupsNow call _airOf, _targets, _center, _radius, _engage, _refit, _side, _radio,
             _friendPos, _tic, _escortLZs apply {_x select 0}, _objName] call CAI_fnc_cmdAir;
     };
