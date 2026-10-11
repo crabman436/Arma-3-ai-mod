@@ -18,7 +18,8 @@ _home params ["_pos", "_orig", "_behaviour", "_combat", "_landed"];
 [_grp] call CAI_fnc_clearWaypoints;
 private _wp = [_grp, _pos, "MOVE", "AWARE", _combat, "NORMAL", 50] call CAI_fnc_addWaypoint;
 if (_landed) then {
-    _wp setWaypointStatements ["true", "(vehicle this) land 'LAND'"];
+    // Only helicopters can land on a spot (planes can't; a crew that got out has no vehicle).
+    _wp setWaypointStatements ["true", "if ((vehicle this) isKindOf 'Helicopter') then {(vehicle this) land 'LAND'}"];
 };
 if (_orig isNotEqualTo []) then {
     _orig params ["_type", "_origPos"];
