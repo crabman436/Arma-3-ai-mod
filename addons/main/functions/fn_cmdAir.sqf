@@ -37,7 +37,9 @@ params ["_logic", "_airGroups", "_targets", "_center", "_radius", "_engage", "_r
 
 if (_friendPos isEqualTo []) then {_friendPos = _center};
 private _compass = {
-    ["north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west"] select ((round (_this / 45)) % 8)
+    // Any angle, including negative ones from lane offsets.
+    private _deg = ((_this % 360) + 360) % 360;
+    ["north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west"] select ((round (_deg / 45)) % 8)
 };
 // Best target: LZ threats first, then enemies engaging our troops, then value; helicopters avoid AA.
 private _pickTarget = {

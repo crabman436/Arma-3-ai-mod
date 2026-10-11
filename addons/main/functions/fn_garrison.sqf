@@ -94,11 +94,15 @@ private _picked = [];
 [_grp, [[getPosATL _main, "MOVE", "AWARE", "YELLOW", "FULL", 25]]] call CAI_fnc_cmdOrder;
 _grp setVariable ["CAI_garrisonBuildings", _use];
 _grp setVariable ["CAI_garrisoned", true];
+// Each garrison order has its own id, so an older garrison script still running stops.
+private _gid = (_grp getVariable ["CAI_garrisonId", 0]) + 1;
+_grp setVariable ["CAI_garrisonId", _gid];
 
 format ["%1 garrisoning %2 (%3 positions)", groupId _grp, getText (configOf _main >> "displayName"), count _picked] call CAI_fnc_log;
 
-[_grp, _units, _picked] spawn {
-    params ["_grp", "_units", "_picked"];
+[_grp, _units, _picked, _gid] spawn {
+    params ["_grp", "_units", "_picked", "_gid"];
+    private _mine = {!isNull _grp && {_grp getVariable ["CAI_garrisoned", false]} && {(_grp getVariable ["CAI_garrisonId", 0]) == _gid}};
     sleep 1;
     {
         private _spot = _picked select (_forEachIndex mod count _picked);
@@ -108,7 +112,7 @@ format ["%1 garrisoning %2 (%3 positions)", groupId _grp, getText (configOf _mai
 
     private _end = time + 150;
     waitUntil {sleep 3; time > _end || {(_units findIf {alive _x && {!unitReady _x}}) < 0}};
-    if (isNull _grp || {!(_grp getVariable ["CAI_garrisoned", false])}) exitWith {};
+    if !(call _mine) exitWith {};
 
     {
         if (alive _x) then {
@@ -121,7 +125,7 @@ format ["%1 garrisoning %2 (%3 positions)", groupId _grp, getText (configOf _mai
     } forEach _units;
 
     // Watch for breaches: soldiers with enemies right on top of them are released to fight.
-    while {!isNull _grp && {_grp getVariable ["CAI_garrisoned", false]} && {(_units findIf {alive _x}) >= 0}} do {
+    while {(call _mine) && {(_units findIf {alive _x}) >= 0}} do {
         {
             if (alive _x && {!(_x checkAIFeature "PATH")}) then {
                 private _close = (_x targets [true, 25]) select {alive _x};

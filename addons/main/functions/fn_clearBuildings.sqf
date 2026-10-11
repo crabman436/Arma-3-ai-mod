@@ -28,6 +28,9 @@ private _end = time + _maxTime;
 
 [_grp] call CAI_fnc_clearWaypoints;
 _grp setVariable ["CAI_clearing", true];
+// Own run id: if the squad is told to clear again, this older run stops.
+private _cid = (_grp getVariable ["CAI_clearId", 0]) + 1;
+_grp setVariable ["CAI_clearId", _cid];
 _grp setBehaviour "COMBAT";
 _grp setCombatMode "RED";
 {
@@ -38,7 +41,7 @@ _grp setCombatMode "RED";
 } forEach units _grp;
 
 private _active = {
-    !isNull _grp && {_grp getVariable ["CAI_clearing", false]} && {time < _end}
+    !isNull _grp && {_grp getVariable ["CAI_clearing", false]} && {(_grp getVariable ["CAI_clearId", 0]) == _cid} && {time < _end}
 };
 private _men = {
     units _grp select {alive _x && {isNull objectParent _x} && {!isPlayer _x}}
@@ -154,7 +157,7 @@ while {call _active} do {
     sleep 2;
 };
 
-if (!isNull _grp) then {
+if (!isNull _grp && {(_grp getVariable ["CAI_clearId", 0]) == _cid}) then {
     {if (alive _x) then {_x doWatch objNull; _x doFollow (leader _grp)}} forEach units _grp;
     _grp setVariable ["CAI_clearing", false];
     _grp setVariable ["CAI_clearDone", time];

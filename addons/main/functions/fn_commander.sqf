@@ -63,7 +63,9 @@ private _isIdle = {
     currentWaypoint _this >= count waypoints _this && {!(_this getVariable ["CAI_inTransit", false])}
 };
 private _compass = {
-    ["north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west"] select ((round (_this / 45)) % 8)
+    // Any angle, including negative ones from lane offsets.
+    private _deg = ((_this % 360) + 360) % 360;
+    ["north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west"] select ((round (_deg / 45)) % 8)
 };
 private _say = {
     [_side, _this, _radio] call CAI_fnc_cmdRadio;
@@ -174,6 +176,7 @@ private _truckLift = {
     } forEach (call _aliveGroups);
     if (isNull _best) exitWith {false};
     _best setVariable ["CAI_busy", true];
+    _g setVariable ["CAI_inTransit", true];
     [_g, _best, _drop, _final] spawn CAI_fnc_groundLift;
     format ["%1 mounting up on %2.", groupId _g, getText (configOf vehicle leader _best >> "displayName")] call _say;
     true
@@ -484,6 +487,7 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
                             private _heli = _lifts deleteAt 0;
                             [_heli, "LIFT_BUSY"] call _setRole;
                             _heli setVariable ["CAI_busy", true];
+                            _x setVariable ["CAI_inTransit", true];
                             private _lz = [_center getPos [_radius + 650, _axisDir], _center] call CAI_fnc_landPos;
                             [_x, _heli, _center, grpNull, _orders, _lz] spawn CAI_fnc_airLift;
                         };
@@ -852,6 +856,7 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
 
             {
                 private _p = [_center getPos [random (_radius * 0.3), random 360], _center] call CAI_fnc_landPos;
+                _x setVariable ["CAI_defPos", _p];
                 [_x, [[_p, "MOVE", "AWARE", "YELLOW", "NORMAL", 30]]] call CAI_fnc_cmdOrder;
                 [_x, "RESERVE"] call _setRole;
             } forEach _reserve;
@@ -861,6 +866,7 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
             {
                 private _dir = _threatDir + ([0, -45, 45, -90, 90, 180] select (_forEachIndex % 6));
                 private _p = [_center, _dir, _radius * 0.4, _radius * 0.9, true, _radius, 25, _center getPos [_radius + 600, _dir]] call CAI_fnc_pickPos;
+                _x setVariable ["CAI_defPos", _p];
                 [_x, [[_p, "MOVE", "AWARE", "YELLOW", "NORMAL", 25]]] call CAI_fnc_cmdOrder;
                 [_x, "RESERVE"] call _setRole;
             } forEach _veh;
@@ -947,7 +953,9 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
                         if (([_x] call CAI_fnc_groupType) in ["HELI_ATTACK", "JET"]) then {
                             [_x] call CAI_fnc_returnHome;
                         } else {
-                            private _p = [_center getPos [random (_radius * 0.4), random 360], _center] call CAI_fnc_landPos;
+                            // Back to its own defensive position (vehicles: their overwatch).
+                            private _p = _x getVariable ["CAI_defPos", []];
+                            if (_p isEqualTo []) then {_p = [_center getPos [random (_radius * 0.4), random 360], _center] call CAI_fnc_landPos};
                             [_x, [[_p, "MOVE", "AWARE", "YELLOW", "NORMAL", 30]]] call CAI_fnc_cmdOrder;
                         };
                         [_x, "RESERVE"] call _setRole;

@@ -22,12 +22,14 @@ _dest = [_dest select 0, _dest select 1, 0];
 
 [_grp] call CAI_fnc_clearWaypoints;
 _grp setVariable ["CAI_bounding", true];
+private _bid = (_grp getVariable ["CAI_boundId", 0]) + 1;
+_grp setVariable ["CAI_boundId", _bid];
 _grp setBehaviour "AWARE";
 _grp setCombatMode "YELLOW";
 
 private _end = time + _maxTime;
 private _active = {
-    !isNull _grp && {_grp getVariable ["CAI_bounding", false]} && {time < _end}
+    !isNull _grp && {_grp getVariable ["CAI_bounding", false]} && {(_grp getVariable ["CAI_boundId", 0]) == _bid} && {time < _end}
 };
 private _men = {
     units _grp select {alive _x && {isNull objectParent _x} && {!isPlayer _x} && {_x checkAIFeature "PATH"}}
@@ -112,7 +114,7 @@ if (count _all < 4) then {
     };
 };
 
-if (!isNull _grp) then {
+if (!isNull _grp && {(_grp getVariable ["CAI_boundId", 0]) == _bid}) then {
     {
         if (alive _x && {!isPlayer _x}) then {
             _x setUnitPos "AUTO";
