@@ -32,17 +32,21 @@ if (!isNull objectParent _leader) exitWith {};
 
 // --- Not in contact: rejoin and restore formation ----------------------------
 if (_contacts isEqualTo []) exitWith {
+    // Enemy lists blink empty mid-fight; only stand down after 20 quiet seconds.
+    private _quiet = time - (_grp getVariable ["CAI_lastContact", -1e6]);
+    if (_quiet > 20) then {
+        {
+            if ((_x getVariable ["CAI_spreadAt", -1]) > 0) then {
+                _x setVariable ["CAI_spreadAt", -1];
+                if (alive _x) then {_x doFollow _leader};
+            };
+        } forEach units _grp;
+    };
     private _old = _grp getVariable ["CAI_oldFormation", ""];
-    if (_old != "" && {time - (_grp getVariable ["CAI_lastContact", -1e6]) > CAI_quietTime}) then {
+    if (_old != "" && {_quiet > CAI_quietTime}) then {
         _grp setFormation _old;
         _grp setVariable ["CAI_oldFormation", ""];
     };
-    {
-        if ((_x getVariable ["CAI_spreadAt", -1]) > 0) then {
-            _x setVariable ["CAI_spreadAt", -1];
-            if (alive _x) then {_x doFollow _leader};
-        };
-    } forEach units _grp;
 };
 
 private _men = units _grp select {
@@ -64,13 +68,19 @@ private _angleDiff = {
 };
 
 // --- Formation: a line facing the enemy in open ground ------------------------
-private _inTown = count (nearestObjects [_leader, ["House"], 40]) >= 3;
+// "In town?" is cached for 30 s (searching for houses every update isn't free).
+private _townCache = _grp getVariable ["CAI_inTownCache", [-1e6, false]];
+if (time - (_townCache select 0) > 30) then {
+    _townCache = [time, count (nearestObjects [_leader, ["House"], 40]) >= 3];
+    _grp setVariable ["CAI_inTownCache", _townCache];
+};
+private _inTown = _townCache select 1;
 if (!_inTown && {_bestD < 600}) then {
     if ((_grp getVariable ["CAI_oldFormation", ""]) == "") then {
         _grp setVariable ["CAI_oldFormation", formation _grp];
     };
     if (formation _grp != "LINE") then {_grp setFormation "LINE"};
-    _grp setFormDir _eDir;
+    if ([formationDirection _leader, _eDir] call _angleDiff > 20) then {_grp setFormDir _eDir};
 };
 
 // --- Soldiers: spread out along the firing line --------------------------------
@@ -114,9 +124,16 @@ private _moved = 0;
 } forEach _men;
 
 // --- Squads: don't stack two squads on the same spot -----------------------------
-if (time > (_grp getVariable ["CAI_spreadGroupUntil", 0])) then {
+// Squads holding a position (defensive reserve, outposts, HOLD orders) stay put.
+private _cur = currentWaypoint _grp;
+private _holding = (_grp getVariable ["CAI_cmdRole", ""]) in ["RESERVE", "OUTPOST", "GARRISON"]
+    || {_cur < count waypoints _grp && {waypointType [_grp, _cur] == "HOLD"}};
+if (!_holding && {time > (_grp getVariable ["CAI_spreadGroupUntil", 0])}) then {
     private _lp = getPosATL _leader;
-    private _other = allGroups select {
+    // Only soldiers within 35 m are looked at, not every group on the map.
+    private _near = [];
+    {_near pushBackUnique group _x} forEach (_lp nearEntities [["CAManBase"], 35]);
+    private _other = _near select {
         _x != _grp
         && {local _x}
         && {side _x == side _grp}
