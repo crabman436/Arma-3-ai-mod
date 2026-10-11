@@ -31,7 +31,7 @@ Then either **sync groups** to it, or sync nothing and it takes every free AI
 group of the chosen side within the auto-assign radius (2 km by default).
 
 **Attack mission**
-1. **Form up:** groups move to a staging area on their side of the objective. Infantry more than 800 m away **ride the commander's trucks** there (or grab empty vehicles nearby). Infantry more than 1.5 km away wait for a transport helicopter if the commander has one.
+1. **Form up:** groups move to a staging area on their side of the objective. Infantry more than 900 m away (`CAI_airLiftMinDistance`) are **flown there by the commander's transport helicopters**: the nearest free helicopter picks the squad up where it is, lands at the staging area and goes back for the next squad until everyone is there. Without a free helicopter, infantry more than 800 m away **ride the commander's trucks** (or grab empty vehicles nearby), otherwise they walk.
 2. **Preparatory fires:** a barrage on the most important known enemies (anti-air first, then armor, then bunched-up infantry), and attack helicopters and jets start strike missions.
 3. **Attack positions:** each assault squad moves to a **concealed attack position** on its lane (up to 3 lanes, 60° apart), picked by line of sight so the defenders can't see it. Far-away squads are **flown in** to a landing zone behind their lane or **trucked** to a dismount point. Vehicles take **support-by-fire positions that can see the objective**. A reserve (25 % by default) waits at the staging area.
 4. **H-hour:** when 70 % of the squads are in position (or after 4 minutes), smoke lands on the lanes and **everyone goes at once**. Each squad advances by **bounding overwatch**: one half kneels and covers or suppresses known enemies while the other half moves 70 m in a line (40 m once in contact), then they swap. Machine gunners start on overwatch. Late squads go as soon as they reach their attack position.
@@ -128,6 +128,8 @@ Squads holding a town:
 
 Used by the commander (defend), by the **Garrison** module, or from a script:
 `[group, center, radius, threatDirection (-1 = all-round)] call CAI_fnc_garrison;`
+
+**Helicopters and trucks need a crew.** Squads can only fly or drive with vehicles that have AI crews. **Empty helicopters, planes and trucks synced to a Commander module get an AI crew for that side automatically.** Outside a commander (normal QRFs), place transport helicopters and trucks with their crews.
 
 **Tips**
 - Put two commanders on the same town, one attacking and one defending, then sit back and watch, or join either side.

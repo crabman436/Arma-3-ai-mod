@@ -49,6 +49,29 @@ if !(_side in [west, east, independent]) exitWith {
     diag_log "[CAI] Commander module has no groups and no side set.";
 };
 
+// Empty helicopters, planes and trucks synced to the module get an AI crew for this
+// side (infantry can't fly them, and an empty vehicle has no group to command).
+{
+    private _veh = _x;
+    if (alive _veh
+        && {_veh isKindOf "Air" || {_veh isKindOf "LandVehicle"}}
+        && {!(_veh isKindOf "StaticWeapon")}
+        && {!unitIsUAV _veh}
+        && {(crew _veh findIf {alive _x}) < 0}
+        && {locked _veh < 2}
+    ) then {
+        createVehicleCrew _veh;
+        private _crew = crew _veh select {alive _x};
+        if (_crew isNotEqualTo []) then {
+            private _g = createGroup [_side, true];
+            _crew joinSilent _g;
+            _g selectLeader (effectiveCommander _veh);
+            _groups pushBackUnique _g;
+            format ["Commander module: crewed the empty %1", getText (configOf _veh >> "displayName")] call CAI_fnc_log;
+        };
+    };
+} forEach (synchronizedObjects _logic);
+
 // Like CAI_fnc_isValidGroup, but CARELESS groups (often used for parked helicopters
 // and trucks) are allowed: the commander wakes them up.
 private _free = {

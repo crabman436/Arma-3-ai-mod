@@ -181,6 +181,35 @@ private _truckLift = {
     format ["%1 mounting up on %2.", groupId _g, getText (configOf vehicle leader _best >> "displayName")] call _say;
     true
 };
+// Fly an infantry squad on the nearest free transport helicopter. Returns true if it worked.
+// The helicopter picks the squad up where it is, lands at _lz and goes home (then it's free again).
+private _heliShuttle = {
+    params ["_g", "_lz", "_final"];
+    if (!CAI_airLift) exitWith {false};
+    private _need = {alive _x} count units _g;
+    private _best = grpNull;
+    private _bestD = CAI_airRadius;
+    {
+        private _v = vehicle leader _x;
+        private _d = _v distance2D leader _g;
+        if (([_x] call CAI_fnc_groupType) == "HELI_TRANSPORT"
+            && {!(_x getVariable ["CAI_busy", false])}
+            && {canMove _v}
+            && {_v emptyPositions "Cargo" >= _need}
+            && {_d < _bestD}
+        ) then {
+            _best = _x;
+            _bestD = _d;
+        };
+    } forEach (call _aliveGroups);
+    if (isNull _best) exitWith {false};
+    _best setVariable ["CAI_busy", true];
+    [_best, "LIFT_BUSY"] call _setRole;
+    _g setVariable ["CAI_inTransit", true];
+    [_g, _best, _lz, grpNull, _final, _lz, 0, 60, 150] spawn CAI_fnc_airLift;
+    format ["%1 boarding %2.", groupId _g, getText (configOf vehicle leader _best >> "displayName")] call _say;
+    true
+};
 private _illuminate = {
     if (_fireLevel > 0 && {CAI_artillery} && {call _isNight} && {time > _nextIllum}) then {
         if ([_side, _this, 0, format ["%1 HQ", _sideName], 2, "ILLUM", 30] call CAI_fnc_fireMission) then {
@@ -307,7 +336,7 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
                 _x call _rejoinForce;
             };
         };
-        if (_role == "HELO_LIFT" && {!(_x getVariable ["CAI_busy", false])}) then {[_x, "LIFT"] call _setRole};
+        if (_role in ["HELO_LIFT", "LIFT_BUSY"] && {!(_x getVariable ["CAI_busy", false])}) then {[_x, "LIFT"] call _setRole};
     } forEach _alive;
 
     switch (_state) do {
@@ -389,21 +418,26 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
                     };
                 };
 
-                private _lifts = _alive select {([_x] call CAI_fnc_groupType) == "HELI_TRANSPORT" && {!(_x getVariable ["CAI_busy", false])}};
+                // Helicopters first get their roles so the shuttle below can use them.
+                {
+                    if (([_x] call CAI_fnc_groupType) in ["HELI_TRANSPORT", "PLANE_TRANSPORT"] && {!((_x call _roleOf) in ["PARA_LIFT", "HELO_LIFT", "LIFT_BUSY"])}) then {
+                        [_x, "LIFT"] call _setRole;
+                    };
+                } forEach _alive;
                 {
                     private _type = [_x] call CAI_fnc_groupType;
                     private _d = (leader _x) distance2D _staging;
                     switch (true) do {
-                        case ((_x call _roleOf) in ["PARA", "PARA_LIFT", "HELO", "HELO_LIFT"]): {};
-                        case (_type == "INF" && {_d > 1500} && {_lifts isNotEqualTo []}): {
-                            [_x, "AWAIT_LIFT"] call _setRole;
-                        };
+                        case ((_x call _roleOf) in ["PARA", "PARA_LIFT", "HELO", "HELO_LIFT", "LIFT_BUSY"]): {};
                         case (_type in ["INF", "GROUND"]): {
                             if ((leader _x) distance2D _center > _radius + 700) then {
                                 private _spot = [_staging getPos [random 120, random 360], _center] call CAI_fnc_landPos;
                                 private _move = [[_spot, "MOVE", "AWARE", "YELLOW", "FULL", 60]];
-                                // Infantry far from the staging area ride there.
-                                private _rode = _type == "INF" && {_d > 800} && {[_x, _spot, _move] call _truckLift};
+                                // Infantry far from the staging area fly there (helicopters) or ride (trucks).
+                                private _rode = _type == "INF" && {
+                                    (_d > CAI_airLiftMinDistance && {[_x, _spot, _move] call _heliShuttle})
+                                    || {_d > 800 && {[_x, _spot, _move] call _truckLift}}
+                                };
                                 if (!_rode) then {
                                     if (_type == "INF" && {_d > 800} && {CAI_grabVehicles}) then {[_x, false] call CAI_fnc_grabVehicles};
                                     [_x, _move] call CAI_fnc_cmdOrder;
@@ -413,7 +447,7 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
                         };
                         case (_type == "TRUCK"): {[_x, "TRUCK"] call _setRole};
                         case (_type == "UNARMED"): {[_x, "IDLE"] call _setRole};
-                        case (_type in ["HELI_TRANSPORT", "PLANE_TRANSPORT"]): {[_x, "LIFT"] call _setRole};
+                        case (_type in ["HELI_TRANSPORT", "PLANE_TRANSPORT"]): {};
                         case (_type == "ARTY"): {[_x, "FIRES"] call _setRole};
                         default {
                             if ((_x call _roleOf) != "AIR_REARM") then {[_x, "AIR"] call _setRole};
@@ -425,10 +459,22 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
             };
 
             private _staged = _alive select {(_x call _roleOf) == "STAGING"};
+            // Helicopters keep shuttling squads that are still far away (each one as soon as it's back).
+            {
+                if (([_x] call CAI_fnc_groupType) == "INF"
+                    && {!(_x getVariable ["CAI_inTransit", false])}
+                    && {(leader _x) distance2D _staging > CAI_airLiftMinDistance}
+                ) then {
+                    private _spot = [_staging getPos [random 120, random 360], _center] call CAI_fnc_landPos;
+                    [_x, _spot, [[_spot, "MOVE", "AWARE", "YELLOW", "FULL", 60]]] call _heliShuttle;
+                };
+            } forEach _staged;
             private _ready = {
                 (leader _x) distance2D _staging < 300 || {(leader _x) distance2D _center < _radius + 700}
             } count _staged;
-            if (_staged isEqualTo [] || {_ready >= 0.7 * count _staged} || {time - _stateSince > 360}) then {
+            // More time while squads are still being flown or driven in.
+            private _limit = [360, 600] select (({_x getVariable ["CAI_inTransit", false]} count _staged) > 0);
+            if (_staged isEqualTo [] || {_ready >= 0.7 * count _staged} || {time - _stateSince > _limit}) then {
                 _change = "ATTACK_PREP";
             };
         };
@@ -464,8 +510,6 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
                 _logic setVariable ["CAI_saidAdvance", false];
                 private _inf = _alive select {([_x] call CAI_fnc_groupType) == "INF" && {(_x call _roleOf) in ["STAGING", "AWAIT_LIFT"]}};
                 private _veh = _alive select {([_x] call CAI_fnc_groupType) == "GROUND" && {(_x call _roleOf) == "STAGING"}};
-                private _lifts = _alive select {(_x call _roleOf) == "LIFT" && {!(_x getVariable ["CAI_busy", false])}};
-
                 private _nRes = floor ((count _inf) * _reservePct);
                 if (count _inf - _nRes < 1) then {_nRes = 0};
                 private _reserve = _inf select [count _inf - _nRes, _nRes];
@@ -483,14 +527,9 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
                     private _orders = [[_formUp, "MOVE", "AWARE", "YELLOW", "FULL", 40]];
                     private _far = (leader _x) distance2D _formUp;
                     switch (true) do {
-                        case (_far > 1500 && {_lifts isNotEqualTo []}): {
-                            private _heli = _lifts deleteAt 0;
-                            [_heli, "LIFT_BUSY"] call _setRole;
-                            _heli setVariable ["CAI_busy", true];
-                            _x setVariable ["CAI_inTransit", true];
-                            private _lz = [_center getPos [_radius + 650, _axisDir], _center] call CAI_fnc_landPos;
-                            [_x, _heli, _center, grpNull, _orders, _lz] spawn CAI_fnc_airLift;
-                        };
+                        case (_far > CAI_airLiftMinDistance && {
+                            [_x, [_center getPos [_radius + 650, _axisDir], _center] call CAI_fnc_landPos, _orders] call _heliShuttle
+                        }): {};
                         case (_far > 800 && {
                             [_x, [_center getPos [_radius + 500, _axisDir], _center] call CAI_fnc_landPos, _orders] call _truckLift
                         }): {};
@@ -548,6 +587,19 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
                     format ["assault (attempt %1)", _attempt] call _status;
                 };
             };
+
+            // Squads still far from their attack position get flown in when a helicopter is free.
+            {
+                private _axis = _x getVariable ["CAI_cmdAxis", []];
+                if (_axis isNotEqualTo []
+                    && {!(_x getVariable ["CAI_inTransit", false])}
+                    && {([_x] call CAI_fnc_groupType) == "INF"}
+                    && {(leader _x) distance2D (_axis select 0) > CAI_airLiftMinDistance}
+                ) then {
+                    private _lz = [_center getPos [_radius + 650, _axis select 2], _center] call CAI_fnc_landPos;
+                    [_x, _lz, [[_axis select 0, "MOVE", "AWARE", "YELLOW", "FULL", 40]]] call _heliShuttle;
+                };
+            } forEach _formers;
 
             // Squads at their attack position (or late ones, or stuck ones) bound forward.
             if (_hHour >= 0) then {
