@@ -38,6 +38,7 @@ class CfgFunctions {
             class groundLift {};
             class grabVehicles {};
             class fireAndManeuver {};
+            class keepSpacing {};
             class throwSmoke {};
             class requestArtillery {};
             class skillFloor {};
@@ -191,6 +192,13 @@ class CfgVehicles {
                 tooltip = "Infantry squads split into a base of fire and a flanking team.";
                 typeName = "BOOL";
                 defaultValue = "true";
+            };
+            class Spacing: Edit {
+                property = "CAI_ModuleSettings_Spacing";
+                displayName = "Firefight spacing (m)";
+                tooltip = "In a firefight, soldiers closer than this to a squadmate spread out sideways along the firing line (to cover if there is some), squads on top of each other side-step, and squads in open ground use a line facing the enemy. 0 = off.";
+                typeName = "NUMBER";
+                defaultValue = "5";
             };
             class Artillery: Checkbox {
                 property = "CAI_ModuleSettings_Artillery";

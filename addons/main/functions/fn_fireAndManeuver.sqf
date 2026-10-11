@@ -65,8 +65,11 @@ format ["%1 fire & maneuver: %2 suppressing, %3 flanking (%4m)", groupId _grp, c
         [_move, _targetPos] call CAI_fnc_throwSmoke;
     };
 
+    // Flanking team moves to a line abreast across the enemy's direction, 6 m apart.
+    private _lineDir = (_flank getDir _targetPos) + 90;
+    private _n = count _move;
     {
-        _x doMove (_flank getPos [5 + random 10, random 360]);
+        _x doMove (_flank getPos [(_forEachIndex - (_n - 1) / 2) * 6, _lineDir]);
         _x setUnitPos "AUTO";
     } forEach _move;
 

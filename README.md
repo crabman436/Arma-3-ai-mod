@@ -18,6 +18,7 @@ no CBA and no ACE needed.** Load the mod and every AI group in your missions use
 | **Mounting up** | Infantry QRFs without a helicopter or truck will take nearby empty, unlocked vehicles and drive to the fight. |
 | **Following the fight** | Responders keep updating their search & destroy point from the latest radio reports. When it's over, they go back to where they came from and resume their original GUARD, SENTRY or LOITER order. |
 | **Fire & maneuver** | Infantry squads split: machine gunners and half the squad suppress (red team) while the other half moves to the enemy's flank (blue team). |
+| **No bunching** | In a firefight, a soldier closer than 5 m to a squadmate moves sideways along the firing line to a spread position, to a tree, rock or wall there if there is one (on the side away from the enemy), and falls back in once the squad moves on. Two squads that end up on top of each other split: one side-steps 60 m. In open ground squads in contact use a **line facing the enemy**, and switch back to their own formation when it's over. QRFs, counter-attacks and paratroopers each get their own spot near the target instead of all converging on one point, and flanking teams move in a spaced line. |
 | **Smoke** | Pinned-down squads, and flanking teams under fire, throw smoke toward the enemy. |
 | **Artillery & mortars** | Idle friendly mortars or artillery fire a few HE rounds on well-located enemies. They never fire if friendlies or civilians are within 200 m of the target, and their accuracy depends on how well the enemy was spotted. |
 | **Teamwork skills** | Commanding, spotting and courage are raised to a minimum. Skills are never lowered and aiming is not touched, so your difficulty settings stay. |
@@ -226,6 +227,7 @@ A hint tells you what's coming. At most `CAI_maxResponders` groups (3) are on th
 | `CAI_quietTime` | `90` | Seconds without contact before a fight counts as over |
 | `CAI_maneuver` | `true` | Squad fire & maneuver |
 | `CAI_smoke` | `true` | Smoke when pinned down or flanking |
+| `CAI_spacing` | `5` | In firefights, soldiers closer than this (m) spread out; `0` = off |
 | `CAI_artillery` | `true` | Mortar / artillery support |
 | `CAI_artilleryRounds` | `3` | Rounds per fire mission |
 | `CAI_artillerySafeDistance` | `200` | No fire with friendlies this close to the target |

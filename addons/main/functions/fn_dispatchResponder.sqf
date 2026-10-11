@@ -14,6 +14,8 @@ private _leader = leader _grp;
 private _veh = vehicle _leader;
 private _callerPos = getPosATL leader _caller;
 private _dist = _leader distance2D _targetPos;
+// Each responder searches its own spot near the target, so several QRFs don't pile onto one point.
+private _sadPos = [_targetPos getPos [15 + random 45, random 360], _targetPos] call CAI_fnc_landPos;
 
 [_grp] call CAI_fnc_saveHome;
 _grp setVariable ["CAI_assist", [_caller, time, _targetPos]];
@@ -50,7 +52,7 @@ switch (_type) do {
                 private _approach = [_targetPos, _callerPos, _drop, 200] call CAI_fnc_flankPosition;
                 [_grp, group driver _truck, _drop, [
                     [_approach, "MOVE", "AWARE", "YELLOW", "FULL", 40],
-                    [_targetPos, "SAD", "COMBAT", "RED", "NORMAL", 60]
+                    [_sadPos, "SAD", "COMBAT", "RED", "NORMAL", 60]
                 ]] spawn CAI_fnc_groundLift;
                 _how = format ["by truck (%1)", getText (configOf _truck >> "displayName")];
             };
@@ -60,7 +62,7 @@ switch (_type) do {
                 };
                 private _approach = [_targetPos, _callerPos, getPosATL _leader, 200] call CAI_fnc_flankPosition;
                 private _wp = [_grp, _approach, "MOVE", "AWARE", "YELLOW", "FULL", 40] call CAI_fnc_addWaypoint;
-                [_grp, _targetPos, "SAD", "COMBAT", "RED", "NORMAL", 60] call CAI_fnc_addWaypoint;
+                [_grp, _sadPos, "SAD", "COMBAT", "RED", "NORMAL", 60] call CAI_fnc_addWaypoint;
                 _grp setCurrentWaypoint _wp;
                 if (_how == "") then {_how = "on foot"};
             };
@@ -69,7 +71,7 @@ switch (_type) do {
     case "GROUND": {
         private _approach = [_targetPos, _callerPos, getPosATL _leader, 400] call CAI_fnc_flankPosition;
         private _wp = [_grp, _approach, "MOVE", "AWARE", "YELLOW", "FULL", 60] call CAI_fnc_addWaypoint;
-        [_grp, _targetPos, "SAD", "COMBAT", "RED", "NORMAL", 100] call CAI_fnc_addWaypoint;
+        [_grp, _sadPos, "SAD", "COMBAT", "RED", "NORMAL", 100] call CAI_fnc_addWaypoint;
         _grp setCurrentWaypoint _wp;
         _how = format ["in %1", getText (configOf _veh >> "displayName")];
     };

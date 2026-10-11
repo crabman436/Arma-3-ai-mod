@@ -341,7 +341,7 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
                                 [_behind getPos [40 + random 80, random 360], _center] call CAI_fnc_landPos
                             };
                             private _final = if (_paraMode == 1) then {
-                                [[_center, "SAD", "COMBAT", "RED", "NORMAL", 80]]
+                                [[[_center getPos [random (_radius * 0.4), random 360], _center] call CAI_fnc_landPos, "SAD", "COMBAT", "RED", "NORMAL", 80]]
                             } else {
                                 [[_dz, "MOVE", "AWARE", "YELLOW", "FULL", 40]]
                             };
@@ -669,7 +669,7 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
                         private _pos = if (isNull _t) then {
                             [_center getPos [random (_radius * 0.6), random 360], _center] call CAI_fnc_landPos
                         } else {
-                            getPosATL _t
+                            (getPosATL _t) getPos [random 25, random 360]
                         };
                         [_x, [[_pos, "SAD", "COMBAT", "RED", "NORMAL", 60]]] call CAI_fnc_cmdOrder;
                     };
@@ -914,13 +914,15 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
                     private _send = (_sorted select [0, _wanted - count _countering]) apply {_x select 2};
                     {
                         private _type = [_x] call CAI_fnc_groupType;
+                        // Each counter-attacking group gets its own spot near the enemy.
+                        private _myPos = [_tPos getPos [20 + random 50, random 360], _center] call CAI_fnc_landPos;
                         if (_type in ["HELI_ATTACK", "JET"]) then {
                             [_x, [[_tPos, "SAD", "COMBAT", "RED", "NORMAL", 300]]] call CAI_fnc_cmdOrder;
                         } else {
                             private _flank = [_tPos, _center, getPosATL leader _x, 200] call CAI_fnc_flankPosition;
                             private _orders = [
                                 [_flank, "MOVE", "AWARE", "YELLOW", "FULL", 50],
-                                [_tPos, "SAD", "COMBAT", "RED", "NORMAL", 80]
+                                [_myPos, "SAD", "COMBAT", "RED", "NORMAL", 80]
                             ];
                             // Far-away infantry reserves ride to the counter-attack.
                             private _rode = _type == "INF" && {(leader _x) distance2D _tPos > 800} && {
@@ -943,7 +945,7 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
                 {
                     if ((_x call _roleOf) == "COUNTER" && {_x call _isIdle}) then {
                         private _t = [_threats, getPosATL leader _x] call _nearestTo;
-                        [_x, [[getPosATL _t, "SAD", "COMBAT", "RED", "NORMAL", 60]]] call CAI_fnc_cmdOrder;
+                        [_x, [[(getPosATL _t) getPos [random 30, random 360], "SAD", "COMBAT", "RED", "NORMAL", 60]]] call CAI_fnc_cmdOrder;
                     };
                 } forEach _alive;
             } else {

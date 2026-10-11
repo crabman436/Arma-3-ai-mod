@@ -41,6 +41,7 @@ private _defaults = [
     ["CAI_maneuverCooldown", 75],
     ["CAI_smoke", true],
     ["CAI_smokeCooldown", 60],
+    ["CAI_spacing", 5],                 // in a firefight, soldiers closer than this (m) spread out; 0 = off
 
     // Fire support
     ["CAI_artillery", true],

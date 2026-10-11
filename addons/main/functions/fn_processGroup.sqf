@@ -75,8 +75,14 @@ if (_contacts isNotEqualTo []) then {
             ) then {
                 [_grp, _contacts] call CAI_fnc_fireAndManeuver;
             };
+
+            // Don't bunch up.
+            [_grp, _contacts] call CAI_fnc_keepSpacing;
         };
     };
+} else {
+    // Out of contact: spread soldiers rejoin, the squad's own formation comes back.
+    if (_type == "INF") then {[_grp, []] call CAI_fnc_keepSpacing};
 };
 
 // --- QRF duty ---------------------------------------------------------------
@@ -101,7 +107,8 @@ if (_assist isNotEqualTo [] && {!(_grp getVariable ["CAI_inTransit", false])}) t
             if (_intel isNotEqualTo [] && {_intel distance2D _targetPos > 150}) then {
                 private _last = count waypoints _grp - 1;
                 if (_last >= 0 && {waypointType [_grp, _last] == "SAD"}) then {
-                    [_grp, _last] setWaypointPosition [_intel, 0];
+                    // Each QRF gets its own spot near the intel so they don't all converge on one point.
+                    [_grp, _last] setWaypointPosition [_intel getPos [random 40, random 360], 0];
                     _assist set [2, _intel];
                     _grp setVariable ["CAI_assist", _assist];
                 };
