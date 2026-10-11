@@ -32,10 +32,16 @@ group of the chosen side within the auto-assign radius (2 km by default).
 **Attack mission**
 1. **Form up:** groups move to a staging area on their side of the objective. Infantry more than 800 m away **ride the commander's trucks** there (or grab empty vehicles nearby). Infantry more than 1.5 km away wait for a transport helicopter if the commander has one.
 2. **Preparatory fires:** a barrage on the most important known enemies (anti-air first, then armor, then bunched-up infantry), and attack helicopters and jets start strike missions.
-3. **Assault:** infantry attack on up to 3 axes (60° apart), vehicles give support by fire from overwatch for 90 s and then push in, and a reserve (25 % by default) waits at the staging area. Infantry too far away get **flown in** by the commander's transport helicopters or **trucked** to a dismount point 450 m out on their axis.
-4. **Fighting through:** squads below 35 % strength fall back. Once infantry squads are in the town they **clear the buildings room by room** (see below), splitting the buildings between them. Vehicles hunt the remaining spotted enemies. The reserve is committed when the assault stalls (or after 5 minutes). Progress is reported over the radio ("Clearing Kavala: 45 % of buildings cleared").
-5. **Secured:** when no known enemies are left in the area for 45 s **and at least 60 % of its buildings are cleared** (or after 25 minutes), the commander switches to **Defend**.
-6. **Failed:** if everyone is broken or 20 minutes pass, the force regroups at the staging area and attacks again, as long as it still has at least 4 men.
+3. **Attack positions:** each assault squad moves to a **concealed attack position** on its lane (up to 3 lanes, 60° apart), picked by line of sight so the defenders can't see it. Far-away squads are **flown in** to a landing zone behind their lane or **trucked** to a dismount point. Vehicles take **support-by-fire positions that can see the objective**. A reserve (25 % by default) waits at the staging area.
+4. **H-hour:** when 70 % of the squads are in position (or after 4 minutes), smoke lands on the lanes and **everyone goes at once**. Each squad advances by **bounding overwatch**: one half kneels and covers or suppresses known enemies while the other half moves 70 m in a line (40 m once in contact), then they swap. Machine gunners start on overwatch. Late squads go as soon as they reach their attack position.
+5. **Fighting through:**
+   - **Vehicles** stay on overwatch and are fed every spotted target. They only move up to the edge of the objective once infantry is inside (and 30 % of the buildings are cleared, or 5 minutes have passed). They only drive in to hunt enemy armor.
+   - **Pinned squads** that stop making progress under fire get a smoke screen between them and the enemy, a fire mission on whatever is pinning them, and the vehicles' attention.
+   - **Depleted squads** (3 men or fewer) **merge** with a nearby squad. Squads below 35 % strength fall back.
+   - Once in the town, squads **clear the buildings room by room** (see below), splitting the buildings between them, with progress reported over the radio.
+   - **Reinforce success:** when the assault stalls (or after 4 minutes) the reserve goes to the lane that has got furthest in and bounds forward from there.
+6. **Secured:** when no known enemies are left in the area for 45 s **and at least 60 % of its buildings are cleared** (or after 25 minutes), the commander switches to **Defend**.
+7. **Failed:** if everyone is broken or 20 minutes pass, the force regroups at the staging area and attacks again, as long as it still has at least 4 men.
 
 **Defend mission**
 - Half the infantry **garrison buildings** in the area (see *Realistic garrisons* below), facing known enemies or all-round.
@@ -220,6 +226,7 @@ addons/main/
     fn_garrison.sqf / fn_clearBuildings.sqf / fn_buildingsIn.sqf   CQB: garrison and house clearing
     fn_moduleGarrison.sqf / fn_moduleClear.sqf
     fn_cmdFires.sqf / fn_cmdAir.sqf / fn_isAA.sqf   commander fire plan and air tasking
+    fn_boundAdvance.sqf / fn_pickPos.sqf            bounding overwatch, attack and overwatch positions
     ...
 mod.cpp
 .hemtt/project.toml

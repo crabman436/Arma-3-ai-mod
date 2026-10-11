@@ -5,10 +5,17 @@
     If anything goes wrong (heli shot down, troops can't board) the infantry
     continues on foot.
 
-    Params: 0: GROUP infantry, 1: GROUP helicopter crew, 2: ARRAY target pos, 3: GROUP caller
+    Params:
+        0: GROUP infantry
+        1: GROUP helicopter crew
+        2: ARRAY target pos
+        3: GROUP caller (grpNull if none)
+        4: ARRAY orders after landing, each [pos, type, behaviour, combat, speed, radius]
+           (default: flank the target and search & destroy)
+        5: ARRAY landing zone center (default: 600 m from the target on a flank)
 */
 
-params ["_inf", "_hGrp", "_targetPos", "_caller"];
+params ["_inf", "_hGrp", "_targetPos", "_caller", ["_finalWps", []], ["_lzPos", []]];
 
 private _heli = vehicle leader _hGrp;
 private _heliOk = { alive _heli && {canMove _heli} && {alive driver _heli} };
@@ -24,12 +31,16 @@ _hGrp setCombatMode "BLUE";
 // Fallback: infantry walks the rest of the way.
 private _onFoot = {
     if (call _infAlive) then {
-        private _callerPos = if (isNull _caller) then {_targetPos} else {getPosATL leader _caller};
-        [_inf] call CAI_fnc_clearWaypoints;
-        private _approach = [_targetPos, _callerPos, getPosATL leader _inf, 150] call CAI_fnc_flankPosition;
-        private _wp = [_inf, _approach, "MOVE", "AWARE", "YELLOW", "FULL", 40] call CAI_fnc_addWaypoint;
-        [_inf, _targetPos, "SAD", "COMBAT", "RED", "NORMAL", 60] call CAI_fnc_addWaypoint;
-        _inf setCurrentWaypoint _wp;
+        if (_finalWps isNotEqualTo []) then {
+            [_inf, _finalWps] call CAI_fnc_cmdOrder;
+        } else {
+            private _callerPos = if (isNull _caller) then {_targetPos} else {getPosATL leader _caller};
+            private _approach = [_targetPos, _callerPos, getPosATL leader _inf, 150] call CAI_fnc_flankPosition;
+            [_inf, [
+                [_approach, "MOVE", "AWARE", "YELLOW", "FULL", 40],
+                [_targetPos, "SAD", "COMBAT", "RED", "NORMAL", 60]
+            ]] call CAI_fnc_cmdOrder;
+        };
     };
     _inf setVariable ["CAI_inTransit", false];
     // Reset the QRF timer now that they are on the ground.
@@ -97,7 +108,11 @@ if (_left isNotEqualTo []) then {
 
 // --- 2. Fly to a landing zone on the flank ------------------------------------
 private _callerPos = if (isNull _caller) then {_targetPos} else {getPosATL leader _caller};
-private _lzCenter = [_targetPos, _callerPos, getPosATL _heli, 600] call CAI_fnc_flankPosition;
+private _lzCenter = if (_lzPos isEqualTo []) then {
+    [_targetPos, _callerPos, getPosATL _heli, 600] call CAI_fnc_flankPosition
+} else {
+    _lzPos
+};
 private _lz = [_lzCenter, 0, 250, 15, 0, 0.25, 0, [], [_lzCenter, _lzCenter]] call BIS_fnc_findSafePos;
 _lz = [_lz select 0, _lz select 1, 0];
 private _padB = createVehicle ["Land_HelipadEmpty_F", _lz, [], 0, "CAN_COLLIDE"];

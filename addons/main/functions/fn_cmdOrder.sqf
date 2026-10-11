@@ -27,6 +27,7 @@ if (_held isNotEqualTo []) then {
 };
 _grp setVariable ["CAI_garrisoned", false];
 _grp setVariable ["CAI_clearing", false];
+_grp setVariable ["CAI_bounding", false];
 [_grp] call CAI_fnc_clearWaypoints;
 if (behaviour leader _grp == "CARELESS") then {_grp setBehaviour "AWARE"};
 

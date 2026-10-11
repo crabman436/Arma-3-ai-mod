@@ -93,7 +93,7 @@ format ["%1 fire & maneuver: %2 suppressing, %3 flanking (%4m)", groupId _grp, c
 
     if (isNull _grp) exitWith {};
     // Regroup, unless the squad has been given a building to clear or hold in the meantime.
-    private _busy = _grp getVariable ["CAI_clearing", false] || {_grp getVariable ["CAI_garrisoned", false]};
+    private _busy = _grp getVariable ["CAI_clearing", false] || {_grp getVariable ["CAI_garrisoned", false]} || {_grp getVariable ["CAI_bounding", false]};
     {
         if (alive _x) then {
             if (!_busy) then {_x doFollow leader _grp};

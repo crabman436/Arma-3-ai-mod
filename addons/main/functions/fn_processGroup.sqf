@@ -70,6 +70,7 @@ if (_contacts isNotEqualTo []) then {
                 && {!(_grp getVariable ["CAI_maneuvering", false])}
                 && {!(_grp getVariable ["CAI_inTransit", false])}
                 && {!(_grp getVariable ["CAI_clearing", false])}
+                && {!(_grp getVariable ["CAI_bounding", false])}
                 && {!(_grp getVariable ["CAI_garrisoned", false])}
             ) then {
                 [_grp, _contacts] call CAI_fnc_fireAndManeuver;

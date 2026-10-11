@@ -58,6 +58,8 @@ class CfgFunctions {
             class isAA {};
             class fireMission {};
             class landPos {};
+            class pickPos {};
+            class boundAdvance {};
         };
     };
 };
