@@ -89,7 +89,7 @@ group of the chosen side within the auto-assign radius (2 km by default).
 
 **Opening paradrop** (option, attack only):
 - When the attack forms up, each **transport helicopter or transport plane** under the commander loads one infantry squad: a squad already sitting in its cargo seats, or the nearest one (helicopters fly to it and land; planes on a runway are walked to).
-- When the preparatory fires start they take off, fly over the drop zone at 200 m (helicopters) or 300 m (planes), and the squad **jumps in a stick**, half a second apart, so it lands spread out. The aircraft fly home.
+- When the preparatory fires start they take off, fly over the drop zone at 200 m (helicopters) or 300 m (planes), and the squad **jumps in a stick**, half a second apart, so it lands spread out. Nobody needs to wear a parachute: each jumper is pushed out and a canopy opens for him automatically (soldiers keep their own backpacks). Jumpers can't be hurt while leaving the aircraft and coming down, and empty canopies are cleared away after landing. The aircraft fly home.
 - **Onto the objective:** a shock drop straight into the town. The paratroopers start fighting and clearing at once while the ground assault comes in.
 - **Behind the objective:** they land beyond the far side, cut it off, and **assault from the rear at H-hour** together with the ground force.
 - Artillery never fires HE under friendly parachutes. If a squad can't board or its aircraft is lost before the drop, it joins the ground attack.

@@ -150,16 +150,35 @@ if (!(call _vehOk) && {!alive _veh}) exitWith {
 
 // Planes can't land: after the go-arounds the stick jumps anyway (the chutes open at once).
 if (_height > 90 || {!_isHeli}) then {
-    // --- 4a. Jump: a stick of paratroopers, half a second apart.
+    // --- 4a. Jump: a stick of paratroopers, half a second apart. Nobody needs to wear a
+    // parachute: each jumper is pushed out and a canopy is opened for him straight away
+    // (soldiers keep their own backpacks).
     {
         if (alive _x && {vehicle _x == _veh}) then {
-            unassignVehicle _x;
-            moveOut _x;
+            private _u = _x;
+            unassignVehicle _u;
+            [_u] orderGetIn false;
+            // Safe from bumping the aircraft or a hard landing until he's down.
+            _u allowDamage false;
+            moveOut _u;
             private _chute = createVehicle ["NonSteerable_Parachute_F", [0, 0, 1000], [], 0, "CAN_COLLIDE"];
             // Open behind and below the aircraft so nobody clips it.
             _chute setPosASL ((getPosASL _veh) vectorAdd ((vectorDir _veh) vectorMultiply -15) vectorAdd [0, 0, -10]);
             _chute setDir (getDir _veh);
-            _x moveInDriver _chute;
+            _u moveInDriver _chute;
+            [_u, _chute] spawn {
+                params ["_u", "_chute"];
+                // The canopy didn't take him the first time: try again.
+                sleep 0.3;
+                if (alive _u && {alive _chute} && {vehicle _u != _chute}) then {_u moveInDriver _chute};
+                private _t = time + 180;
+                waitUntil {sleep 0.5; !alive _u || {isNull objectParent _u} || {time > _t}};
+                sleep 2;
+                _u allowDamage true;
+                // Empty canopies are cleared away.
+                sleep 10;
+                if (!isNull _chute && {(crew _chute) isEqualTo []}) then {deleteVehicle _chute};
+            };
             sleep 0.5;
         };
     } forEach _jumpers;
