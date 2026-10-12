@@ -350,6 +350,18 @@ class CfgVehicles {
                     class Heavy { name = "Heavy (double rounds, faster missions)"; value = 2; };
                 };
             };
+            class Bombard: Combo {
+                property = "CAI_ModuleCommander_Bombard";
+                displayName = "Bombard before the attack";
+                tooltip = "Attack only. Before the assault goes in, the commander's mortars and artillery shell the buildings of the objective whether or not enemies have been seen there, then the troops move in. Never danger close to friendly troops.";
+                typeName = "NUMBER";
+                defaultValue = "0";
+                class Values {
+                    class Off { name = "Off"; value = 0; };
+                    class Light { name = "Short bombardment (1.5 min)"; value = 1; };
+                    class Heavy { name = "Level it (4 min)"; value = 2; };
+                };
+            };
             class AirSupport: Checkbox {
                 property = "CAI_ModuleCommander_AirSupport";
                 displayName = "Air support";

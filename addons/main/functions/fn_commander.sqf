@@ -28,12 +28,13 @@
                   tempo (0 fast, 1 normal, 2 deliberate), staging position ([] = automatic),
                   attack positions (lanes, [] = automatic),
                   next objectives [[center, radius, leave a garrison, staging position, attack positions], ...],
-                  dispersed assault (true: a lane per squad, each attacks when in position; false: one push at H-hour)]
+                  dispersed assault (true: a lane per squad, each attacks when in position; false: one push at H-hour),
+                  bombardment before the attack (0 off, 1 short, 2 level it)]
 */
 
 params ["_logic", "_side", "_groups", "_mode", "_radius", "_reservePct", "_radio", "_markers", ["_opts", [1, true, true]]];
 _opts params [["_fireLevel", 1], ["_airSupport", true], ["_refit", true], ["_clearOpt", true], ["_paraMode", 0], ["_heloMode", 0],
-    ["_tempo", 0], ["_stagingPos", []], ["_attackPositions", []], ["_objectives", []], ["_dispersed", true]];
+    ["_tempo", 0], ["_stagingPos", []], ["_attackPositions", []], ["_objectives", []], ["_dispersed", true], ["_bombard", 0]];
 
 // Attack tempo: [gather at the staging area (s, 0 = don't gather), more if squads are being lifted,
 //                share of squads in place to go on, preparatory fires (s), max wait for H-hour (s),
@@ -319,6 +320,8 @@ private _lastThreatDir = -1;
 private _escortLZs = [];
 private _axes = [0];
 private _nextAttackCall = 0;
+private _bombardDone = false;
+private _bombardAims = [];
 
 format ["%1 HQ taking command of %2 groups. Mission: %3 %4.", _sideName, count _groups, ["attack", "defend"] select (_mode == 1), _objName] call _say;
 
@@ -546,6 +549,42 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
             // More time while squads are still being flown or driven in.
             private _limit = [_tGather, _tGatherLift] select (({_x getVariable ["CAI_inTransit", false]} count _staged) > 0);
             if (_tGather <= 0 || {_staged isEqualTo []} || {_ready >= _tReady * count _staged} || {time - _stateSince > _limit}) then {
+                _change = ["ATTACK_PREP", "ATTACK_BOMBARD"] select (_bombard > 0 && {!_bombardDone} && {_fireLevel > 0} && {CAI_artillery});
+            };
+        };
+
+        case "ATTACK_BOMBARD": {
+            // Shell the objective's buildings before anyone goes in (troops stay outside).
+            if (!_entered) then {
+                _entered = true;
+                _bombardDone = true;
+                _bombardAims = [];
+                {_bombardAims pushBack [random 1, _forEachIndex, getPosATL _x]} forEach (_objBuildings select {alive _x});
+                if (_bombardAims isEqualTo []) then {
+                    for "_i" from 0 to 11 do {_bombardAims pushBack [random 1, _i, _center getPos [random (_radius * 0.8), random 360]]};
+                };
+                _bombardAims sort true;
+                _bombardAims = _bombardAims apply {_x select 2};
+                format ["Fire for effect on %1! All units hold outside the objective until the guns lift.", _objName] call _say;
+                "bombardment" call _status;
+            };
+            // Every update, every free gun takes the next building in the list (round after round).
+            private _fired = 0;
+            private _tries = 0;
+            while {_fired < 4 && {_tries < 8} && {_bombardAims isNotEqualTo []}} do {
+                _tries = _tries + 1;
+                private _p = _bombardAims deleteAt 0;
+                _bombardAims pushBack _p;
+                if ([_side, _p, 25, format ["%1 HQ", _sideName], _fireRounds max CAI_artilleryRounds, "HE", 15] call CAI_fnc_fireMission) then {
+                    _fired = _fired + 1;
+                };
+            };
+            if (_fired > 0) then {_logic setVariable ["CAI_bombardFired", time]};
+            [true, _threats] call _runAir;
+            private _len = [0, 90, 240] select _bombard;
+            // Over after its time, or early when no gun has been able to fire for a minute.
+            if (time - _stateSince > _len || {time - _stateSince > 60 && {time - (_logic getVariable ["CAI_bombardFired", -1e6]) > 60}}) then {
+                format ["Guns lifting from %1. All units, move in!", _objName] call _say;
                 _change = "ATTACK_PREP";
             };
         };
@@ -1055,6 +1094,7 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
                         _lastThreatDir = -1;
                         _infiltrated = false;
                         _attempt = 1;
+                        _bombardDone = false;
                         if (_markers) then {
                             private _area = format ["CAI_cmd_area_%1", _cmdId];
                             _area setMarkerPosLocal _center;
