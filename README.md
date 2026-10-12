@@ -30,8 +30,20 @@ a town or position. Resize its circle in the editor: that's the objective.
 Then either **sync groups** to it, or sync nothing and it takes every free AI
 group of the chosen side within the auto-assign radius (2 km by default).
 
+**Attack tempo** (commander setting):
+| Tempo | Gathering | Prep fires | H-hour at the latest |
+|---|---|---|---|
+| **Fast** (default) | none: squads go straight to their attack positions | 20 s | 90 s after the move starts |
+| Normal | at the staging area, up to 4 min | 35 s | 3 min |
+| Deliberate | at the staging area, up to 6 min | 45 s | 5 min |
+
+**Planning the attack yourself** (optional modules, same category):
+- **Commander: Staging Area**: sync it to the Commander. The force forms up there and attacks from that side (and keeps that side on later attempts). The reserve and squads that fall back gather there.
+- **Commander: Attack Position**: sync one or more to the Commander. Each one is an assault lane: squads form up on it and attack the objective from there, shared out left to right (several squads on one position stand 30 m apart).
+- **Commander: Objective**: sync to the Commander and resize its circle. Once the commander's own area is secured, the force moves on and attacks this one; several are taken one after another by their **Order** number, and the last one is defended. **Leave a garrison behind** keeps one squad in each objective taken. Sync a Staging Area and Attack Positions to an Objective module to plan that attack too.
+
 **Attack mission**
-1. **Form up:** groups move to a staging area on their side of the objective. Infantry more than 900 m away (`CAI_airLiftMinDistance`) are **flown there by the commander's transport helicopters**: the nearest free helicopter picks the squad up where it is, lands at the staging area and goes back for the next squad until everyone is there. Without a free helicopter, infantry more than 800 m away **ride the commander's trucks** (or grab empty vehicles nearby), otherwise they walk.
+1. **Form up:** groups move to a staging area on their side of the objective (Normal and Deliberate tempo; with Fast they skip this and go straight to step 3, while the preparatory fires land). Infantry more than 900 m away (`CAI_airLiftMinDistance`) are **flown there by the commander's transport helicopters**: the nearest free helicopter picks the squad up where it is, lands at the staging area and goes back for the next squad until everyone is there. Without a free helicopter, infantry more than 800 m away **ride the commander's trucks** (or grab empty vehicles nearby), otherwise they walk.
 2. **Preparatory fires:** a barrage on the most important known enemies (anti-air first, then armor, then bunched-up infantry), and attack helicopters and jets start strike missions. The squads move to their attack positions **while the fires land**, so there's no waiting around.
 3. **Attack positions:** each assault squad moves to a **concealed attack position** on its lane (up to 3 lanes, 60° apart), picked by line of sight so the defenders can't see it. Lanes are handed out **by where the squads are** (the squads on the left take the left lane), so nobody crosses in front of the objective, and squads sharing a lane are spread out instead of converging on one point. The squads nearest the objective attack; the furthest ones form the reserve. Far-away squads are **flown in** to a landing zone behind their lane or **trucked** to a dismount point. Vehicles take **support-by-fire positions that can see the objective**. A reserve (25 % by default) waits at the staging area.
 4. **H-hour:** when 70 % of the squads are in position (or after 4 minutes), smoke lands on the lanes and **everyone goes at once**. Each squad first **advances to contact** as one, in a wedge at a steady pace. Once the enemy is known within 300 m (or the squad is close to its entry point) it switches to **bounding overwatch**: one half kneels and covers or suppresses known enemies while the other half moves 70 m in a line (40 m under fire), then they swap. If the contact goes away and it's still far, the squad moves as one again. Machine gunners start on overwatch. Late squads go as soon as they reach their attack position.

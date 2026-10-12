@@ -89,6 +89,8 @@ private _rearDir = (_approachDir + 180) % 360;
 lanes = between(cmd, "                _axes = [0, -60, 60] select [0, ((count _assault) min 3) max 1];",
                 "_perLane set [_l, (_perLane select _l) + 1];\n                } forEach _assault;")
 lanes = lanes.replace("(_center getDir leader _x)", "(_x select 1)")
+# Attack-position bearings: getDir isn't in SQF-VM; same compass bearing via atan2.
+lanes = lanes.replace("(_center getDir _x)", "((((_x select 0) - (_center select 0)) atan2 ((_x select 1) - (_center select 1)) + 360) % 360)")
 # SQF-VM leaves arrays of arrays unsorted; the game sorts them by first element, then second.
 assert "_bySide sort true;" in lanes
 lanes = lanes.replace("_bySide sort true;", "_bySide = _bySide call _sortNested;")
@@ -112,7 +114,8 @@ private _sortNested = {
 results.append(run("lanes", ASSERT + SORT_NESTED + '''
 // Squads are [name, bearing from the objective].
 private _case = {
-    params ["_approachDir", "_assault"];
+    params ["_approachDir", "_assault", ["_attackPositions", []]];
+    private _center = [0, 0, 0];
 ''' + lanes + '''
     private _dirs = [];
     {
@@ -139,6 +142,14 @@ private _r = [0, [["A", 350], ["B", 20], ["C", 300], ["D", 60]]] call _case;
 [90, [["A", 90]]] call _case;
 [200, [["A", 150], ["B", 180], ["C", 200], ["D", 230], ["E", 260]]] call _case;
 [45, [["A", 0], ["B", 10], ["C", 20], ["D", 30], ["E", 40], ["F", 50], ["G", 60]]] call _case;
+// Mission maker's attack positions (west, north-east, north of the objective): they become the
+// lanes, sorted left to right; three squads, one per position.
+private _ap = [[-500, 0, 0], [400, 400, 0], [0, 500, 0]];
+_r = [0, [["A", 30], ["B", 330], ["C", 0]], _ap] call _case;
+[((_r select 0) apply {_x select 0}) isEqualTo ["B", "C", "A"], format ["custom lanes, sorted by side: %1", _r select 0]] call _assert;
+// Two squads on four positions, five squads on two positions: no index errors.
+[0, [["A", 10], ["B", 20]], _ap + [[300, -300, 0]]] call _case;
+[90, [["A", 10], ["B", 40], ["C", 90], ["D", 120], ["E", 170]], [[500, 100, 0], [500, -100, 0]]] call _case;
 '''))
 
 # --- 4. Paradrop: drop over the zone or at the closest approach --------------

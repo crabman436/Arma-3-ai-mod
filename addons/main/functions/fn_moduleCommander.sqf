@@ -29,15 +29,46 @@ private _refit = _logic getVariable ["Refit", true];
 private _clear = _logic getVariable ["ClearBuildings", true];
 private _para = _logic getVariable ["Paradrop", 0];
 private _helo = _logic getVariable ["AirAssault", 0];
+private _tempo = (_logic getVariable ["Tempo", 0]) max 0 min 2;
 
 private _area = _logic getVariable ["objectArea", [250, 250, 0, false, -1]];
 private _radius = ((_area select 0) max (_area select 1)) max 50;
+
+// Plan modules: a Staging Area and Attack Positions synced to the commander (or to one of
+// its Objective modules) shape that attack; Objective modules are taken one after another.
+private _planFor = {
+    params ["_m"];
+    private _synced = synchronizedObjects _m;
+    private _st = _synced select {typeOf _x == "CAI_ModuleStaging"};
+    private _staging = if (_st isEqualTo []) then {[]} else {
+        private _p = getPosATL (_st select 0);
+        [_p select 0, _p select 1, 0]
+    };
+    private _attack = (_synced select {typeOf _x == "CAI_ModuleAttackPos"}) apply {
+        private _p = getPosATL _x;
+        [_p select 0, _p select 1, 0]
+    };
+    [_staging, _attack]
+};
+private _objectives = [];
+{
+    if (typeOf _x == "CAI_ModuleObjective") then {
+        private _a = _x getVariable ["objectArea", [200, 200, 0, false, -1]];
+        private _p = getPosATL _x;
+        ([_x] call _planFor) params ["_st", "_ap"];
+        _objectives pushBack [_x getVariable ["Order", 1], _forEachIndex,
+            [[_p select 0, _p select 1, 0], ((_a select 0) max (_a select 1)) max 50, _x getVariable ["LeaveGarrison", true], _st, _ap]];
+    };
+} forEach (synchronizedObjects _logic);
+_objectives sort true;
+_objectives = _objectives apply {_x select 2};
+([_logic] call _planFor) params ["_stagingPos", "_attackPositions"];
 
 private _groups = [];
 {
     private _g = group _x;
     if (!isNull _g) then {_groups pushBackUnique _g};
-} forEach (_units + synchronizedObjects _logic);
+} forEach (_units + ((synchronizedObjects _logic) select {_x isKindOf "AllVehicles"}));
 
 private _side = if (_sideIdx >= 0) then {
     [west, east, independent] select _sideIdx
@@ -121,4 +152,5 @@ if (_groups isEqualTo []) exitWith {
     _x setVariable ["CAI_assist", []];
 } forEach _groups;
 
-[_logic, _side, _groups, _mode, _radius, _reserve, _radio, _markers, [_fireLevel, _airSupport, _refit, _clear, _para, _helo]] spawn CAI_fnc_commander;
+[_logic, _side, _groups, _mode, _radius, _reserve, _radio, _markers,
+    [_fireLevel, _airSupport, _refit, _clear, _para, _helo, _tempo, _stagingPos, _attackPositions, _objectives]] spawn CAI_fnc_commander;

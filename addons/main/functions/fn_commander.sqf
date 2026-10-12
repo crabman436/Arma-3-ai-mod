@@ -24,11 +24,25 @@
         7: BOOL map markers
         8: ARRAY [fire support level (0 off, 1 normal, 2 heavy), air support, refit aircraft at base, clear buildings,
                   opening paradrop (0 off, 1 onto the objective, 2 behind the objective),
-                  helicopter air assault (0 off, 1 edge of the objective, 2 into the objective)]
+                  helicopter air assault (0 off, 1 edge of the objective, 2 into the objective),
+                  tempo (0 fast, 1 normal, 2 deliberate), staging position ([] = automatic),
+                  attack positions (lanes, [] = automatic),
+                  next objectives [[center, radius, leave a garrison, staging position, attack positions], ...]]
 */
 
 params ["_logic", "_side", "_groups", "_mode", "_radius", "_reservePct", "_radio", "_markers", ["_opts", [1, true, true]]];
-_opts params [["_fireLevel", 1], ["_airSupport", true], ["_refit", true], ["_clearOpt", true], ["_paraMode", 0], ["_heloMode", 0]];
+_opts params [["_fireLevel", 1], ["_airSupport", true], ["_refit", true], ["_clearOpt", true], ["_paraMode", 0], ["_heloMode", 0],
+    ["_tempo", 0], ["_stagingPos", []], ["_attackPositions", []], ["_objectives", []]];
+
+// Attack tempo: [gather at the staging area (s, 0 = don't gather), more if squads are being lifted,
+//                share of squads in place to go on, preparatory fires (s), max wait for H-hour (s),
+//                late squads start after (s), reserve committed after (s), regroup (s), update interval (s)]
+private _tempos = [
+    [0, 0, 0, 20, 90, 120, 150, 90, 5],
+    [240, 480, 0.7, 35, 180, 180, 240, 150, 8],
+    [360, 600, 0.8, 45, 300, 240, 300, 180, 10]
+];
+(_tempos select (_tempo max 0 min 2)) params ["_tGather", "_tGatherLift", "_tReady", "_tPrep", "_tHHour", "_tLate", "_tReserve", "_tRegroup", "_tTick"];
 
 // Fire support intensity: [prep missions, missions per update, rounds per mission, gun cooldown]
 private _fires = [[0, 0, 0, 0], [3, 1, CAI_artilleryRounds, 60], [6, 2, CAI_artilleryRounds * 2, 40]] select (_fireLevel max 0 min 2);
@@ -38,8 +52,11 @@ private _center = getPosATL _logic;
 _center = [_center select 0, _center select 1, 0];
 
 // Name the objective after the nearest town if there is one.
-private _locs = nearestLocations [_center, ["NameCityCapital", "NameCity", "NameVillage", "NameLocal"], _radius + 500];
-private _objName = if (_locs isEqualTo []) then {format ["objective %1", mapGridPosition _center]} else {text (_locs select 0)};
+private _nameOf = {
+    private _locs = nearestLocations [_center, ["NameCityCapital", "NameCity", "NameVillage", "NameLocal"], _radius + 500];
+    if (_locs isEqualTo []) then {format ["objective %1", mapGridPosition _center]} else {text (_locs select 0)}
+};
+private _objName = call _nameOf;
 private _cmdId = _logic getVariable ["CAI_cmdId", 0];
 private _sideName = ["BLUFOR", "OPFOR", "INDFOR"] select (([west, east, independent] find _side) max 0);
 
@@ -115,7 +132,15 @@ private _rejoinForce = {
         // Assault planned or under way: its own lane from where it is (the assault releases FORMUP squads).
         case (_state in ["ATTACK_PREP", "ATTACK_ASSAULT"]): {
             private _dir = _center getDir leader _g;
-            private _formUp = [_center, _dir, _radius + 120, _radius + 260, false, _radius, 25] call CAI_fnc_pickPos;
+            private _formUp = if (_attackPositions isEqualTo []) then {
+                [_center, _dir, _radius + 120, _radius + 260, false, _radius, 25] call CAI_fnc_pickPos
+            } else {
+                // The mission maker's attack position nearest to the squad.
+                private _best = _attackPositions select 0;
+                {if ((leader _g) distance2D _x < (leader _g) distance2D _best) then {_best = _x}} forEach _attackPositions;
+                _dir = _center getDir _best;
+                [_best getPos [random 30, random 360], _best] call CAI_fnc_landPos
+            };
             _g setVariable ["CAI_cmdAxis", [_formUp, [_center getPos [_radius * 0.4, _dir], _center] call CAI_fnc_landPos, _dir]];
             [_g, [[_formUp, "MOVE", "AWARE", "YELLOW", "FULL", 40]]] call CAI_fnc_cmdOrder;
             [_g, "FORMUP"] call _setRole;
@@ -379,8 +404,14 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
                 // Come from where the ground force is (aircraft and guns at a far-off base don't count).
                 private _ground = _alive select {([_x] call CAI_fnc_groupType) in ["INF", "GROUND", "TRUCK"]};
                 if (_ground isEqualTo []) then {_ground = _alive};
-                _approachDir = _center getDir ((_ground apply {leader _x}) call _centroid);
-                _staging = [_center getPos [_radius + 500, _approachDir], _center] call CAI_fnc_landPos;
+                if (_stagingPos isNotEqualTo []) then {
+                    // The mission maker's staging area decides the side the attack comes from.
+                    _staging = _stagingPos;
+                    _approachDir = _center getDir _staging;
+                } else {
+                    _approachDir = _center getDir ((_ground apply {leader _x}) call _centroid);
+                    _staging = [_center getPos [_radius + 500, _approachDir], _center] call CAI_fnc_landPos;
+                };
 
                 // Opening paradrop: each transport aircraft loads one squad and waits for the go.
                 if (_paraMode > 0 && {!_paraUsed}) then {
@@ -463,7 +494,8 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
                     switch (true) do {
                         case ((_x call _roleOf) in ["PARA", "PARA_LIFT", "HELO", "HELO_LIFT", "LIFT_BUSY"]): {};
                         case (_type in ["INF", "GROUND"]): {
-                            if (!(_x getVariable ["CAI_inTransit", false]) && {(leader _x) distance2D _center > _radius + 700}) then {
+                            // Fast tempo: no gathering, squads go straight to their attack positions next.
+                            if (_tGather > 0 && {!(_x getVariable ["CAI_inTransit", false])} && {(leader _x) distance2D _center > _radius + 700}) then {
                                 private _spot = [_staging getPos [random 120, random 360], _center] call CAI_fnc_landPos;
                                 private _move = [[_spot, "MOVE", "AWARE", "YELLOW", "FULL", 60]];
                                 // Infantry far from the staging area fly there (helicopters) or ride (trucks).
@@ -487,7 +519,11 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
                         };
                     };
                 } forEach _alive;
-                format ["All units, form up %1 of %2. Attack begins when ready.", _approachDir call _compass, _objName] call _say;
+                if (_tGather > 0) then {
+                    format ["All units, form up %1 of %2. Attack begins when ready.", _approachDir call _compass, _objName] call _say;
+                } else {
+                    format ["All units, attack %1 from the %2. Move to your attack positions.", _objName, _approachDir call _compass] call _say;
+                };
                 "forming up" call _status;
             };
 
@@ -506,8 +542,8 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
                 (leader _x) distance2D _staging < 300 || {(leader _x) distance2D _center < _radius + 700}
             } count _staged;
             // More time while squads are still being flown or driven in.
-            private _limit = [360, 600] select (({_x getVariable ["CAI_inTransit", false]} count _staged) > 0);
-            if (_staged isEqualTo [] || {_ready >= 0.7 * count _staged} || {time - _stateSince > _limit}) then {
+            private _limit = [_tGather, _tGatherLift] select (({_x getVariable ["CAI_inTransit", false]} count _staged) > 0);
+            if (_tGather <= 0 || {_staged isEqualTo []} || {_ready >= _tReady * count _staged} || {time - _stateSince > _limit}) then {
                 _change = "ATTACK_PREP";
             };
         };
@@ -536,6 +572,17 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
                 private _reserve = _inf select [count _inf - _nRes, _nRes];
                 private _assault = _inf - _reserve;
                 _axes = [0, -60, 60] select [0, ((count _assault) min 3) max 1];
+                // The mission maker's attack positions are the lanes instead (left to right).
+                private _lanePos = [];
+                if (_attackPositions isNotEqualTo []) then {
+                    private _byRel = [];
+                    {
+                        _byRel pushBack [((((_center getDir _x) - _approachDir) % 360) + 540) % 360 - 180, _forEachIndex, _x];
+                    } forEach _attackPositions;
+                    _byRel sort true;
+                    _axes = _byRel apply {_x select 0};
+                    _lanePos = _byRel apply {_x select 2};
+                };
 
                 // Lanes left to right are given to squads left to right, so nobody crosses in front
                 // of the objective; squads sharing a lane are spread a little so they don't converge.
@@ -560,7 +607,14 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
                 {
                     (_laneOf select _forEachIndex) params ["_l", "_k"];
                     private _axisDir = _approachDir + (_lanes select _l) + (_k - ((_perLane select _l) - 1) / 2) * 12;
-                    private _formUp = [_center, _axisDir, _radius + 120, _radius + 260, false, _radius, 25] call CAI_fnc_pickPos;
+                    private _formUp = if (_lanePos isEqualTo []) then {
+                        [_center, _axisDir, _radius + 120, _radius + 260, false, _radius, 25] call CAI_fnc_pickPos
+                    } else {
+                        // At the attack position, squads sharing it side by side 30 m apart.
+                        private _lp = _lanePos select _l;
+                        _axisDir = _center getDir _lp;
+                        [_lp getPos [(_k - ((_perLane select _l) - 1) / 2) * 30, _axisDir + 90], _lp] call CAI_fnc_landPos
+                    };
                     private _entry = [_center getPos [_radius * 0.4, _axisDir], _center] call CAI_fnc_landPos;
                     _x setVariable ["CAI_cmdAxis", [_formUp, _entry, _axisDir]];
                     _x setVariable ["CAI_cmdProg", [time, (leader _x) distance2D _center]];
@@ -604,12 +658,12 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
                 };
             };
             // Keep hitting whatever is spotted while the troops get ready.
-            if (time - _stateSince > 20) then {
+            if (time - _stateSince > (_tPrep / 2)) then {
                 [_side, _threats, _tickMissions, _fireRounds, _fireCooldown, format ["%1 HQ", _sideName]] call CAI_fnc_cmdFires;
             };
             [true, _threats] call _runAir;
             _center call _illuminate;
-            if (time - _stateSince > 45) then {_change = "ATTACK_ASSAULT"};
+            if (time - _stateSince > _tPrep) then {_change = "ATTACK_ASSAULT"};
         };
 
         case "ATTACK_ASSAULT": {
@@ -629,7 +683,7 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
                     !(_x getVariable ["CAI_inTransit", false])
                     && {(leader _x) distance2D ((_x getVariable ["CAI_cmdAxis", [[0, 0, 0]]]) select 0) < 80}
                 } count _formers;
-                if (_formers isEqualTo [] || {_inPos >= 0.7 * count _formers} || {time - _stateSince > 240}) then {
+                if (_formers isEqualTo [] || {_inPos >= ([0.6, 0.7, 0.8] select (_tempo max 0 min 2)) * count _formers} || {time - _stateSince > _tHHour}) then {
                     _hHour = time;
                     private _smoked = 0;
                     if (_fireLevel > 0 && {CAI_artillery} && {!call _isNight}) then {
@@ -670,7 +724,7 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
                 {
                     private _axis = _x getVariable ["CAI_cmdAxis", []];
                     if (_axis isNotEqualTo [] && {!(_x getVariable ["CAI_inTransit", false])}
-                        && {(leader _x) distance2D (_axis select 0) < 80 || {_x call _isIdle} || {time - (_x getVariable ["CAI_cmdSince", time]) > 240}}
+                        && {(leader _x) distance2D (_axis select 0) < 80 || {_x call _isIdle} || {time - (_x getVariable ["CAI_cmdSince", time]) > _tLate}}
                     ) then {
                         [_x, "ASSAULT"] call _setRole;
                         _x setVariable ["CAI_cmdProg", [time, (leader _x) distance2D _center]];
@@ -895,7 +949,7 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
             private _avg = 0;
             {_avg = _avg + ([_x] call _strength)} forEach _fighting;
             _avg = if (_fighting isEqualTo []) then {0} else {_avg / count _fighting};
-            if (!_reserveCommitted && {_hHour >= 0} && {_avg < 0.6 || {time - _hHour > 240}}) then {
+            if (!_reserveCommitted && {_hHour >= 0} && {_avg < 0.6 || {time - _hHour > _tReserve}}) then {
                 _reserveCommitted = true;
                 private _res = _alive select {(_x call _roleOf) == "RESERVE"};
                 private _best = grpNull;
@@ -930,8 +984,53 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
             if (_inArea isEqualTo [] && {_friendIn >= 2} && {_buildingsDone}) then {
                 if (_secureSince < 0) then {_secureSince = time};
                 if (time - _secureSince > 45) then {
-                    format ["%1 is secured. All units consolidate and defend.", _objName] call _say;
-                    _change = "DEFEND_SETUP";
+                    if (_objectives isEqualTo []) then {
+                        format ["%1 is secured. All units consolidate and defend.", _objName] call _say;
+                        _change = "DEFEND_SETUP";
+                    } else {
+                        // On to the next objective (Objective modules, in order).
+                        (_objectives deleteAt 0) params ["_nCenter", "_nRadius", "_leave", "_nStaging", "_nAttack"];
+                        private _held = "";
+                        if (_leave) then {
+                            // The infantry squad nearest the center stays behind as a garrison.
+                            private _cands = [];
+                            {
+                                if (([_x] call CAI_fnc_groupType) == "INF" && {!(_x getVariable ["CAI_inTransit", false])} && {(leader _x) distance2D _center < _radius + 100}) then {
+                                    _cands pushBack [(leader _x) distance2D _center, _forEachIndex, _x];
+                                };
+                            } forEach _alive;
+                            _cands sort true;
+                            if (_cands isNotEqualTo [] && {count (_alive select {([_x] call CAI_fnc_groupType) == "INF"}) > 1}) then {
+                                private _gg = (_cands select 0) select 2;
+                                _groups = _groups - [_gg];
+                                _gg setVariable ["CAI_commander", objNull, true];
+                                _gg setVariable ["CAI_cmdRole", ""];
+                                if !([_gg, _center, _radius * 0.6, -1] call CAI_fnc_garrison) then {
+                                    [_gg, [[[_center getPos [random 30, random 360], _center] call CAI_fnc_landPos, "HOLD", "AWARE", "YELLOW", "NORMAL", 20]]] call CAI_fnc_cmdOrder;
+                                };
+                                _held = format [" %1 stays to hold it.", groupId _gg];
+                            };
+                        };
+                        private _oldName = _objName;
+                        _center = _nCenter;
+                        _radius = _nRadius;
+                        _stagingPos = _nStaging;
+                        _attackPositions = _nAttack;
+                        _objName = call _nameOf;
+                        _objBuildings = [_center, _radius, 3] call CAI_fnc_buildingsIn;
+                        _staging = [];
+                        _lastThreatDir = -1;
+                        _infiltrated = false;
+                        _attempt = 1;
+                        if (_markers) then {
+                            private _area = format ["CAI_cmd_area_%1", _cmdId];
+                            _area setMarkerPosLocal _center;
+                            _area setMarkerSize [_radius, _radius];
+                            (format ["CAI_cmd_txt_%1", _cmdId]) setMarkerPos _center;
+                        };
+                        format ["%1 is secured.%2 All units, next objective: %3.", _oldName, _held, _objName] call _say;
+                        _change = "ATTACK_STAGE";
+                    };
                 };
             } else {
                 _secureSince = -1;
@@ -942,9 +1041,11 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
             // While troops hold ground in the objective (e.g. clearing houses) the attack gets more time.
             private _limit = [1200, 2400] select (_friendIn > 0);
             if (_change == "" && {(_reserveCommitted && {_committed isEqualTo []}) || {time - _stateSince > _limit}}) then {
-                // Next attempt comes from a different direction.
-                _approachDir = (_approachDir + selectRandom [-50, 50] + 360) % 360;
-                _staging = [_center getPos [_radius + 500, _approachDir], _center] call CAI_fnc_landPos;
+                // Next attempt comes from a different direction (unless the mission maker set the staging area).
+                if (_stagingPos isEqualTo []) then {
+                    _approachDir = (_approachDir + selectRandom [-50, 50] + 360) % 360;
+                    _staging = [_center getPos [_radius + 500, _approachDir], _center] call CAI_fnc_landPos;
+                };
                 format ["The attack on %1 has failed. Regroup at the staging area %2 of the objective.", _objName, _approachDir call _compass] call _say;
                 {
                     if (([_x] call CAI_fnc_groupType) in ["INF", "GROUND"]) then {
@@ -963,7 +1064,7 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
             // Cover the regroup.
             [_side, _threats, _tickMissions, _fireRounds, _fireCooldown, format ["%1 HQ", _sideName]] call CAI_fnc_cmdFires;
             [true, _threats] call _runAir;
-            if (time - _stateSince > 180) then {
+            if (time - _stateSince > _tRegroup) then {
                 // Only ground troops can take a town (aircrew, gun crews and drivers don't count).
                 private _men = 0;
                 {
@@ -1288,7 +1389,7 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
         _entered = false;
     };
 
-    sleep 10;
+    sleep _tTick;
 };
 
 // Commander gone (all lost, attack called off, module deleted): the survivors are free again

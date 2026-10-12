@@ -5,7 +5,7 @@ class CfgPatches {
         url = "https://github.com/crabman436/Arma-3-ai-mod";
         requiredVersion = 2.10;
         requiredAddons[] = {"A3_Functions_F", "A3_Modules_F"};
-        units[] = {"CAI_ModuleSettings", "CAI_ModuleExclude", "CAI_ModuleCommander", "CAI_ModuleGarrison", "CAI_ModuleClear"};
+        units[] = {"CAI_ModuleSettings", "CAI_ModuleExclude", "CAI_ModuleCommander", "CAI_ModuleStaging", "CAI_ModuleAttackPos", "CAI_ModuleObjective", "CAI_ModuleGarrison", "CAI_ModuleClear"};
         weapons[] = {};
     };
 };
@@ -48,6 +48,7 @@ class CfgFunctions {
             class moduleSettings {};
             class moduleExclude {};
             class moduleCommander {};
+            class modulePlanPoint {};
             class commander {};
             class cmdAssess {};
             class cmdOrder {};
@@ -300,6 +301,18 @@ class CfgVehicles {
                     class Indep { name = "Independent"; value = 2; };
                 };
             };
+            class Tempo: Combo {
+                property = "CAI_ModuleCommander_Tempo";
+                displayName = "Attack tempo";
+                tooltip = "Fast: squads go straight to their attack positions (no gathering at a staging area), short preparatory fires, H-hour after at most 90 s. Normal: gather at the staging area first (up to 4 min), H-hour after at most 3 min. Deliberate: long gather, long preparation, everyone in position before H-hour.";
+                typeName = "NUMBER";
+                defaultValue = "0";
+                class Values {
+                    class Fast { name = "Fast"; value = 0; };
+                    class Normal { name = "Normal"; value = 1; };
+                    class Deliberate { name = "Deliberate"; value = 2; };
+                };
+            };
             class AutoRadius: Edit {
                 property = "CAI_ModuleCommander_AutoRadius";
                 displayName = "Auto-assign radius (m)";
@@ -389,8 +402,95 @@ class CfgVehicles {
         };
 
         class ModuleDescription: ModuleDescription {
-            description = "An AI commander that takes or holds the module's area with the groups synced to it (or all free groups of its side nearby). Resize the area in the editor. Sync a trigger to start it later.";
+            description = "An AI commander that takes or holds the module's area with the groups synced to it (or all free groups of its side nearby). Resize the area in the editor. Sync a trigger to start it later. Optional: sync a Staging Area, Attack Position(s) and Objective modules to it to plan the attack yourself.";
             sync[] = {"AnyBrain"};
+        };
+    };
+
+    class CAI_ModuleStaging: Module_F {
+        scope = 2;
+        scopeCurator = 0;
+        displayName = "Coordinated AI Commander: Staging Area";
+        icon = "\a3\ui_f\data\igui\cfg\simpletasks\types\meet_ca.paa";
+        category = "CAI_Modules";
+        function = "CAI_fnc_modulePlanPoint";
+        functionPriority = 1;
+        isGlobal = 0;
+        isTriggerActivated = 0;
+        isDisposable = 0;
+        is3DEN = 0;
+
+        class Attributes: AttributesBase {
+            class ModuleDescription: ModuleDescription {};
+        };
+
+        class ModuleDescription: ModuleDescription {
+            description = "Sync to a Commander (or to one of its Objective modules): the force forms up here and attacks from this side. Reserve and squads that fall back also gather here.";
+        };
+    };
+
+    class CAI_ModuleAttackPos: Module_F {
+        scope = 2;
+        scopeCurator = 0;
+        displayName = "Coordinated AI Commander: Attack Position";
+        icon = "\a3\ui_f\data\igui\cfg\simpletasks\types\attack_ca.paa";
+        category = "CAI_Modules";
+        function = "CAI_fnc_modulePlanPoint";
+        functionPriority = 1;
+        isGlobal = 0;
+        isTriggerActivated = 0;
+        isDisposable = 0;
+        is3DEN = 0;
+
+        class Attributes: AttributesBase {
+            class ModuleDescription: ModuleDescription {};
+        };
+
+        class ModuleDescription: ModuleDescription {
+            description = "Sync one or more to a Commander (or to one of its Objective modules). Each one is an assault lane: squads form up here and attack the objective from this spot. Squads are shared out between the positions, left to right.";
+        };
+    };
+
+    class CAI_ModuleObjective: Module_F {
+        scope = 2;
+        scopeCurator = 0;
+        displayName = "Coordinated AI Commander: Objective";
+        icon = "\a3\ui_f\data\igui\cfg\simpletasks\types\target_ca.paa";
+        category = "CAI_Modules";
+        function = "CAI_fnc_modulePlanPoint";
+        functionPriority = 1;
+        isGlobal = 0;
+        isTriggerActivated = 0;
+        isDisposable = 0;
+        is3DEN = 0;
+        canSetArea = 1;
+        canSetAreaShape = 0;
+
+        class AttributeValues {
+            size3[] = {200, 200, -1};
+            isRectangle = 0;
+        };
+
+        class Attributes: AttributesBase {
+            class Order: Edit {
+                property = "CAI_ModuleObjective_Order";
+                displayName = "Order";
+                tooltip = "Objectives are taken one after another, lowest number first, after the commander's own area.";
+                typeName = "NUMBER";
+                defaultValue = "1";
+            };
+            class LeaveGarrison: Checkbox {
+                property = "CAI_ModuleObjective_LeaveGarrison";
+                displayName = "Leave a garrison behind";
+                tooltip = "When the force moves on to this objective, one infantry squad stays to garrison the one just taken.";
+                typeName = "BOOL";
+                defaultValue = "true";
+            };
+            class ModuleDescription: ModuleDescription {};
+        };
+
+        class ModuleDescription: ModuleDescription {
+            description = "Sync to a Commander: once its area is taken, the force moves on and attacks this area next (several objectives are taken in Order). Defends the last one. Sync a Staging Area and Attack Positions to this module to plan that attack too.";
         };
     };
 
