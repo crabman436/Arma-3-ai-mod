@@ -27,12 +27,13 @@
                   helicopter air assault (0 off, 1 edge of the objective, 2 into the objective),
                   tempo (0 fast, 1 normal, 2 deliberate), staging position ([] = automatic),
                   attack positions (lanes, [] = automatic),
-                  next objectives [[center, radius, leave a garrison, staging position, attack positions], ...]]
+                  next objectives [[center, radius, leave a garrison, staging position, attack positions], ...],
+                  dispersed assault (true: a lane per squad, each attacks when in position; false: one push at H-hour)]
 */
 
 params ["_logic", "_side", "_groups", "_mode", "_radius", "_reservePct", "_radio", "_markers", ["_opts", [1, true, true]]];
 _opts params [["_fireLevel", 1], ["_airSupport", true], ["_refit", true], ["_clearOpt", true], ["_paraMode", 0], ["_heloMode", 0],
-    ["_tempo", 0], ["_stagingPos", []], ["_attackPositions", []], ["_objectives", []]];
+    ["_tempo", 0], ["_stagingPos", []], ["_attackPositions", []], ["_objectives", []], ["_dispersed", true]];
 
 // Attack tempo: [gather at the staging area (s, 0 = don't gather), more if squads are being lifted,
 //                share of squads in place to go on, preparatory fires (s), max wait for H-hour (s),
@@ -572,6 +573,13 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
                 private _reserve = _inf select [count _inf - _nRes, _nRes];
                 private _assault = _inf - _reserve;
                 _axes = [0, -60, 60] select [0, ((count _assault) min 3) max 1];
+                // Dispersed: a lane for every squad, spread over an arc up to 240 degrees wide.
+                if (_dispersed && {count _assault > 1}) then {
+                    private _nL = count _assault;
+                    private _w = (50 * (_nL - 1)) min 240;
+                    _axes = [];
+                    for "_i" from 0 to (_nL - 1) do {_axes pushBack (_i * _w / (_nL - 1) - _w / 2)};
+                };
                 // The mission maker's attack positions are the lanes instead (left to right).
                 private _lanePos = [];
                 if (_attackPositions isNotEqualTo []) then {
@@ -634,7 +642,13 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
 
                 // Vehicles: support by fire from positions that can see the objective.
                 {
-                    private _d = _approachDir + ([-35, 35] select (_forEachIndex % 2));
+                    // Coordinated: either side of the main lane. Dispersed: spread over the whole arc.
+                    private _d = _approachDir + (if (_dispersed && {count _veh > 1}) then {
+                        private _w = (60 * (count _veh - 1)) min 260;
+                        _forEachIndex * _w / (count _veh - 1) - _w / 2
+                    } else {
+                        [-35, 35] select (_forEachIndex % 2)
+                    });
                     private _overwatch = [_center, _d, _radius + 200, _radius + 500, true, _radius, 25] call CAI_fnc_pickPos;
                     private _inner = [_center getPos [_radius * 0.6, _d], _center] call CAI_fnc_landPos;
                     _x setVariable ["CAI_cmdAxis", [_overwatch, _inner, _d]];
@@ -683,16 +697,21 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
                     !(_x getVariable ["CAI_inTransit", false])
                     && {(leader _x) distance2D ((_x getVariable ["CAI_cmdAxis", [[0, 0, 0]]]) select 0) < 80}
                 } count _formers;
-                if (_formers isEqualTo [] || {_inPos >= ([0.6, 0.7, 0.8] select (_tempo max 0 min 2)) * count _formers} || {time - _stateSince > _tHHour}) then {
+                if (_dispersed || {_formers isEqualTo []} || {_inPos >= ([0.6, 0.7, 0.8] select (_tempo max 0 min 2)) * count _formers} || {time - _stateSince > _tHHour}) then {
                     _hHour = time;
                     private _smoked = 0;
-                    if (_fireLevel > 0 && {CAI_artillery} && {!call _isNight}) then {
+                    // Dispersed: each squad gets its own smoke screen when it starts (below).
+                    if (!_dispersed && {_fireLevel > 0} && {CAI_artillery} && {!call _isNight}) then {
                         {
                             private _screen = [_center getPos [_radius + 40, _approachDir + _x], _center] call CAI_fnc_landPos;
                             if ([_side, _screen, 20, _hq, 2, "SMOKE", 30] call CAI_fnc_fireMission) then {_smoked = _smoked + 1};
                         } forEach _axes;
                     };
-                    format ["H-hour! All squads, assault %1!%2", _objName, ["", " Smoke on the lanes."] select (_smoked > 0)] call _say;
+                    if (_dispersed) then {
+                        format ["All squads, attack %1 on your own lanes as soon as you are in position!", _objName] call _say;
+                    } else {
+                        format ["H-hour! All squads, assault %1!%2", _objName, ["", " Smoke on the lanes."] select (_smoked > 0)] call _say;
+                    };
                     // Air assault goes in now; gunships escort the landing zones.
                     private _heloLifts = _alive select {(_x call _roleOf) == "HELO_LIFT"};
                     {_x setVariable ["CAI_liftGo", true]} forEach _heloLifts;
@@ -730,6 +749,13 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
                         _x setVariable ["CAI_cmdProg", [time, (leader _x) distance2D _center]];
                         _x setVariable ["CAI_bounding", true];
                         [_x, _axis select 1, _center, 600, _x getVariable ["CAI_orderId", 0]] spawn CAI_fnc_boundAdvance;
+                        if (_dispersed) then {
+                            // Its own attack: smoke on its lane and a call on the radio.
+                            private _smoke = _fireLevel > 0 && {CAI_artillery} && {!call _isNight} && {
+                                [_side, [_center getPos [_radius + 40, _axis select 2], _center] call CAI_fnc_landPos, 20, _hq, 2, "SMOKE", 30] call CAI_fnc_fireMission
+                            };
+                            format ["%1 attacking from the %2.%3", groupId _x, (_axis select 2) call _compass, ["", " Smoke on its lane."] select _smoke] call _say;
+                        };
                     };
                 } forEach _formers;
             };

@@ -37,6 +37,10 @@ group of the chosen side within the auto-assign radius (2 km by default).
 | Normal | at the staging area, up to 4 min | 35 s | 3 min |
 | Deliberate | at the staging area, up to 6 min | 45 s | 5 min |
 
+**Assault style** (commander setting):
+- **Dispersed** (default): every squad gets its own lane, spread over an arc around the objective (up to 240° wide), and attacks on its own as soon as it reaches its attack position, with a smoke screen on its lane. The objective is hit from many sides by many small attacks. Vehicles spread out over the same arc for support by fire.
+- **Coordinated**: up to three lanes, and everyone goes together at H-hour (one big push).
+
 **Planning the attack yourself** (optional modules, same category):
 - **Commander: Staging Area**: sync it to the Commander. The force forms up there and attacks from that side (and keeps that side on later attempts). The reserve and squads that fall back gather there.
 - **Commander: Attack Position**: sync one or more to the Commander. Each one is an assault lane: squads form up on it and attack the objective from there, shared out left to right (several squads on one position stand 30 m apart).

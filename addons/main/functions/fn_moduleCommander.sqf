@@ -30,6 +30,7 @@ private _clear = _logic getVariable ["ClearBuildings", true];
 private _para = _logic getVariable ["Paradrop", 0];
 private _helo = _logic getVariable ["AirAssault", 0];
 private _tempo = (_logic getVariable ["Tempo", 0]) max 0 min 2;
+private _dispersed = (_logic getVariable ["Style", 0]) == 0;
 
 private _area = _logic getVariable ["objectArea", [250, 250, 0, false, -1]];
 private _radius = ((_area select 0) max (_area select 1)) max 50;
@@ -153,4 +154,4 @@ if (_groups isEqualTo []) exitWith {
 } forEach _groups;
 
 [_logic, _side, _groups, _mode, _radius, _reserve, _radio, _markers,
-    [_fireLevel, _airSupport, _refit, _clear, _para, _helo, _tempo, _stagingPos, _attackPositions, _objectives]] spawn CAI_fnc_commander;
+    [_fireLevel, _airSupport, _refit, _clear, _para, _helo, _tempo, _stagingPos, _attackPositions, _objectives, _dispersed]] spawn CAI_fnc_commander;

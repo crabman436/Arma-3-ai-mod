@@ -313,6 +313,17 @@ class CfgVehicles {
                     class Deliberate { name = "Deliberate"; value = 2; };
                 };
             };
+            class Style: Combo {
+                property = "CAI_ModuleCommander_Style";
+                displayName = "Assault style";
+                tooltip = "Dispersed: every squad gets its own lane, spread around the objective, and attacks as soon as it is in position (many small attacks from different sides). Coordinated: up to three lanes and everyone goes together at H-hour (one big push).";
+                typeName = "NUMBER";
+                defaultValue = "0";
+                class Values {
+                    class Dispersed { name = "Dispersed (each squad attacks on its own)"; value = 0; };
+                    class Coordinated { name = "Coordinated (one push at H-hour)"; value = 1; };
+                };
+            };
             class AutoRadius: Edit {
                 property = "CAI_ModuleCommander_AutoRadius";
                 displayName = "Auto-assign radius (m)";

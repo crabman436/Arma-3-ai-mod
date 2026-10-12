@@ -114,7 +114,7 @@ private _sortNested = {
 results.append(run("lanes", ASSERT + SORT_NESTED + '''
 // Squads are [name, bearing from the objective].
 private _case = {
-    params ["_approachDir", "_assault", ["_attackPositions", []]];
+    params ["_approachDir", "_assault", ["_attackPositions", []], ["_dispersed", false]];
     private _center = [0, 0, 0];
 ''' + lanes + '''
     private _dirs = [];
@@ -147,6 +147,14 @@ private _r = [0, [["A", 350], ["B", 20], ["C", 300], ["D", 60]]] call _case;
 private _ap = [[-500, 0, 0], [400, 400, 0], [0, 500, 0]];
 _r = [0, [["A", 30], ["B", 330], ["C", 0]], _ap] call _case;
 [((_r select 0) apply {_x select 0}) isEqualTo ["B", "C", "A"], format ["custom lanes, sorted by side: %1", _r select 0]] call _assert;
+// Dispersed: every squad its own lane, spread evenly over the arc (5 squads -> 200 degrees).
+_r = [0, [["A", 350], ["B", 20], ["C", 300], ["D", 60], ["E", 0]], [], true] call _case;
+[(_r select 1) isEqualTo [-100, -50, 0, 50, 100], format ["dispersed lanes: %1", _r select 1]] call _assert;
+// Dispersed with many squads stays within 240 degrees; one squad is just the main lane.
+_r = [90, [["A", 10], ["B", 40], ["C", 70], ["D", 90], ["E", 110], ["F", 130], ["G", 150], ["H", 170]], [], true] call _case;
+[((_r select 1) select 0) == -120 && {((_r select 1) select 7) == 120}, format ["wide arc capped: %1", _r select 1]] call _assert;
+_r = [90, [["A", 10]], [], true] call _case;
+[(_r select 1) isEqualTo [0], format ["single squad lane: %1", _r select 1]] call _assert;
 // Two squads on four positions, five squads on two positions: no index errors.
 [0, [["A", 10], ["B", 20]], _ap + [[300, -300, 0]]] call _case;
 [90, [["A", 10], ["B", 40], ["C", 90], ["D", 120], ["E", 170]], [[500, 100, 0], [500, -100, 0]]] call _case;
