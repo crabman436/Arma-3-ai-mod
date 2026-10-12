@@ -38,7 +38,7 @@ group of the chosen side within the auto-assign radius (2 km by default).
 | Deliberate | at the staging area, up to 6 min | 45 s | 5 min |
 
 **Assault style** (commander setting):
-- **Dispersed** (default): every squad gets its own lane, spread over an arc around the objective (up to 240° wide), and attacks on its own as soon as it reaches its attack position, with a smoke screen on its lane. The objective is hit from many sides by many small attacks. Vehicles spread out over the same arc for support by fire.
+- **Dispersed** (default): every squad gets its own lane, spread over an arc around the objective (up to 240° wide), and attacks on its own as soon as it reaches its attack position, with a smoke screen on its lane. Nobody waits for the others or for the fire plan: squads **infiltrate** toward their entry point in stealth, using cover, and only switch to bounding once the enemy is close. Up to 12 lanes; a bigger force shares them, slightly offset. The objective is hit from many sides by many small attacks. Vehicles spread out over the same arc for support by fire.
 - **Coordinated**: up to three lanes, and everyone goes together at H-hour (one big push).
 
 **Planning the attack yourself** (optional modules, same category):
@@ -78,14 +78,14 @@ group of the chosen side within the auto-assign radius (2 km by default).
 - When the attack forms up, each **transport helicopter** under the commander picks up an infantry squad (or uses one already aboard) and waits.
 - At **H-hour** they all lift off together, fly in **low and fast** (35 m), land at **tight landing zones** (within 100 m of the chosen spot) on the lanes, either **at the edge of the objective** or **into it (hot LZ)**, unload and leave straight away. The squads go straight into the attack and the house clearing.
 - **Gunships escort the landing zones** for 5 minutes: any enemy near an LZ becomes their top target, and if none is known they overwatch the LZ anyway.
-- **Armed helicopters carrying troops** (e.g. a squad placed in the back of a Mi-48 Kajman or an armed Orca) act as **transports first**: no attack runs while anyone is aboard. They insert the squad, and once empty they join the close air support rotation.
+- **Armed helicopters carrying troops** (e.g. a squad placed in the back of a Mi-48 Kajman or an armed Orca) act as **transports first**: no attack runs while anyone is aboard. They insert the squad, and once empty they join the close air support.
 - The transporting crew and the squad it carries are **separate groups**: a helicopter or truck crew can carry any infantry squad of its side. Squads placed aboard in the editor fly on the helicopter they're in.
 - If both the paradrop and the air assault are on, helicopters fly the air assault and transport planes do the paradrop.
 
-**Coordinated helicopter CAS:**
-- Attack helicopters fly **attack runs** instead of hovering over the target: from a **holding area** behind friendly lines to a **firing position 1 km out on the target's flank** (so they never shoot over friendly troops), engage for about 50 s, **break off**, and go round again.
-- **Rotation:** with two or more gunships, at most half are on a run at any time, so one is always coming in while the other resets.
-- **Target priority:** enemies near air assault landing zones, then **enemies engaging friendly squads** (troops in contact), then the most valuable target. Enemy AA: helicopters still hold back while the artillery and jets deal with it.
+**Close air support (flown by the AI, not scripted):**
+- Every attack helicopter, jet and bomber under the commander gets a **loiter (circling) waypoint over the fight** and is told about the threats your side has spotted there (the most dangerous first). The crews **pick their own targets, attack angles and weapons**, so they fly and shoot like normal Arma AI instead of being forced onto one target.
+- **Where they circle:** over air assault landing zones first (escort), then over enemies engaging friendly squads (troops in contact), then over the most valuable known target. It follows the fight as it moves. Helicopters circle tighter (500 m), low and on the friendly side; planes circle wider (1.2 km) and higher.
+- Enemy AA: helicopters still hold back at a distance while the artillery and jets deal with it. Out of ammo or badly hit: back to base, rearm, come back.
 
 **Opening paradrop** (option, attack only):
 - When the attack forms up, each **transport helicopter or transport plane** under the commander loads one infantry squad: a squad already sitting in its cargo seats, or the nearest one (helicopters fly to it and land; planes on a runway are walked to).
@@ -104,7 +104,7 @@ group of the chosen side within the auto-assign radius (2 km by default).
 - *Normal* or *Heavy* (double rounds, guns re-tasked faster), or *Off*.
 
 **Air support** (commanded attack helicopters and jets):
-- Jets fly strike missions on the most valuable spotted targets, re-tasked as soon as their target dies. Helicopters fly coordinated attack runs (see *Coordinated helicopter CAS*).
+- Attack helicopters, jets and bombers loiter over the fight and engage threats on their own (see *Close air support*).
 - **Enemy AA spotted:** helicopters hold back out of range while artillery and jets go after the AA (for up to 4 minutes, then they go in anyway).
 - Aircraft low on ammo or fuel, or badly damaged, **fly home, rearm, refuel and repair** (after 90 s) and come back. Turn this off for a harder, attrition fight.
 - When defending, aircraft wait at base and launch as soon as enemies are spotted near the objective.

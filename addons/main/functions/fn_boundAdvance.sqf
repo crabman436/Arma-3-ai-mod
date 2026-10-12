@@ -23,9 +23,11 @@
         3: NUMBER max time (default 600)
         4: NUMBER the group's CAI_orderId when this was ordered (default -1 = don't check):
            if the group got other orders before this script started, it doesn't start
+        5: BOOL infiltrate (default false): the approach is made in stealth, quietly using
+           cover, until the enemy is close
 */
 
-params ["_grp", "_dest", ["_lookAt", []], ["_maxTime", 600], ["_oid", -1]];
+params ["_grp", "_dest", ["_lookAt", []], ["_maxTime", 600], ["_oid", -1], ["_stealth", false]];
 
 if (isNull _grp) exitWith {};
 if (_oid >= 0 && {(_grp getVariable ["CAI_orderId", 0]) != _oid}) exitWith {};
@@ -101,7 +103,7 @@ while {call _active && {!_done}} do {
         _grp setFormation "WEDGE";
         private _wp = _grp addWaypoint [_dest, 0];
         _wp setWaypointType "MOVE";
-        _wp setWaypointBehaviour "AWARE";
+        _wp setWaypointBehaviour (["AWARE", "STEALTH"] select _stealth);
         _wp setWaypointCombatMode "YELLOW";
         _wp setWaypointSpeed "NORMAL";
         _wp setWaypointCompletionRadius 30;

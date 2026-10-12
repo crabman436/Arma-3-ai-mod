@@ -318,6 +318,7 @@ private _heloUsed = false;
 private _lastThreatDir = -1;
 private _escortLZs = [];
 private _axes = [0];
+private _nextAttackCall = 0;
 
 format ["%1 HQ taking command of %2 groups. Mission: %3 %4.", _sideName, count _groups, ["attack", "defend"] select (_mode == 1), _objName] call _say;
 
@@ -573,9 +574,10 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
                 private _reserve = _inf select [count _inf - _nRes, _nRes];
                 private _assault = _inf - _reserve;
                 _axes = [0, -60, 60] select [0, ((count _assault) min 3) max 1];
-                // Dispersed: a lane for every squad, spread over an arc up to 240 degrees wide.
+                // Dispersed: a lane for every squad (up to 12; a bigger force shares them, slightly
+                // offset), spread over an arc up to 240 degrees wide.
                 if (_dispersed && {count _assault > 1}) then {
-                    private _nL = count _assault;
+                    private _nL = (count _assault) min 12;
                     private _w = (50 * (_nL - 1)) min 240;
                     _axes = [];
                     for "_i" from 0 to (_nL - 1) do {_axes pushBack (_i * _w / (_nL - 1) - _w / 2)};
@@ -677,7 +679,8 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
             };
             [true, _threats] call _runAir;
             _center call _illuminate;
-            if (time - _stateSince > _tPrep) then {_change = "ATTACK_ASSAULT"};
+            // Dispersed: nobody waits for the fire plan, squads move off at once.
+            if (_dispersed || {time - _stateSince > _tPrep}) then {_change = "ATTACK_ASSAULT"};
         };
 
         case "ATTACK_ASSAULT": {
@@ -748,13 +751,17 @@ while {!isNull _logic && {_logic getVariable ["CAI_cmdActive", true]}} do {
                         [_x, "ASSAULT"] call _setRole;
                         _x setVariable ["CAI_cmdProg", [time, (leader _x) distance2D _center]];
                         _x setVariable ["CAI_bounding", true];
-                        [_x, _axis select 1, _center, 600, _x getVariable ["CAI_orderId", 0]] spawn CAI_fnc_boundAdvance;
+                        [_x, _axis select 1, _center, 900, _x getVariable ["CAI_orderId", 0], _dispersed] spawn CAI_fnc_boundAdvance;
                         if (_dispersed) then {
                             // Its own attack: smoke on its lane and a call on the radio.
                             private _smoke = _fireLevel > 0 && {CAI_artillery} && {!call _isNight} && {
                                 [_side, [_center getPos [_radius + 40, _axis select 2], _center] call CAI_fnc_landPos, 20, _hq, 2, "SMOKE", 30] call CAI_fnc_fireMission
                             };
-                            format ["%1 attacking from the %2.%3", groupId _x, (_axis select 2) call _compass, ["", " Smoke on its lane."] select _smoke] call _say;
+                            // With a big force, don't flood the radio: one call every 20 s at most.
+                            if (time > _nextAttackCall) then {
+                                _nextAttackCall = time + 20;
+                                format ["%1 infiltrating from the %2.%3", groupId _x, (_axis select 2) call _compass, ["", " Smoke on its lane."] select _smoke] call _say;
+                            };
                         };
                     };
                 } forEach _formers;

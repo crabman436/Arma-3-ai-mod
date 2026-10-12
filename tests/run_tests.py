@@ -153,6 +153,11 @@ _r = [0, [["A", 350], ["B", 20], ["C", 300], ["D", 60], ["E", 0]], [], true] cal
 // Dispersed with many squads stays within 240 degrees; one squad is just the main lane.
 _r = [90, [["A", 10], ["B", 40], ["C", 70], ["D", 90], ["E", 110], ["F", 130], ["G", 150], ["H", 170]], [], true] call _case;
 [((_r select 1) select 0) == -120 && {((_r select 1) select 7) == 120}, format ["wide arc capped: %1", _r select 1]] call _assert;
+// A big force (20 squads): 12 lanes, shared, no index errors and still left to right.
+private _big = [];
+for "_i" from 0 to 19 do {_big pushBack [format ["S%1", _i], 300 + _i * 6]};
+_r = [0, _big, [], true] call _case;
+[count (_r select 1) == 20, "every squad of a big force has a lane"] call _assert;
 _r = [90, [["A", 10]], [], true] call _case;
 [(_r select 1) isEqualTo [0], format ["single squad lane: %1", _r select 1]] call _assert;
 // Two squads on four positions, five squads on two positions: no index errors.
