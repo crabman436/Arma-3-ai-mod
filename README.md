@@ -9,7 +9,7 @@ the human players on its side informed over side chat.
 Run one commander for a side to give your players a smart enemy, or one for each
 side to let two AI generals fight each other.
 
-- Vanilla SQF only. No CBA or ACE needed. Requires Arma 3 2.14 or newer.
+- Vanilla SQF only. No CBA or ACE needed. Requires Arma 3 2.18 or newer (group event handlers).
 - Runs on the server only, so it works in singleplayer, hosted and dedicated MP.
 - Function tag `AIC`, PBO prefix `z\aic\addons\main`.
 

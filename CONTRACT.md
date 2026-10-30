@@ -12,7 +12,7 @@ objectives, allocates forces, issues waypoint orders, calls fire support and
 reports to players. Multiple commanders (one per side) can run at once, so two
 AI generals can fight each other.
 
-- Pure vanilla SQF, no CBA / ACE dependency. Arma 3 2.14+ (HashMaps, `params`,
+- Pure vanilla SQF, no CBA / ACE dependency. Arma 3 2.18+ (HashMaps, group event handlers, `params`,
   `isNotEqualTo`, `insert`, `findIf`, etc. are fine).
 - All logic runs **server only** (`if (!isServer) exitWith {};` in entry points).
 - Function tag: `AIC`, e.g. `AIC_fnc_createCommander`.

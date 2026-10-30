@@ -7,7 +7,7 @@ class CfgPatches
         url = "";
         units[] = {"AIC_ModuleCommander", "AIC_ModuleObjective"};
         weapons[] = {};
-        requiredVersion = 2.14;
+        requiredVersion = 2.18;
         requiredAddons[] = {"A3_Modules_F"};
     };
 };
