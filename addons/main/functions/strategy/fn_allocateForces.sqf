@@ -13,7 +13,8 @@
  *   2. Pool = AIC_fnc_availableGroups minus HELI/PLANE/NAVAL and groups on
  *      a SUPPORT task.
  *   3. Targets are built:
- *        - HQ (objective "") as DEFEND target if threats are within 1000 m
+ *        - HQ (objective "", or "BASE_HQ" when garrisons are managed) as
+ *          DEFEND target if threats are within 1000 m
  *        - own objectives with threats near them -> DEFEND targets
  *        - OFFENSIVE/BALANCED: enemy-held / contested / unowned objectives
  *          -> ATTACK targets, ordered by "score"
@@ -59,7 +60,13 @@
  *         group is actually taken, since that call reserves surplus). Groups
  *         already on the target keep it (stable assignments);
  *       - the HQ reserve (5./6.) is skipped, BASE_HQ's garrison covers it;
- *       - leftovers are left out of the plan, the garrison system owns them;
+ *       - leftovers are left out of the plan, the garrison system owns them,
+ *         except leftovers still on ATTACK / REINFORCE / SUPPORT: they get
+ *         DEFEND at the owned objective they were reinforcing, else at
+ *         their home, else at BASE_HQ (so they never keep a dead task);
+ *       - the HQ threat target uses objective id "BASE_HQ" (it replaces
+ *         BASE_HQ's own objective DEFEND target), so garrison groups
+ *         defending BASE_HQ count as already on it;
  *       - damaged groups still RETREAT; once at HQ they DEFEND it with
  *         objective "BASE_HQ", so the garrison system adopts them.
  *
@@ -207,6 +214,12 @@ private _fnc_onTarget = {
     params ["_info", "_target"];
     private _id = _target get "id";
     private _recObj = _info get "objective";
+    // the HQ target (id "BASE_HQ" with garrisons on) also matches HQ
+    // defenders whose order still has no objective id
+    if (_id != "" && {(_target get "kind") == "HQ"} && {_recObj == ""}) exitWith {
+        ((_info get "taskPos") isEqualType []) && {count (_info get "taskPos") >= 2}
+        && {((_info get "taskPos") distance2D (_target get "pos")) < 400}
+    };
     if (_id != "") then {
         _recObj == _id
     } else {
@@ -376,7 +389,7 @@ private _fnc_newTarget = {
 private _hqThreat = [_hq, 1000] call _fnc_threatAt;
 if (_hqThreat > 0) then {
     _targets pushBack ([
-        "", "HQ", _hq, 200, "DEFEND", (_hqThreat * 1.2) max 3,
+        _hqObjId, "HQ", _hq, 200, "DEFEND", (_hqThreat * 1.2) max 3,
         1000 + _hqThreat, "HQ", _hqThreat, false
     ] call _fnc_newTarget);
 };
@@ -386,6 +399,8 @@ if (_hqThreat > 0) then {
     private _obj = _x;
     private _id = _obj getOrDefault ["id", ""];
     if (!(_id isEqualType "") || {_id == ""}) then {continue};
+    // BASE_HQ under threat is already the HQ target above (same id)
+    if (_id == _hqObjId && {_hqThreat > 0}) then {continue};
     private _opos = _obj get "pos";
     private _radius = _obj getOrDefault ["radius", 300];
     if (!(_radius isEqualType 0) || {_radius <= 0}) then {_radius = 300};
@@ -762,6 +777,34 @@ private _ownIds = _ownObjectives apply {_x get "id"};
         [_grp, "PATROL", _bestO get "pos", _bestO get "id"] call _fnc_assign;
     };
 } forEach (if (_manageGarrisons) then {[]} else {call _fnc_remaining});
+
+// Garrisons on: groups dropped by the planner that are still on an
+// offensive task (ATTACK on an objective that is no longer a target or was
+// released as infeasible, REINFORCE of a target that is gone) would keep
+// that task forever - monitorOrders only ends ATTACK on capture and the
+// garrison system only handles IDLE/DEFEND/PATROL. Send them to DEFEND:
+// a reinforcement the owned objective it was heading to, everything else
+// its home garrison (BASE_HQ / HQ without one).
+if (_manageGarrisons) then {
+    {
+        private _info = _x;
+        private _recTask = _info get "task";
+        if !(_recTask in ["ATTACK", "REINFORCE", "SUPPORT"]) then {continue};
+        private _recObj = _info get "objective";
+        private _home = _info get "home";
+        private _dest = call {
+            if (_recTask == "REINFORCE" && {_recObj != ""} && {_recObj in _garrisons}) exitWith {_recObj};
+            if (_home != "" && {_home in _garrisons}) exitWith {_home};
+            _hqObjId
+        };
+        private _dpos = _hq;
+        if (_dest != "") then {
+            private _oi = _objectives findIf {(_x getOrDefault ["id", ""]) isEqualTo _dest};
+            if (_oi >= 0) then {_dpos = (_objectives select _oi) get "pos"};
+        };
+        [_info get "group", "DEFEND", _dpos, _dest] call _fnc_assign;
+    } forEach (call _fnc_remaining);
+};
 
 // ---------------------------------------------------------------------------
 // Store & report

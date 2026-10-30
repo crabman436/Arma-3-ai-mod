@@ -163,8 +163,10 @@ a normal, live garrison, because the engine wakes the group for them.
 Each cycle the general parks a group when all of these hold:
 
 - its task is IDLE, DEFEND or PATROL,
-- it has stopped moving (no waypoints left, within 100 m of its task position,
-  or more than 120 s into the task),
+- it has arrived (no waypoints left, within 100 m of its task position, or
+  more than 120 s into the task and within 1.5 × the objective radius of its
+  task position). A group still marching to a distant town is never parked
+  on the way,
 - its leader is not in COMBAT, and no enemy is near.
 
 It wakes a group when:
@@ -176,8 +178,12 @@ It wakes a group when:
   are blind, so the general checks for nearby enemies for them.
 
 Every order goes through `AIC_fnc_issueOrder`, which wakes the group first, so
-a parked group never gets an order it can't carry out. Helicopters in the air
-are never parked. `AIC_fnc_removeCommander` wakes all its groups again.
+a parked group never gets an order it can't carry out. Fire missions and CAS
+taskings wake the artillery or helicopter group first as well. Parked groups
+are never treated as "stuck" by the order monitor. Helicopters in the air
+are never parked. `AIC_fnc_removeCommander` wakes all its groups again, and a
+group that leaves the general's command (excluded, joined by a player, changed
+side) is woken when it is released.
 
 To keep a group out of this, for example a group whose dynamic simulation you
 set yourself, set this variable on it:
@@ -226,13 +232,18 @@ Each cycle the garrison system:
 4. Wakes each donor, orders it to DEFEND the town that needs it, and makes
    that town its new home. When the donor arrives and settles in, it is
    parked again. At most `garrisonMovesPerCycle` transfers are ordered per
-   cycle.
+   cycle, and a group that just moved to a new home stays there for at least
+   10 minutes before it can be moved again, so short-lived threats don't make
+   garrisons swing back and forth. Vehicles of a garrison that are away on a
+   transport ride still count for their home, so lending a truck doesn't
+   trigger a refill.
 
 The attack planner follows the same rules. A group settled in a garrison is
 only sent to attack or reinforce if its home can spare it. Groups that have no
 job in the plan stay where they are instead of being sent on patrol, and the
-HQ reserve is replaced by the `BASE_HQ` garrison. Damaged groups still retreat
-to HQ, and join its garrison there.
+HQ reserve is replaced by the `BASE_HQ` garrison. A group whose attack or
+reinforcement is called off goes back to DEFEND its home (or the town it was
+reinforcing). Damaged groups still retreat to HQ, and join its garrison there.
 
 ### Transport
 
@@ -252,8 +263,10 @@ vehicle then carries them to a drop point. Trucks and APCs stop 200 to 400 m
 short of the destination. Helicopters land at an LZ 300 to 600 m short of it,
 or right at the objective if no enemy is near it. After the drop the
 infantry carry out their real order, and the vehicle returns home (task `RTB`)
-and is parked there again. If the vehicle is destroyed or the ride takes more
-than 15 minutes, the infantry dismount and continue on foot. Helicopters on a
+and is parked there again (a vehicle that can no longer move is released as
+IDLE instead). If the vehicle is destroyed or the ride takes more than 15
+minutes, the infantry dismount and continue on foot, and that group isn't
+offered another ride for 10 minutes. Helicopters on a
 transport run are never used for CAS. Players on the side are told about each
 dispatch, for example "Sending reinforcements to Kavala by helicopter", and
 about each garrison move. With `debugMarkers` on, parked groups are drawn faded

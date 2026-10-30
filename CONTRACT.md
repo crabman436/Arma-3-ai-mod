@@ -256,6 +256,8 @@ Group record:
 - `"home"`: objective id string — the objective or base whose garrison this group belongs to (`""` = none). Set by the garrison system.
 - `"transport"`: group (or grpNull) — for `TRANSPORTED` cargo: the vehicle group carrying it; for `TRANSPORT` groups: the cargo group.
 - `"final"`: HashMap `{"task","pos","objective"}` — for `TRANSPORTED` cargo: the order to execute after dismount.
+- `"homeTime"`: number — `time` the garrison system last moved the group to a new home (transfer, or DEFEND adoption). Groups whose home changed less than 600 s ago are not used as garrison donors.
+- `"rideAbortTime"`: number — `time` the group's last transport ride was aborted (set by `transportCycle`). `issueOrder` starts no new ride for it within 600 s.
 - New task values: `"TRANSPORT"` (a vehicle group ferrying cargo), `"TRANSPORTED"` (infantry being carried), `"RTB"` (transport returning to HQ/home after a drop, completes like RETREAT → `"IDLE"`).
 - `AIC_fnc_availableGroups` excludes tasks `RETREAT`, `TRANSPORT`, `TRANSPORTED`, `RTB`.
 
@@ -285,6 +287,7 @@ New objective sources:
   - `desired` = `garrison` if > 0, otherwise `priority * garrisonPerPriority` (`garrisonPerPriority` alone for bases). Add 50 % of the power of threat clusters within 1500 m.
   - `present` = summed power of groups whose `"home"` == id, task in DEFEND/PATROL/IDLE, and leader within `radius * 1.5`.
   - `surplus` = `present - desired`.
+  - Extra key `"incoming"`: power of home groups still on their way (DEFEND/PATROL/IDLE outside `radius * 1.5`), of TRANSPORT/RTB vehicle groups away on a ride, and of TRANSPORTED cargo whose `final.objective` is this id. The garrison system's deficit is `desired - present - incoming`.
   - Also stores the result in the commander under `"garrisons"`.
 - `AIC_fnc_canLeaveGarrison` — `[commander, group] call` → bool. True if the group has no home, its home is not owned any more, or `surplus` of its home ≥ the group's power. Uses `"garrisons"`.
 - `AIC_fnc_garrisonCycle` — `[commander] call`. Runs only if `manageGarrisons`.
@@ -309,25 +312,29 @@ New objective sources:
   - **Dismounted near the drop** (no unit in a vehicle and within 500 m of the drop or the final pos): issue the `"final"` order with force and clear `"transport"`.
   - **Transport gone** (dead, can't move, or task no longer TRANSPORT), or the order is older than 900 s: dismount (`doGetOut`/`leaveVehicle`) and issue the final order on foot with force.
 
-  For each `TRANSPORT` group whose cargo is out (or dead): delete the LZ helipad, then `orderRetreat` to its home (`BASE_HQ` pos if none) and set task `RTB`.
+  For each `TRANSPORT` group whose cargo is out (or dead): delete the LZ helipad, then `orderRetreat` to its home (`BASE_HQ` pos if none) and set task `RTB`. If its vehicle is gone or can't move, set it `IDLE` instead (the garrison system takes the crew).
+
+  An aborted ride sets `"rideAbortTime"` on the cargo record.
 
 ## Changes to existing functions
 
 - `AIC_fnc_issueOrder`:
   - Always calls `AIC_fnc_setGroupSim [cmd, group, false]` before dispatching.
-  - For INF groups with task ATTACK, REINFORCE or DEFEND, when `useTransport` is on, the distance is > `transportMinDistance` and the group isn't already TRANSPORTED, it calls `findTransport`. If a transport is found, it calls `orderTransport` and returns instead of dispatching.
+  - For INF groups with task ATTACK, REINFORCE or DEFEND, when `useTransport` is on, the distance is > `transportMinDistance`, the group isn't already TRANSPORTED and no ride was aborted for it in the last 600 s (`"rideAbortTime"`), it calls `findTransport`. If a transport is found, it calls `orderTransport` and returns instead of dispatching.
   - Supports RTB like RETREAT, and treats TRANSPORT/TRANSPORTED as externally managed: it never re-issues to them unless forced.
-- `AIC_fnc_monitorOrders`: RTB completes like RETREAT, then becomes `IDLE`. TRANSPORT and TRANSPORTED groups are skipped, because transportCycle owns them.
+- `AIC_fnc_monitorOrders`: RTB completes like RETREAT, then becomes `IDLE`; it also completes at once if the leader's vehicle can't move. TRANSPORT and TRANSPORTED groups are skipped, because transportCycle owns them. Parked groups are never treated as stuck.
 - `AIC_fnc_allocateForces`: when `manageGarrisons` is on:
   - Candidate groups for ATTACK, REINFORCE or counter-attack must pass `AIC_fnc_canLeaveGarrison` (groups already on that task keep it).
-  - Leftover groups are **not** given PATROL/DEFEND (they are left out of the plan; the garrison system owns them).
+  - Leftover groups are **not** given PATROL/DEFEND (they are left out of the plan; the garrison system owns them). Exception: leftovers still on ATTACK/REINFORCE/SUPPORT get `DEFEND` at the owned objective they were reinforcing, else at their `home`, else at `BASE_HQ`.
+  - The HQ threat DEFEND target uses objective id `BASE_HQ` (and replaces BASE_HQ's own objective DEFEND target); HQ defenders with objective `""` near the HQ also count as on it.
   - The HQ reserve step is skipped, because `BASE_HQ` covers it.
   - Weak groups still get RETREAT.
-- `AIC_fnc_supportCycle`: never tasks HELI groups whose task is TRANSPORT or RTB.
+- `AIC_fnc_supportCycle`: never tasks HELI groups whose task is TRANSPORT or RTB. `AIC_fnc_fireMission` and `AIC_fnc_tasksAir` wake the group (`setGroupSim false`) before giving orders.
 - `AIC_fnc_createCommander`:
   - If `manageDynSim` is on: `enableDynamicSimulationSystem true` and the optional `dynSimDistance`.
   - Adds the `BASE_HQ` objective after the HQ is computed.
-- `AIC_fnc_removeCommander`: wakes every commanded group with `group enableDynamicSimulation false`.
+- `AIC_fnc_removeCommander`: wakes every commanded group with `group enableDynamicSimulation false` and deletes the `"lz"` / `"pickupLz"` helipads of every record.
+- `AIC_fnc_registerGroups`: before dropping the record of a group that left command, wakes it (`setGroupSim false`) if it is parked and deletes its `"lz"` / `"pickupLz"` helipads.
 - `AIC_fnc_commanderCycle` order: … allocateForces + issue plan → `garrisonCycle` → `transportCycle` → `monitorOrders` → `dynSimCycle` → `supportCycle` → UI.
 - UI:
   - Debug markers show parked groups (alpha 0.4 or a "Z" suffix), transports (a line from cargo to drop) and garrison deficits (objective text `G present/desired`).
