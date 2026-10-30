@@ -1,0 +1,28 @@
+/*
+    Function: AIC_fnc_log
+
+    Description:
+        Writes a message to the RPT (diag_log) prefixed with "[AIC] ".
+        If AIC_debug is true the message is also shown via systemChat.
+
+    Parameters:
+        0: STRING - message, may contain format placeholders %1, %2, ...
+        1: ARRAY  - (optional) format arguments, default []
+
+    Returns:
+        STRING - the formatted message
+
+    Example:
+        ["Commander %1 created with %2 groups", [east, 12]] call AIC_fnc_log;
+*/
+
+params [["_msg", "", [""]], ["_args", [], [[]]]];
+
+private _text = format ([("[AIC] " + _msg)] + _args);
+diag_log text _text;
+
+if (!isNil "AIC_debug" && {AIC_debug isEqualTo true}) then {
+    systemChat _text;
+};
+
+_text

@@ -88,6 +88,10 @@ HashMap with keys:
 - `"taskPos"`: position or `[]`
 - `"taskTime"`: `time` the task was issued
 - `"objective"`: objective id string or `""`
+- `"lastPos"` (added by orders): leader position ATL when the group was last seen moving (> 20 m). Written by `AIC_fnc_issueOrder`, `AIC_fnc_monitorOrders` and by every function that changes `"task"` directly (`AIC_fnc_tasksAir`, `AIC_fnc_fireMission` set both keys to the current leader position / `time`); may be missing on fresh records (monitorOrders initialises it).
+- `"lastMoveTime"` (added by orders): `time` of the last recorded movement / order issue. Used for stuck detection (no movement for 180 s while far from `taskPos` → order re-issued with force).
+
+Orders notes: the order functions (`orderAttack/Defend/Patrol` take an optional 4th param, `orderRetreat/Reinforce` an optional 3rd param) accept the group type string; `""` means classify on the fly. `AIC_fnc_clearWaypoints` increments group variable `"AIC_orderToken"` (local, not broadcast) to cancel running garrison scripts and calls `doFollow` on all units. `AIC_fnc_issueOrder` updates the record even for STATIC/ARTY groups (they fight in place without waypoints), creates a minimal record if the group is not registered yet, and returns true when the record was updated. Task `"SUPPORT"` for HELI/PLANE = SAD over pos + LOITER at HQ (it does not call `AIC_fnc_tasksAir`, so `tasksAir` may freely call `issueOrder`).
 
 ### Objective record
 
@@ -156,21 +160,21 @@ HashMap: `"group"`, `"task"`, `"pos"`, `"objective"` (id or `""`).
 ### strategy (`functions/strategy`)
 - `AIC_fnc_determineStance` — `[commander] call` → stance (also stored). ratio = ownPower / max(1, enemyPower); biased by aggression. ratio*(0.5+aggression) > 1.5 → OFFENSIVE, < 0.8 → DEFENSIVE, else BALANCED.
 - `AIC_fnc_scoreObjectives` — `[commander] call`. Sets `"score"` on each objective: priority, + bonus if enemy-held/contested, distance penalty from HQ, penalty for threat power nearby relative to own power. Owned and unthreatened → low score.
-- `AIC_fnc_allocateForces` — `[commander] call` → plan (array of assignment records; also stored in `"plan"`). Keeps `reserveRatio` of power defending HQ or the most threatened owned objective. In OFFENSIVE/BALANCED assigns available groups to top objectives by score until estimated power ≥ 1.5× local threat; in DEFENSIVE assigns to own objectives under threat (DEFEND) and counter-attacks only weak clusters. Air (HELI/PLANE) groups are left to support. Groups whose current task already matches (same objective & task, issued < 300s ago) keep their assignment (no re-issue spam). Groups below retreatThreshold get RETREAT. Leftover groups PATROL near owned objectives.
+- `AIC_fnc_allocateForces` — `[commander] call` → plan (array of assignment records; also stored in `"plan"`). Keeps `reserveRatio` of power defending HQ or the most threatened owned objective. In OFFENSIVE/BALANCED assigns available groups to top objectives by score until estimated power ≥ 1.5× local threat; in DEFENSIVE assigns to own objectives under threat (DEFEND) and counter-attacks only weak clusters. Air (HELI/PLANE) groups are left to support. Groups whose current task already matches (same objective & task, issued < 300s ago) keep their assignment (no re-issue spam). A group counts as "on" an objective-less target (HQ, DEFENSIVE counter-attack cluster) when its record objective is `""` and its `taskPos` is within 400 m of the target; such members are emitted with their existing `taskPos` so drifting cluster centres never trigger a re-issue. Groups below retreatThreshold (or already RETREATing) get RETREAT to HQ; once near HQ (250 m ground, 400 m HELI, 1500 m PLANE) or already DEFENDing HQ (task DEFEND, objective `""`, taskPos within 50 m of HQ) ground groups DEFEND HQ and air is left alone. Leftover groups PATROL near owned objectives.
 
 ### orders (`functions/orders`)
-- `AIC_fnc_issueOrder` — `[commander, group, task, pos, objectiveId] call`. Skip if identical task+objective already active (unless forced 6th param true). Dispatches to the task function, updates group record (`task`, `taskPos`, `taskTime`, `objective`).
+- `AIC_fnc_issueOrder` — `[commander, group, task, pos, objectiveId] call`. Skip if identical task+objective already active (unless forced 6th param true). "Identical" for `objectiveId == ""`: same task and current `taskPos` within **400 m** for ATTACK/REINFORCE (same tolerance as allocateForces' on-target test), within 50 m for every other task. Dispatches to the task function, updates group record (`task`, `taskPos`, `taskTime`, `objective`).
 - `AIC_fnc_clearWaypoints` — `[group] call`.
 - `AIC_fnc_orderAttack` — `[group, pos, radius] call`. Combat-ish behaviour, `SAD` at the target with a MOVE approach waypoint; vehicles get speed/formations sensible to type.
 - `AIC_fnc_orderDefend` — `[group, pos, radius] call`. Move then garrison/hold (use `GUARD`-like setup: MOVE then `HOLD` or occupy buildings via `nearestBuildings` positions for infantry); statics stay.
 - `AIC_fnc_orderPatrol` — `[group, pos, radius] call`. 4–5 random MOVE waypoints within radius + CYCLE, SAFE/AWARE.
 - `AIC_fnc_orderRetreat` — `[group, pos] call`. Clear, MOVE fast to pos, CARELESS->AWARE on arrival, `allowFleeing 0` reset.
 - `AIC_fnc_orderReinforce` — `[group, pos] call`. Fast move then SAD.
-- `AIC_fnc_monitorOrders` — `[commander] call`. Groups whose task is done (near taskPos & no waypoints left / area clear) → set `"IDLE"`; stuck groups (no movement in 180s far from target) → re-issue with force.
+- `AIC_fnc_monitorOrders` — `[commander] call`. Groups whose task is done → set `"IDLE"`; stuck groups (no movement in 180s far from target) → re-issue with force. Completion rules: ATTACK on a known objective only when that objective's `"owner"` equals the commander's side (otherwise the task is kept; if its SAD has been finished on the objective for > 600 s it is re-issued with force as a re-sweep); ATTACK without objective / REINFORCE when near taskPos and (waypoints done or no known contact nearby), or waypoints done and > 20 min; RETREAT ground within 220 m and (waypoints done or stopped), HELI within 300 m after 30 s, PLANE within 1500 m after 60 s; SUPPORT after 600 s; PATROL/DEFEND never.
 
 ### support (`functions/support`)
 - `AIC_fnc_supportCycle` — `[commander] call`. If cooldowns allow: picks the biggest threat cluster within range of an available artillery group (ARTY type, uses `getArtilleryETA`/`inRangeOfArtillery`), and calls `AIC_fnc_fireMission`; picks a threat for an idle air group and calls `AIC_fnc_tasksAir`.
-- `AIC_fnc_fireMission` — `[commander, artyGroup, pos, rounds] call` → bool. Uses `doArtilleryFire` with a magazine from `getArtilleryAmmo`. Never fire within 150 m of friendly units (danger close check). Reports.
+- `AIC_fnc_fireMission` — `[commander, artyGroup, pos, rounds] call` → bool. Uses `doArtilleryFire` with a magazine from `getArtilleryAmmo`. Never fire within 150 m of friendly units (danger close check: alive units of a side with `getFriend >= 0.6`, excluding civilians unless the commander's side is civilian, excluding aircraft above 50 m). Reports.
 - `AIC_fnc_tasksAir` — `[commander, airGroup, pos] call`. Helis/planes: SAD waypoint over target, then return to a loiter/LOITER waypoint near HQ.
 
 ### ui (`functions/ui`)
@@ -203,3 +207,17 @@ private _s = createHashMapFromArray [["aggression", 0.8], ["debugMarkers", true]
 // Keep a group out of the commander's control
 _myGroup setVariable ["AIC_exclude", true, true];
 ```
+
+## Addendum (core): preInit
+
+- `AIC_fnc_preInit` (core, `preInit = 1` in CfgFunctions) — runs on every
+  machine before mission init and creates the globals if nil:
+  `AIC_commanders = createHashMap`, `AIC_objectiveModules = []`,
+  `AIC_debug = false`. Core entry points (`createCommander`, `getCommander`,
+  `removeCommander`, module functions) also re-create them lazily with
+  `isNil` checks, so other subsystems may assume they exist but should still
+  use `getOrDefault` / guard against empty data.
+- `AIC_objectiveModules` is an array of `AIC_ModuleObjective` logic objects.
+  `AIC_fnc_moduleObjective` normalises their variables before pushing them:
+  `"Name"` (non-empty string), `"Radius"` (number > 0, default 300),
+  `"Priority"` (number > 0). Position = `getPosATL _logic`.

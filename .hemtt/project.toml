@@ -1,0 +1,29 @@
+# HEMTT project file - https://hemtt.dev
+# Build:   hemtt build        (dev build into .hemttout/build)
+# Release: hemtt release      (signed release zip into releases/)
+
+name = "AI Commander"
+author = "AIC"
+prefix = "aic"
+mainprefix = "z"
+
+[version]
+major = 1
+minor = 0
+patch = 0
+git_hash = 0
+
+[files]
+include = [
+    "mod.cpp",
+    "README.md",
+]
+
+[hemtt.release]
+folder = "aic"
+
+[hemtt.launch.default]
+workshop = []
+dlc = []
+optionals = []
+parameters = ["-skipIntro", "-noSplash", "-showScriptErrors", "-debug"]
