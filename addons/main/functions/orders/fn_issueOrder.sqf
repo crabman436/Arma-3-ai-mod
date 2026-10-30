@@ -40,7 +40,8 @@
  *       that keep their order stay parked.
  *     - INF groups ordered to ATTACK / REINFORCE / DEFEND farther than
  *       "transportMinDistance" (setting "useTransport" on, group not
- *       already TRANSPORTED, at least half of it on foot) look for a ride
+ *       already TRANSPORTED, at least half of it on foot, no ride aborted
+ *       for it in the last 600 s - record "rideAbortTime") look for a ride
  *       with AIC_fnc_findTransport. If AIC_fnc_orderTransport succeeds the
  *       function returns true without dispatching: the record now holds
  *       task "TRANSPORTED" (taskPos = target, objective = objective id,
@@ -238,7 +239,12 @@ if (_curTask isEqualTo "TRANSPORT") then {
 };
 
 // --- Long infantry moves: try to get a ride -----------------------------------
+// (no new ride within 600 s of an aborted one: "rideAbortTime" is set by
+// AIC_fnc_transportCycle, so a failing vehicle cannot cause abort/re-ride loops)
+private _rideAbort = _record getOrDefault ["rideAbortTime", -1e6];
+if !(_rideAbort isEqualType 0) then { _rideAbort = -1e6; };
 if (_type == "INF" && {_task in ["ATTACK", "REINFORCE", "DEFEND"]} && {_curTask isNotEqualTo "TRANSPORTED"}
+    && {(time - _rideAbort) >= 600}
     && {([_cmd, "useTransport"] call AIC_fnc_getSetting) isEqualTo true}) then {
     private _minDist = [_cmd, "transportMinDistance"] call AIC_fnc_getSetting;
     if (isNil "_minDist" || {!(_minDist isEqualType 0)}) then { _minDist = 1200; };

@@ -17,8 +17,11 @@
             an enemy coming.
         A group is PARKED if all of these hold:
           - its task is IDLE, DEFEND or PATROL;
-          - it is not moving: no waypoint left, or leader within 100 m of
-            "taskPos", or the task is older than 120 s;
+          - it has arrived: no waypoint left, or leader within 100 m of
+            "taskPos", or the task is older than 120 s AND the leader is
+            within 1.5 x the objective radius (min 100 m) of "taskPos"
+            (without a taskPos: has not moved for 120 s). A group still
+            marching to a distant objective is never parked;
           - it is not in COMBAT behaviour;
           - no wake condition applies.
         Everything else is left as it is.
@@ -62,6 +65,10 @@ if (!(_range isEqualType 0) || { _range <= 0 }) then { _range = 1000; };
 private _wakeTasks = ["ATTACK", "REINFORCE", "RETREAT", "SUPPORT", "TRANSPORT", "TRANSPORTED", "RTB"];
 private _parkTasks = ["IDLE", "DEFEND", "PATROL"];
 private _entityTypes = ["CAManBase", "LandVehicle", "Air", "Ship"];
+private _objectives = _cmd getOrDefault ["objectives", []];
+if !(_objectives isEqualType []) then { _objectives = []; };
+private _defRadius = [_cmd, "objectiveRadius"] call AIC_fnc_getSetting;
+if (isNil "_defRadius" || { !(_defRadius isEqualType 0) }) then { _defRadius = 300; };
 
 // --- enemy positions the commander already knows about (contacts + cluster centres)
 private _enemyPositions = [];
@@ -128,10 +135,31 @@ private _woken = 0;
     private _taskTime = _rec getOrDefault ["taskTime", 0];
     if !(_taskTime isEqualType 0) then { _taskTime = 0; };
 
+    private _hasTaskPos = _taskPos isEqualType [] && { count _taskPos >= 2 };
+    private _taskDist = if (_hasTaskPos) then { _taskPos distance2D _lpos } else { 1e10 };
+    private _lastMove = _rec getOrDefault ["lastMoveTime", time];
+    if !(_lastMove isEqualType 0) then { _lastMove = time; };
+
+    // "at the task": within 1.5 x the objective radius (min 100 m) of taskPos
+    private _nearR = 100;
+    private _objId = _rec getOrDefault ["objective", ""];
+    if (_objId isEqualType "" && { _objId isNotEqualTo "" }) then {
+        private _i = _objectives findIf { _x isEqualType createHashMap && { (_x getOrDefault ["id", ""]) isEqualTo _objId } };
+        if (_i > -1) then {
+            private _r = (_objectives select _i) getOrDefault ["radius", _defRadius];
+            if (_r isEqualType 0) then { _nearR = (_r * 1.5) max 100; };
+        };
+    };
+
+    // Never park a group that is still on its way: the time rule only applies
+    // once the leader is at the task position (or, without a task position,
+    // once the group has not moved for 120 s).
     private _settled =
         (currentWaypoint _grp) >= (count waypoints _grp)
-        || { _taskPos isEqualType [] && { count _taskPos >= 2 } && { (_taskPos distance2D _lpos) < 100 } }
-        || { (time - _taskTime) > 120 };
+        || { _taskDist < 100 }
+        || { (time - _taskTime) > 120 && {
+                if (_hasTaskPos) then { _taskDist < _nearR } else { (time - _lastMove) > 120 }
+           } };
 
     if (_settled && { [_cmd, _grp, true] call AIC_fnc_setGroupSim }) then { _parked = _parked + 1; };
 } forEach _records;

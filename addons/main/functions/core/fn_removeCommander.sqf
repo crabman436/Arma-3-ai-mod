@@ -46,9 +46,12 @@ private _toWake = (_cmd getOrDefault ["groups", []]) select { _x isEqualType grp
     _toWake pushBackUnique (_x getOrDefault ["group", grpNull]);
     _x set ["parked", false];
 
-    // remove transport LZ helipads left behind
-    private _lz = _x getOrDefault ["lz", objNull];
-    if (_lz isEqualType objNull && { !isNull _lz }) then { deleteVehicle _lz; };
+    // remove transport helipads left behind (drop-off LZ and helicopter pickup)
+    private _rec = _x;
+    {
+        private _pad = _rec getOrDefault [_x, objNull];
+        if (_pad isEqualType objNull && { !isNull _pad }) then { deleteVehicle _pad; };
+    } forEach ["lz", "pickupLz"];
 } forEach _records;
 
 private _woken = 0;

@@ -279,7 +279,7 @@ New objective sources:
     - an enemy unit is within `dynSimWakeRange` of the leader. For parked groups, check with `nearEntities [["CAManBase","LandVehicle","Air","Ship"], range]` plus a hostility check. This matters because parked groups are blind and wouldn't otherwise see the enemy coming.
   - **Park** if all of these hold:
     - the task is IDLE, DEFEND or PATROL
-    - the group is not moving (no waypoint left, or within 100 m of `taskPos`, or in the task for more than 120 s)
+    - the group has arrived (no waypoint left, or within 100 m of `taskPos`, or in the task for more than 120 s **and** within 1.5 × the objective radius (min 100 m) of `taskPos`; without a `taskPos`: not moved for 120 s). A group still marching to a distant objective is never parked.
     - no wake condition applies
 - `AIC_fnc_garrisonStatus` — `[commander] call` → HashMap: objective id → HashMap `{"desired","present","surplus","groups"}`, for objectives owned by own side plus `BASE_HQ`.
   - `desired` = `garrison` if > 0, otherwise `priority * garrisonPerPriority` (`garrisonPerPriority` alone for bases). Add 50 % of the power of threat clusters within 1500 m.
@@ -296,7 +296,7 @@ New objective sources:
   - Candidates are own groups of type MOTOR, MECH or HELI where:
     - the task is IDLE, DEFEND or PATROL
     - the vehicle is alive and `canMove`
-    - free cargo seats (`emptyPositions "Cargo"` plus free FFV turret seats) ≥ the number of alive cargo units
+    - free passenger seats (empty cargo seats plus empty FFV turret seats, each counted once from one `fullCrew [veh, "", true]` enumeration) ≥ the number of alive cargo units
     - the transport is within `transportSearchRadius` of the cargo leader
   - Prefer HELI if the distance > `heliTransportDistance` and `useAir`; otherwise prefer the closest ground vehicle.
   - Unarmed or lightly armed vehicles are preferred over IFVs and tanks, so fighting vehicles aren't pulled from combat.

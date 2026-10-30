@@ -18,8 +18,9 @@
           - "threat": summed power of threat clusters within 1500 m.
           - "incoming": power of groups whose home is this objective but are
             still on their way (DEFEND / PATROL / IDLE outside the radius,
-            or TRANSPORTED). Lets AIC_fnc_garrisonCycle avoid sending a
-            second wave while the first is still travelling.
+            TRANSPORTED with a ride ending at this objective) or away on a
+            ride (TRANSPORT / RTB vehicle groups). Lets AIC_fnc_garrisonCycle
+            avoid sending a second wave while the first is still travelling.
           - "released": HashMap hashValue group -> power of the groups
             AIC_fnc_canLeaveGarrison has let go this cycle.
         The result is stored in the commander under "garrisons".
@@ -136,8 +137,20 @@ private _objById = createHashMap; // id -> objective record (only the garrisoned
                     _entry set ["incoming", (_entry get "incoming") + _power];
                 };
             } else {
-                if (_task isEqualTo "TRANSPORTED") then {
+                // a transport on a ride (or driving back) still belongs to its
+                // home: counting it keeps the home from asking for a refill
+                // every time one of its vehicles gives somebody a lift
+                if (_task in ["TRANSPORT", "RTB"]) then {
                     _entry set ["incoming", (_entry get "incoming") + _power];
+                } else {
+                    // cargo only counts for the home its ride ends at
+                    // (a garrison transfer), not for the town it just left
+                    if (_task isEqualTo "TRANSPORTED") then {
+                        private _final = _rec getOrDefault ["final", createHashMap];
+                        if (_final isEqualType createHashMap && { (_final getOrDefault ["objective", ""]) isEqualTo _home }) then {
+                            _entry set ["incoming", (_entry get "incoming") + _power];
+                        };
+                    };
                 };
             };
         };

@@ -10,7 +10,8 @@
           - the group crews a vehicle (driver / pilot is an alive member of
             the group) that is alive, canMove, has fuel and is not locked;
           - that vehicle has enough free seats for every alive cargo unit:
-            emptyPositions "Cargo" plus free FFV (person turret) seats, minus
+            empty cargo seats plus empty FFV (person turret) seats, counted
+            once each from a single fullCrew enumeration, minus
             the seats the transport group's own dismounted members need to
             get back in. The transport's own crew is never counted as cargo;
           - the vehicle is within "transportSearchRadius" of the cargo leader;
@@ -72,11 +73,12 @@ private _ignored = ["horn", "smoke", "cmflare", "flare", "laserdesignator", "fak
 // free seats of a vehicle for passengers of another group
 private _fnc_freeSeats = {
     params ["_veh", "_grp"];
-    private _free = _veh emptyPositions "Cargo";
-    {
+    // one enumeration so every seat is counted once (an FFV seat is not
+    // also counted as a cargo seat)
+    private _free = {
         _x params ["_unit", "_role", "_cargoIdx", "_path", ["_isFFV", false]];
-        if (_isFFV && { isNull _unit }) then { _free = _free + 1; };
-    } forEach (fullCrew [_veh, "turret", true]);
+        isNull _unit && { ((toLower _role) isEqualTo "cargo") || { _isFFV isEqualTo true } }
+    } count (fullCrew [_veh, "", true]);
     // own members on foot that will climb back into this vehicle
     private _ownNeed = {
         alive _x && { vehicle _x isEqualTo _x } && { (assignedVehicle _x) in [objNull, _veh] }

@@ -15,6 +15,8 @@
  *                          waypoints done.
  *     RETREAT / RTB      : ground: leader within 220 m of taskPos and
  *                          waypoints done or the group has stopped;
+ *                          RTB also ends at once if the leader's vehicle
+ *                          cannot move any more;
  *                          HELI: within 300 m after 30 s; PLANE: within
  *                          1500 m after 60 s. A helicopter finishing RTB
  *                          (a transport back home) is told to land, so
@@ -30,7 +32,8 @@
  *   than 20 m. If a moving task (ATTACK, REINFORCE, RETREAT, RTB, PATROL,
  *   DEFEND, SUPPORT) has not moved for 180 s while the leader is still far
  *   from taskPos (PATROL: regardless of distance), the order is re-issued
- *   with force through AIC_fnc_issueOrder. Groups in contact (enemy
+ *   with force through AIC_fnc_issueOrder. Parked groups (dynamic
+ *   simulation enabled) are never treated as stuck. Groups in contact (enemy
  *   within 400 m), STATIC/ARTY/PLANE groups and groups whose leader
  *   vehicle cannot move are not treated as stuck.
  *
@@ -100,6 +103,13 @@ private _fnc_setIdle = {
     };
     private _lastMoveTime = _rec getOrDefault ["lastMoveTime", time];
 
+    // Parked groups are frozen on purpose: never treat them as stuck
+    if (dynamicSimulationEnabled _group || {(_rec getOrDefault ["parked", false]) isEqualTo true}) then {
+        _rec set ["lastPos", _leaderPos];
+        _rec set ["lastMoveTime", time];
+        continue
+    };
+
     if (_task == "IDLE" || {!(_taskPos isEqualType [])} || {count _taskPos < 2}) then { continue };
     // transport rides are followed by AIC_fnc_transportCycle
     if (_task in ["TRANSPORT", "TRANSPORTED"]) then { continue };
@@ -142,13 +152,18 @@ private _fnc_setIdle = {
         };
         case "RETREAT";
         case "RTB": {
-            switch (_type) do {
-                // planes end the retreat in a 1200 m LOITER and never stop
-                case "PLANE": { _dist < 1500 && {_age > 60} };
-                // helicopters HOLD/hover above the rally point
-                case "HELI": { _dist < 300 && {_age > 30} };
-                // vehicles are road-snapped up to 150 m from HQ (+60 m wp radius)
-                default { _dist < 220 && {_wpDone || {(speed vehicle _leader) < 1}} && {_age > 10} };
+            private _lv = vehicle _leader;
+            // a transport whose vehicle is wrecked/immobile never gets home:
+            // end RTB so the garrison system can take the crew over
+            if (_task == "RTB" && {_lv != _leader} && {!alive _lv || {!canMove _lv}}) then { true } else {
+                switch (_type) do {
+                    // planes end the retreat in a 1200 m LOITER and never stop
+                    case "PLANE": { _dist < 1500 && {_age > 60} };
+                    // helicopters HOLD/hover above the rally point
+                    case "HELI": { _dist < 300 && {_age > 30} };
+                    // vehicles are road-snapped up to 150 m from HQ (+60 m wp radius)
+                    default { _dist < 220 && {_wpDone || {(speed vehicle _leader) < 1}} && {_age > 10} };
+                };
             };
         };
         case "SUPPORT": { _age > 600 };

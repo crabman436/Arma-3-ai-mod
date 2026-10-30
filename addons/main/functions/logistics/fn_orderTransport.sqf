@@ -10,8 +10,8 @@
         AIC_fnc_findTransport (group variable "AIC_transportVehicle") if it
         is still usable, otherwise the group vehicle (driven by a group
         member, alive, canMove) with the most free passenger seats
-        (emptyPositions "Cargo" + free FFV seats - the group's own members on
-        foot). It must seat every alive cargo unit.
+        (empty cargo + empty FFV seats from one fullCrew enumeration - the
+        group's own members on foot). It must seat every alive cargo unit.
 
         Pickup:
           - both groups are woken (AIC_fnc_setGroupSim) and their waypoints
@@ -103,11 +103,12 @@ if (count _tRec == 0 || { count _cRec == 0 }) exitWith {
 // ---------------------------------------------------------------- vehicle
 private _fnc_freeSeats = {
     params ["_veh", "_grp"];
-    private _free = _veh emptyPositions "Cargo";
-    {
+    // one enumeration so every seat is counted once (an FFV seat is not
+    // also counted as a cargo seat)
+    private _free = {
         _x params ["_unit", "_role", "_cargoIdx", "_path", ["_isFFV", false]];
-        if (_isFFV && { isNull _unit }) then { _free = _free + 1; };
-    } forEach (fullCrew [_veh, "turret", true]);
+        isNull _unit && { ((toLower _role) isEqualTo "cargo") || { _isFFV isEqualTo true } }
+    } count (fullCrew [_veh, "", true]);
     private _ownNeed = {
         alive _x && { vehicle _x isEqualTo _x } && { (assignedVehicle _x) in [objNull, _veh] }
     } count (units _grp);

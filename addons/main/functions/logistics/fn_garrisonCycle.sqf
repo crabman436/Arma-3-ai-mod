@@ -24,7 +24,8 @@
              incoming) is more than 2 power are served first by
              deficit * priority. Donors: INF / MOTOR / MECH / ARMOR groups,
              task IDLE / DEFEND / PATROL, strength above "retreatThreshold",
-             settled at their home, home not threatened (no threat cluster
+             settled at their home, not moved to a new home in the last
+             600 s (record "homeTime"), home not threatened (no threat cluster
              within 1500 m), never the target itself as home, and
              AIC_fnc_canLeaveGarrison true (its home's surplus covers its
              power). Bases are stripped first, then the largest surplus, then
@@ -83,6 +84,7 @@ private _homeIds = _homes apply { _x get "id" };
 private _hqId = if ("BASE_HQ" in _homeIds) then { "BASE_HQ" } else { "" };
 
 private _settleTasks = ["IDLE", "DEFEND", "PATROL"];
+private _COOLDOWN = 600; // s a group must stay at a new home before it can be moved again
 private _donorTypes = ["INF", "MOTOR", "MECH", "ARMOR"];
 
 // radius helper
@@ -153,6 +155,7 @@ private _sentHome = 0;
         // DEFENDing an owned objective (allocateForces, transport drop) -> it is now home
         private _curObj = _rec getOrDefault ["objective", ""];
         if (_task isEqualTo "DEFEND" && { _curObj isEqualType "" } && { _curObj in _homeIds } && { _curObj isNotEqualTo _home }) then {
+            if (_home isNotEqualTo "") then { _rec set ["homeTime", time]; };
             _home = _curObj;
         };
 
@@ -212,6 +215,8 @@ if (_maxMoves > 0 && { _deficits isNotEqualTo [] }) then {
         (_rec getOrDefault ["type", ""]) in _donorTypes
         && { (_rec getOrDefault ["task", "IDLE"]) in _settleTasks }
         && { (_rec getOrDefault ["strength", 1]) > _threshold }
+        // transfer cooldown: a group that changed home recently stays put
+        && { (time - (_rec getOrDefault ["homeTime", -1e6])) >= _COOLDOWN }
         // settled: a home-less group or one physically at its home
         && { _home isEqualTo "" || { !(_home in _objById) } || { [_grp, _objById get _home] call _fnc_atObjective } }
         // never strip a threatened garrison
@@ -257,6 +262,7 @@ if (_maxMoves > 0 && { _deficits isNotEqualTo [] }) then {
                 private _oldHome = _rec getOrDefault ["home", ""];
                 if ([_cmd, _grp, "DEFEND", _targetPos, _targetId] call AIC_fnc_issueOrder) then {
                     _rec set ["home", _targetId];
+                    _rec set ["homeTime", time];
                     _moves = _moves + 1;
                     _need = _need - _power;
 

@@ -13,7 +13,9 @@
  *   false, "home" "", "transport" grpNull, "final" empty HashMap).
  *   Existing records missing the logistics keys get these defaults too.
  *   Groups that died, changed side, got a player or were excluded are
- *   dropped together with their record. Existing records keep their
+ *   dropped together with their record; a dropped group AIC had parked is
+ *   woken first (AIC_fnc_setGroupSim false) and its transport helipads
+ *   ("lz", "pickupLz") are deleted. Existing records keep their
  *   state (task state survives). Server only.
  *
  * Parameters:
@@ -94,8 +96,22 @@ private _newData = createHashMap;
 // --- Drop records of groups no longer under command (in place) --------------
 private _staleKeys = (keys _groupData) select {!(_x in _newData)};
 {
+    private _oldRec = _groupData get _x;
+    private _oldGrp = if (_oldRec isEqualType createHashMap) then {_oldRec getOrDefault ["group", grpNull]} else {grpNull};
+    if !(_oldGrp isEqualType grpNull) then {_oldGrp = grpNull};
+    if (_oldRec isEqualType createHashMap) then {
+        // a released group must never stay frozen by AIC (setGroupSim
+        // respects "AIC_noDynSim" itself)
+        if (!isNull _oldGrp && {((_oldRec getOrDefault ["parked", false]) isEqualTo true) || {dynamicSimulationEnabled _oldGrp}}) then {
+            [_commander, _oldGrp, false] call AIC_fnc_setGroupSim;
+        };
+        // invisible helipads of a transport ride
+        {
+            private _pad = _oldRec getOrDefault [_x, objNull];
+            if (_pad isEqualType objNull && {!isNull _pad}) then {deleteVehicle _pad};
+        } forEach ["lz", "pickupLz"];
+    };
     if (!isNil "AIC_debug" && {AIC_debug}) then {
-        private _oldGrp = (_groupData get _x) getOrDefault ["group", grpNull];
         ["Commander %1 released group %2", [_side, if (isNull _oldGrp) then {"<dead>"} else {groupId _oldGrp}]] call AIC_fnc_log;
     };
     _groupData deleteAt _x;

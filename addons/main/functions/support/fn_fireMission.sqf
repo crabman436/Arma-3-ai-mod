@@ -6,7 +6,9 @@
         For every artillery-capable vehicle of the group (artilleryScanner == 1,
         alive, crewed gunner) an HE-like magazine is chosen from
         getArtilleryAmmo and the vehicle fires with doArtilleryFire if the
-        target is inRangeOfArtillery for that magazine.
+        target is inRangeOfArtillery for that magazine. The group is woken
+        first (AIC_fnc_setGroupSim false), since a parked group would not
+        fire.
 
         Danger close: the mission is refused if any alive unit of a side
         friendly to the commander (getFriend >= 0.6, includes the own side)
@@ -103,6 +105,9 @@ private _fnc_magScore = {
     };
     _score
 };
+
+// parked guns (dynamic simulation) would not fire: wake the group first
+[_cmd, _group, false] call AIC_fnc_setGroupSim;
 
 private _fired = 0;
 private _eta = -1;

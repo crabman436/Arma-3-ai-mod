@@ -4,6 +4,8 @@
     Description:
         Tasks an air group (helicopters or planes) with close air support
         on a position (server only):
+          0. wakes the group (AIC_fnc_setGroupSim false) - a landed
+             helicopter may be parked by the dynamic-simulation system,
           1. clears the group's waypoints (AIC_fnc_clearWaypoints),
           2. reveals the commander's known enemies within 400 m of the
              target to the air group so it engages immediately,
@@ -47,6 +49,9 @@ private _isPlane = _veh isKindOf "Plane";
 private _hq = _cmd getOrDefault ["hq", []];
 if !(_hq isEqualType [] && { count _hq >= 2 }) then { _hq = getPosATL _leader; };
 _hq = [_hq select 0, _hq select 1, 0];
+
+// a landed helicopter may be parked (dynamic simulation): wake it first
+[_cmd, _group, false] call AIC_fnc_setGroupSim;
 
 // ---------------------------------------------------------------- waypoints
 [_group] call AIC_fnc_clearWaypoints;

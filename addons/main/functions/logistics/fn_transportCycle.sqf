@@ -18,7 +18,8 @@
               than 240 s, or the vehicle has been within 150 m of the cargo
               leader for 90 s without everybody aboard, and the vehicle is
               within 150 m: every cargo unit outside gets a seat
-              (assignAsCargo, or assignAsTurret on a free FFV seat) and
+              (assignAsCargoIndex on a free cargo seat, or assignAsTurret
+              on a free FFV seat, each seat used once) and
               orderGetIn true. If the vehicle is farther away, the cargo
               leader and the transport leader are sent towards each other
               (doMove, every 60 s). Not everybody aboard 180 s after the
@@ -42,15 +43,19 @@
           Transport gone (group dead, vehicle dead / immobile / without
           driver, transport task no longer "TRANSPORT" or paired with
           another group) -> aborted.
-          Abort = cargo dismounts (doGetOut / leaveVehicle) and the "final"
-          order is issued on foot with force.
+          Abort = cargo dismounts (doGetOut / leaveVehicle), the cargo
+          record gets "rideAbortTime" = time (AIC_fnc_issueOrder starts no
+          new ride for it for 600 s) and the "final" order is issued on
+          foot with force.
 
         For each "TRANSPORT" group whose cargo is out (cargo dead, or the
         cargo record no longer "TRANSPORTED" with this transport) and no
         cargo unit is left in the vehicle: the helipads ("lz",
         "pickupLz") are deleted and the group returns to its home objective
         ("BASE_HQ" position / commander "hq" if none) with task "RTB" via
-        AIC_fnc_issueOrder (force). Cargo units still sitting inside are
+        AIC_fnc_issueOrder (force). If its vehicle is gone or cannot move
+        (or the order fails) it is set "IDLE" instead, so the garrison
+        system can take the crew over. Cargo units still sitting inside are
         ordered out first; after 60 s they are moved out (moveOut).
 
     Parameters:
@@ -111,12 +116,21 @@ private _fnc_unload = {
 // seats for cargo units outside the vehicle: cargo seats first, then FFV
 private _fnc_boardFallback = {
     params ["_units", "_veh"];
-    private _cargoFree = _veh emptyPositions "Cargo";
-    private _ffv = [];
+    // one fullCrew enumeration: every empty seat is listed exactly once
+    private _cargoIdx = []; // empty cargo seats (cargo index)
+    private _ffv = [];      // empty FFV seats (turret path)
     {
-        _x params ["_unit", "_role", "_cargoIdx", "_path", ["_isFFV", false]];
-        if (_isFFV && { isNull _unit }) then { _ffv pushBack _path; };
-    } forEach (fullCrew [_veh, "turret", true]);
+        _x params ["_unit", "_role", "_cIdx", "_path", ["_isFFV", false]];
+        if (isNull _unit) then {
+            if (_isFFV isEqualTo true) then {
+                _ffv pushBack _path;
+            } else {
+                if ((toLower _role) isEqualTo "cargo" && { _cIdx >= 0 } && { !(_veh lockedCargo _cIdx) }) then {
+                    _cargoIdx pushBack _cIdx;
+                };
+            };
+        };
+    } forEach (fullCrew [_veh, "", true]);
     private _board = [];
     {
         private _u = _x;
@@ -126,9 +140,8 @@ private _fnc_boardFallback = {
             continue;
         };
         unassignVehicle _u;
-        if (_cargoFree > 0) then {
-            _u assignAsCargo _veh;
-            _cargoFree = _cargoFree - 1;
+        if (_cargoIdx isNotEqualTo []) then {
+            _u assignAsCargoIndex [_veh, _cargoIdx deleteAt 0];
             _board pushBack _u;
         } else {
             if (_ffv isNotEqualTo []) then {
@@ -377,7 +390,12 @@ private _fnc_boardFallback = {
 
     // helipads: the transport cleans its own up when it heads home; if it is
     // gone (or the ride was aborted) remove them here as well
-    if (_abort) then { [_rec] call _fnc_deletePads; };
+    if (_abort) then {
+        [_rec] call _fnc_deletePads;
+        // AIC_fnc_issueOrder will not start another ride for this group
+        // for a while (no abort / re-ride loops with a failing vehicle)
+        _rec set ["rideAbortTime", time];
+    };
 
     // issueOrder (forced) sees the TRANSPORTED record, never diverts it to a
     // new ride, and clears "transport" / "final"
@@ -457,12 +475,15 @@ private _fnc_objPos = {
     if (!isNull _veh && { alive _veh } && { _veh isKindOf "Air" }) then { _veh land "NONE"; };
 
     // issueOrder (forced) dispatches RTB through AIC_fnc_orderRetreat and
-    // clears "transport"
-    private _ok = [_cmd, _grp, "RTB", +_homePos, "", true] call AIC_fnc_issueOrder;
+    // clears "transport". A wrecked / immobile vehicle never gets home, so
+    // its crew is released as IDLE instead and the garrison system takes it.
+    private _immobile = isNull _veh || { !alive _veh } || { !canMove _veh };
+    private _ok = if (_immobile) then { false } else {
+        [_cmd, _grp, "RTB", +_homePos, "", true] call AIC_fnc_issueOrder
+    };
     if (!_ok) then {
-        // cannot move (e.g. vehicle lost): still release the group
-        _rec set ["task", "RTB"];
-        _rec set ["taskPos", [_homePos select 0, _homePos select 1, 0]];
+        _rec set ["task", "IDLE"];
+        _rec set ["taskPos", []];
         _rec set ["taskTime", time];
         _rec set ["objective", ""];
     };
@@ -470,8 +491,10 @@ private _fnc_objPos = {
     _rec set ["cargoOutTime", -1];
     _changes = _changes + 1;
 
-    ["%1: transport %2 done (cargo %3), returning home %4", [
-        _side, groupId _grp, if (isNull _cargo) then { "-" } else { groupId _cargo }, _homePos apply { round _x }
+    ["%1: transport %2 done (cargo %3), %4 %5", [
+        _side, groupId _grp, if (isNull _cargo) then { "-" } else { groupId _cargo },
+        if (_ok) then { "returning home" } else { "released IDLE (vehicle immobile or order failed)" },
+        _homePos apply { round _x }
     ]] call AIC_fnc_log;
 } forEach _transportRecs;
 
