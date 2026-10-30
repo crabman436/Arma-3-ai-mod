@@ -86,8 +86,8 @@ private _totalPower = 0;
                 // Fire-support / static teams keep their role unless they lost their guns entirely
                 private _keepOld = (_oldType in ["STATIC", "ARTY"]) && {
                     (_alive findIf {
-                        private _veh = vehicle _x;
-                        _veh isNotEqualTo _x
+                        private _veh = objectParent _x;
+                        !isNull _veh
                         && {alive _veh}
                         && {(_veh isKindOf "StaticWeapon") || {getNumber (configOf _veh >> "artilleryScanner") == 1}}
                     }) >= 0
@@ -103,8 +103,8 @@ private _totalPower = 0;
 
             private _vehicles = [];
             {
-                private _veh = vehicle _x;
-                if (_veh isNotEqualTo _x && {(_veh getCargoIndex _x) < 0}) then {
+                private _veh = objectParent _x;
+                if (!isNull _veh && {(_veh getCargoIndex _x) < 0}) then {
                     _vehicles pushBackUnique _veh;
                 };
             } forEach _alive;

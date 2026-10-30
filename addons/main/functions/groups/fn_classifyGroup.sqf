@@ -60,8 +60,8 @@ private _vehicles = [];
 
 {
     private _unit = _x;
-    private _veh = vehicle _unit;
-    if (_veh isEqualTo _unit) then {
+    private _veh = objectParent _unit;
+    if (isNull _veh) then {
         _scores set ["INF", (_scores get "INF") + 1];
     } else {
         _vehicles pushBackUnique _veh;
@@ -81,27 +81,12 @@ private _vehicles = [];
     };
 
     if (_crewIdx >= 0) then {
-        private _cfg = configOf _veh;
-        private _vType = call {
-            if (_veh isKindOf "Plane") exitWith {"PLANE"};
-            if (_veh isKindOf "Helicopter" || {_veh isKindOf "Air"}) exitWith {"HELI"};
-            if (_veh isKindOf "Ship") exitWith {"NAVAL"};
-            if (getNumber (_cfg >> "artilleryScanner") == 1) exitWith {"ARTY"};
-            if (_veh isKindOf "StaticWeapon") exitWith {"STATIC"};
-            if (_veh isKindOf "Wheeled_APC_F" || {_veh isKindOf "Tracked_APC"}) exitWith {"MECH"};
-            if (_veh isKindOf "Tank") exitWith {
-                if (
-                    getText (_cfg >> "editorSubcategory") == "EdSubcat_APCs"
-                    || {getNumber (_cfg >> "transportSoldier") >= 6}
-                ) then {"MECH"} else {"ARMOR"}
-            };
-            "MOTOR"
-        };
+        private _vType = [_veh] call AIC_fnc_vehicleType;
         _scores set [_vType, (_scores get _vType) + (_typeWeights getOrDefault [_vType, 1])];
     } else {
         // Only passengers of this group in the vehicle: they count as infantry
         private _passengers = {
-            alive _x && {vehicle _x isEqualTo _veh}
+            alive _x && {objectParent _x isEqualTo _veh}
         } count _units;
         _scores set ["INF", (_scores get "INF") + _passengers];
     };

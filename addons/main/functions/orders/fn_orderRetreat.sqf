@@ -44,31 +44,13 @@ if (_type in ["STATIC", "ARTY"]) exitWith {
     false
 };
 
-private _fnc_roadPos = {
-    params ["_p", ["_r", 150]];
-    private _roads = _p nearRoads _r;
-    if (_roads isEqualTo []) exitWith {_p};
-    private _best = objNull;
-    private _bestD = 1e10;
-    {
-        private _d = _x distance2D _p;
-        if (_d < _bestD) then { _bestD = _d; _best = _x; };
-    } forEach _roads;
-    private _rp = getPosATL _best;
-    [_rp select 0, _rp select 1, 0]
-};
-
 private _isGroundVeh = _type in ["MOTOR", "MECH", "ARMOR"];
 
 if (_type == "NAVAL" && {!surfaceIsWater _dest}) then {
-    private _water = [];
-    for "_d" from 50 to 1000 step 50 do {
-        private _try = _dest getPos [_d, _dest getDir _leader];
-        if (surfaceIsWater _try) exitWith { _water = [_try select 0, _try select 1, 0]; };
-    };
+    private _water = [_dest, _leader, 1000] call AIC_fnc_waterPos;
     if (_water isNotEqualTo []) then { _dest = _water; };
 };
-if (_isGroundVeh) then { _dest = [_dest, 150] call _fnc_roadPos; };
+if (_isGroundVeh) then { _dest = [_dest, 150] call AIC_fnc_roadPos; };
 // Land groups must not be sent into the sea
 if (!(_type in ["NAVAL", "HELI", "PLANE"]) && {surfaceIsWater _dest}) then {
     _dest = [_pos select 0, _pos select 1, 0];

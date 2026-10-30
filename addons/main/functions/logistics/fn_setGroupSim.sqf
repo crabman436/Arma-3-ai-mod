@@ -68,8 +68,8 @@ if ((units _group) findIf { isPlayer _x } > -1) exitWith { false };
 
 // never freeze flying aircraft (they would hang in the air)
 private _airborne = _units findIf {
-    private _veh = vehicle _x;
-    _veh != _x && { _veh isKindOf "Air" } && { !isTouchingGround _veh }
+    private _veh = objectParent _x;
+    !isNull _veh && { _veh isKindOf "Air" } && { !isTouchingGround _veh }
 } > -1;
 if (_airborne) exitWith { false };
 

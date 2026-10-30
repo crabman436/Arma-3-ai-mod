@@ -34,7 +34,6 @@ private _groupData = _commander getOrDefault ["groupData", createHashMap];
 if (_groups isEqualTo [] || {!(_groupData isEqualType createHashMap)}) exitWith {[]};
 
 private _threshold = [_commander, "retreatThreshold"] call AIC_fnc_getSetting;
-if (isNil "_threshold" || {!(_threshold isEqualType 0)}) then {_threshold = 0.3};
 
 private _excludedTasks = ["RETREAT", "TRANSPORT", "TRANSPORTED", "RTB"];
 

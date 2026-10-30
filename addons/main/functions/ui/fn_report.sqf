@@ -3,9 +3,9 @@
 
     Description:
         Sends short HQ situation reports to the human players of the
-        commander's side (server only), via
-        [[side, "HQ"], text] remoteExec ["sideChat", side]  - remoteExec with a
-        side target only reaches clients whose player is on that side.
+        commander's side (server only), via AIC_fnc_sideMessage
+        ([[side, "HQ"], text] remoteExec ["sideChat", side] - remoteExec with a
+        side target only reaches clients whose player is on that side).
 
         Reported changes (compared with the state stored under the
         commander key "lastReport", a HashMap):
@@ -91,13 +91,6 @@ private _fnc_storeBaseline = {
     _last set ["groupState", _groupState];
 };
 
-private _hasPlayers = (allPlayers findIf { side group _x == _side && { !(_x isKindOf "HeadlessClient_F") } }) >= 0;
-
-private _fnc_send = {
-    params ["_text"];
-    [[_side, "HQ"], _text] remoteExec ["sideChat", _side];
-};
-
 // --- first call: baseline + greeting
 private _last = _cmd getOrDefault ["lastReport", createHashMap];
 if (count _last == 0) exitWith {
@@ -105,11 +98,8 @@ if (count _last == 0) exitWith {
     [_last] call _fnc_storeBaseline;
     _last set ["time", _now];
     _cmd set ["lastReport", _last];
-    if (_hasPlayers) then {
-        [format ["AI commander has taken command: %1 groups under orders, %2 objectives, posture %3.",
-            count (_cmd getOrDefault ["groups", []]), count _objectives, _stance]] call _fnc_send;
-    };
-    _hasPlayers
+    [_side, format ["AI commander has taken command: %1 groups under orders, %2 objectives, posture %3.",
+        count (_cmd getOrDefault ["groups", []]), count _objectives, _stance]] call AIC_fnc_sideMessage
 };
 
 // --- diff
@@ -224,10 +214,6 @@ if ((_now - (_last getOrDefault ["time", -1e6])) < _throttle) exitWith { false }
 [_last] call _fnc_storeBaseline;
 _last set ["time", _now];
 
-if (!_hasPlayers) exitWith { false };
-
 private _text = (_parts select [0, 3]) joinString ". ";
 if (count _parts > 3) then { _text = _text + format [". (+%1 more)", count _parts - 3]; };
-[_text + "."] call _fnc_send;
-
-true
+[_side, _text + "."] call AIC_fnc_sideMessage

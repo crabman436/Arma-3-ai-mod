@@ -96,20 +96,11 @@ private _fnc_validPos = {
     _p isEqualType [] && { count _p >= 2 } && { (_p select 0) isEqualType 0 }
 };
 
-private _fnc_deletePads = {
-    params ["_rec"];
-    {
-        private _pad = _rec getOrDefault [_x, objNull];
-        if (_pad isEqualType objNull && { !isNull _pad }) then { deleteVehicle _pad; };
-        _rec set [_x, objNull];
-    } forEach ["lz", "pickupLz"];
-};
-
 // cargo units out of their vehicle (cargo only, never the transport crew)
 private _fnc_unload = {
     params ["_units", "_veh", "_grp"];
     {
-        if (alive _x && { vehicle _x isNotEqualTo _x }) then {
+        if (alive _x && { !isNull objectParent _x }) then {
             unassignVehicle _x;
             [_x] orderGetIn false;
             doGetOut _x;
@@ -139,7 +130,7 @@ private _fnc_boardFallback = {
     private _board = [];
     {
         private _u = _x;
-        if (!alive _u || { vehicle _u isEqualTo _veh }) then { continue };
+        if (!alive _u || { objectParent _u isEqualTo _veh }) then { continue };
         if ((assignedVehicle _u) isEqualTo _veh && { (assignedVehicleRole _u) isNotEqualTo [] }) then {
             _board pushBack _u;
             continue;
@@ -218,8 +209,8 @@ private _fnc_boardFallback = {
     };
 
     private _isHeli = _veh isKindOf "Air";
-    private _aboard = { vehicle _x isEqualTo _veh } count _units;
-    private _inAnyVeh = { vehicle _x isNotEqualTo _x } count _units;
+    private _aboard = { objectParent _x isEqualTo _veh } count _units;
+    private _inAnyVeh = { !isNull objectParent _x } count _units;
     private _vPos = getPosATL _veh;
 
     // ================================================== PICKUP
@@ -396,7 +387,7 @@ private _fnc_boardFallback = {
     // helipads: the transport cleans its own up when it heads home; if it is
     // gone (or the ride was aborted) remove them here as well
     if (_abort) then {
-        [_rec] call _fnc_deletePads;
+        [_rec] call AIC_fnc_deleteHelipads;
         // AIC_fnc_issueOrder will not start another ride for this group
         // for a while (no abort / re-ride loops with a failing vehicle)
         _rec set ["rideAbortTime", time];
@@ -433,7 +424,7 @@ private _fnc_objPos = {
     private _grp = _rec getOrDefault ["group", grpNull];
     if (!(_grp isEqualType grpNull) || { isNull _grp }) then { continue };
     if (({ alive _x } count units _grp) == 0) then {
-        [_rec] call _fnc_deletePads;
+        [_rec] call AIC_fnc_deleteHelipads;
         continue;
     };
 
@@ -449,7 +440,7 @@ private _fnc_objPos = {
     // cargo is out or dead: anybody of it still inside?
     private _veh = _rec getOrDefault ["transportVeh", objNull];
     if !(_veh isEqualType objNull) then { _veh = objNull; };
-    private _inside = if (isNull _veh) then { [] } else { _cargoUnits select { vehicle _x isEqualTo _veh } };
+    private _inside = if (isNull _veh) then { [] } else { _cargoUnits select { objectParent _x isEqualTo _veh } };
     if (_inside isNotEqualTo [] && { alive _veh }) then {
         private _outTime = _rec getOrDefault ["cargoOutTime", -1];
         if (_outTime < 0) then {
@@ -472,7 +463,7 @@ private _fnc_objPos = {
         _homePos = if ([_hq] call _fnc_validPos) then { _hq } else { getPosATL (leader _grp) };
     };
 
-    [_rec] call _fnc_deletePads;
+    [_rec] call AIC_fnc_deleteHelipads;
     if (!isNull _veh && { alive _veh } && { _veh isKindOf "Air" }) then { _veh land "NONE"; };
 
     // issueOrder (forced) dispatches RTB through AIC_fnc_orderRetreat and

@@ -15,14 +15,17 @@
         Group event handlers (Arma 3 2.10+):
           - "EnemyDetected": AIC_fnc_groupEngaged (stamp "lastEngaged",
             wake the group at once if it is parked).
-          - "UnitKilled": stamps the unit's "AIC_killedAt" (time), queues the
-            body in the commander's "deadQueue" for AIC_fnc_cleanupCycle
-            (if "manageCleanup") and calls AIC_fnc_groupEngaged.
-          - "Empty": removes the group record and the group from "groups"
-            (deleting its "lz" / "pickupLz" helipads), then deletes the
-            group if "manageCleanup" is on and the group has no "AIC_keep"
-            variable: deleteGroup where the group is local, otherwise
-            remoteExecCall to its owner.
+          - "UnitKilled": stamps the unit's "AIC_killedAt" (time); if the
+            group still has a record, queues the body in the commander's
+            "deadQueue" for AIC_fnc_cleanupCycle (if "manageCleanup") and
+            calls AIC_fnc_groupEngaged.
+          - "Empty": deletes the record's "lz" / "pickupLz" helipads, marks
+            the record "removed" and takes the group out of "groups" (a new
+            array), then deletes the group (AIC_fnc_deleteGroup) if
+            "manageCleanup" is on and the group has no "AIC_keep" variable.
+            The record itself is NOT deleted here: the commander cycle runs
+            scheduled and may be iterating "groupData" right now, so the
+            record is dropped by the next AIC_fnc_registerGroups sweep.
           - "UnitJoined": attaches the unit handlers to the new unit.
           - "VehicleAdded": attaches the vehicle handlers to the vehicle.
           (both by calling this function again with the object as 3rd
@@ -155,6 +158,11 @@ _group addEventHandler ["UnitKilled", {
     _unit setVariable ["AIC_killedAt", time];
     private _cmd = [side _group] call AIC_fnc_getCommander;
     if (count _cmd == 0) exitWith {};
+    // only groups still under this commander's control
+    private _gd = _cmd getOrDefault ["groupData", createHashMap];
+    if !(_gd isEqualType createHashMap) exitWith {};
+    private _rec = _gd getOrDefault [hashValue _group, createHashMap];
+    if (!(_rec isEqualType createHashMap) || { count _rec == 0 }) exitWith {};
     if (!isPlayer _unit && { ([_cmd, "manageCleanup"] call AIC_fnc_getSetting) isEqualTo true }) then {
         private _queue = _cmd getOrDefault ["deadQueue", []];
         _queue pushBack _unit;
@@ -170,26 +178,21 @@ _group addEventHandler ["Empty", {
     if (count _cmd == 0) exitWith {};
     private _groupData = _cmd getOrDefault ["groupData", createHashMap];
     if !(_groupData isEqualType createHashMap) exitWith {};
-    private _key = hashValue _group;
-    private _rec = _groupData getOrDefault [_key, createHashMap];
+    private _rec = _groupData getOrDefault [hashValue _group, createHashMap];
     // only groups still under this commander's control
     if (!(_rec isEqualType createHashMap) || { count _rec == 0 }) exitWith {};
 
-    {
-        private _pad = _rec getOrDefault [_x, objNull];
-        if (_pad isEqualType objNull && { !isNull _pad }) then { deleteVehicle _pad; };
-    } forEach ["lz", "pickupLz"];
-    _groupData deleteAt _key;
+    [_rec] call AIC_fnc_deleteHelipads;
+    // Never deleteAt the record here: the commander cycle is scheduled and may
+    // be suspended inside a forEach over "groupData". The record is dropped
+    // by the next AIC_fnc_registerGroups sweep; loops skip it until then.
+    _rec set ["removed", true];
     // a new array, never an in-place delete: a suspended commander cycle may be iterating the old one
     _cmd set ["groups", (_cmd getOrDefault ["groups", []]) - [_group]];
 
     if (_group getVariable ["AIC_keep", false]) exitWith {};
     if !(([_cmd, "manageCleanup"] call AIC_fnc_getSetting) isEqualTo true) exitWith {};
-    if (local _group) then {
-        deleteGroup _group;
-    } else {
-        _group remoteExecCall ["deleteGroup", groupOwner _group];
-    };
+    [_group] call AIC_fnc_deleteGroup;
 }];
 
 _group addEventHandler ["UnitJoined", {

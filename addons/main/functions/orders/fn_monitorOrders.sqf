@@ -5,9 +5,11 @@
  *   Completion (task -> "IDLE", taskPos [], objective ""):
  *     ATTACK (objective) : the objective's "owner" is the commander's side
  *                          and the leader arrived (or waypoints done).
- *                          While uncaptured the task is kept; if the SAD is
- *                          finished on the objective for > 600 s the order
- *                          is re-issued with force (re-sweep).
+ *                          While uncaptured the task is kept; once all its
+ *                          waypoints are done, the leader is within the
+ *                          arrival radius and the task is older than
+ *                          600 s, the order is re-issued with force
+ *                          (re-sweep).
  *     ATTACK (no obj.) /
  *     REINFORCE          : leader within arrival radius of taskPos and
  *                          (all waypoints done OR no known enemy contact
@@ -22,7 +24,9 @@
  *                          (a transport back home) is told to land, so
  *                          the dynamic-simulation system can park it.
  *     SUPPORT            : after 10 min (air sorties end in a loiter).
- *     PATROL / DEFEND    : standing orders, never auto-complete.
+ *     PATROL / DEFEND    : standing orders, never auto-complete. An awake
+ *                          INF group on DEFEND occupies buildings through
+ *                          AIC_fnc_monitorGarrison (one step per cycle).
  *     TRANSPORT /
  *     TRANSPORTED        : skipped entirely - AIC_fnc_transportCycle owns
  *                          transport rides (only the movement bookkeeping
@@ -34,8 +38,9 @@
  *   from taskPos (PATROL: regardless of distance), the order is re-issued
  *   with force through AIC_fnc_issueOrder. Parked groups (dynamic
  *   simulation enabled) are never treated as stuck. Groups in contact (enemy
- *   within 400 m), STATIC/ARTY/PLANE groups and groups whose leader
- *   vehicle cannot move are not treated as stuck.
+ *   within 400 m, engaged in the last 120 s - record "lastEngaged" - or
+ *   leader in COMBAT behaviour), STATIC/ARTY/PLANE groups and groups whose
+ *   leader vehicle cannot move are not treated as stuck.
  *
  * Parameters:
  *   0: HASHMAP - commander
@@ -61,7 +66,6 @@ private _side = _cmd getOrDefault ["side", sideUnknown];
 private _enemies = _cmd getOrDefault ["knownEnemies", []];
 if !(_enemies isEqualType []) then { _enemies = []; };
 private _defRadius = [_cmd, "objectiveRadius"] call AIC_fnc_getSetting;
-if (isNil "_defRadius" || {!(_defRadius isEqualType 0)}) then { _defRadius = 300; };
 
 private _changes = 0;
 private _reissue = [];
@@ -129,6 +133,13 @@ private _fnc_setIdle = {
     };
     private _arriveR = ((_radius * 0.6) max 100) min 300;
 
+    // --- infantry DEFEND: occupy buildings once arrived (unscheduled, one
+    // step per cycle; AIC_fnc_dynSimCycle parks the group only when done).
+    // Same radius as AIC_fnc_issueOrder gives AIC_fnc_orderDefend.
+    if (_task == "DEFEND" && {_type == "INF"}) then {
+        [_group, _rec, _taskPos, (_objRec getOrDefault ["radius", _defRadius]) min 200] call AIC_fnc_monitorGarrison;
+    };
+
     // --- completion -----------------------------------------------------------
     private _done = switch (_task) do {
         case "ATTACK";
@@ -149,10 +160,10 @@ private _fnc_setIdle = {
         };
         case "RETREAT";
         case "RTB": {
-            private _lv = vehicle _leader;
+            private _lv = objectParent _leader;
             // a transport whose vehicle is wrecked/immobile never gets home:
             // end RTB so the garrison system can take the crew over
-            if (_task == "RTB" && {_lv != _leader} && {!alive _lv || {!canMove _lv}}) then { true } else {
+            if (_task == "RTB" && {!isNull _lv} && {!alive _lv || {!canMove _lv}}) then { true } else {
                 switch (_type) do {
                     // planes end the retreat in a 1200 m LOITER and never stop
                     case "PLANE": { _dist < AIC_NEAR_HQ_PLANE && {_age > 60} };
@@ -174,8 +185,8 @@ private _fnc_setIdle = {
         };
         // a transport helicopter back home lands (airborne groups are never parked)
         if (_task == "RTB" && {_type == "HELI"}) then {
-            private _veh = vehicle _leader;
-            if (_veh != _leader && {alive _veh} && {_veh isKindOf "Helicopter"} && {!isTouchingGround _veh}) then {
+            private _veh = objectParent _leader;
+            if (!isNull _veh && {alive _veh} && {_veh isKindOf "Helicopter"} && {!isTouchingGround _veh}) then {
                 [_group] call AIC_fnc_clearWaypoints;
                 _veh land "LAND";
             };
@@ -204,15 +215,23 @@ private _fnc_setIdle = {
     private _far = if (_task == "PATROL") then { true } else { _dist > (_arriveR max 200) };
     if (!_far) then { continue };
 
-    // In contact: standing still is fighting, not being stuck
+    // In contact: standing still is fighting, not being stuck. Besides a
+    // close enemy, a recent engagement (event handlers stamp "lastEngaged")
+    // or COMBAT behaviour count, so a group pinned by a distant contact is
+    // not re-ordered (PATROL: new random route) in the middle of a fight.
     private _enemy = _leader findNearestEnemy _leader;
-    if (!isNull _enemy && {(_enemy distance2D _leader) < 400}) then {
+    private _engaged = _rec getOrDefault ["lastEngaged", -1e6];
+    if (
+        (!isNull _enemy && {(_enemy distance2D _leader) < 400})
+        || {_engaged isEqualType 0 && {(time - _engaged) < 120}}
+        || {behaviour _leader == "COMBAT"}
+    ) then {
         _rec set ["lastMoveTime", time];
         continue;
     };
 
-    private _veh = vehicle _leader;
-    if (_veh != _leader && {!canMove _veh}) then { continue };
+    private _veh = objectParent _leader;
+    if (!isNull _veh && {!canMove _veh}) then { continue };
 
     _reissue pushBack [_group, _task, +_taskPos, _objId, _rec];
 } forEach _groupData;

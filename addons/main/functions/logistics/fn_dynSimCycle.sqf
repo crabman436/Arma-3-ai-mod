@@ -15,10 +15,11 @@
             "lastEngaged", stamped by the event handlers of
             AIC_fnc_attachGroupEHs, which also wake it the moment it
             happens);
-          - (parked groups only, one nearEntities query per group and
-            cycle) a hostile unit / vehicle is within "dynSimWakeRange" of
+          - (parked groups) a hostile unit is within "dynSimWakeRange" of
             its leader. Parked groups are blind, so this is how they notice
-            an enemy coming.
+            an enemy coming. The hostile positions are collected once per
+            cycle (alive, not captive units of hostile sides, vehicle crews
+            included) and shared by every group.
         A group is PARKED if all of these hold:
           - its task is IDLE, DEFEND or PATROL;
           - it has arrived: leader within 100 m of "taskPos", or within
@@ -28,7 +29,14 @@
             120 s. A group still marching to a distant objective is never
             parked;
           - it is not in COMBAT behaviour;
-          - no wake condition applies.
+          - infantry on DEFEND: its building occupation is done
+            (AIC_fnc_monitorGarrison: all units placed or timed out for
+            the current order), or the task is older than 1100 s, so units
+            never freeze halfway to their building positions;
+          - no wake condition applies, and no hostile unit is within
+            "dynSimWakeRange" (the same proximity test as for parked
+            groups, so a group is not parked only to be woken by the same
+            enemy on the next cycle).
         Everything else is left as it is.
 
     Parameters:
@@ -67,22 +75,38 @@ if !(([_cmd, "manageDynSim"] call AIC_fnc_getSetting) isEqualTo true) exitWith {
 
 private _side = _cmd getOrDefault ["side", sideUnknown];
 private _range = [_cmd, "dynSimWakeRange"] call AIC_fnc_getSetting;
-if (!(_range isEqualType 0) || { _range <= 0 }) then { _range = 1000; };
+// non-positive range: use the default (an empty commander reads the defaults)
+if (_range <= 0) then { _range = [createHashMap, "dynSimWakeRange"] call AIC_fnc_getSetting; };
 
 private _wakeTasks = ["ATTACK", "REINFORCE", "RETREAT", "SUPPORT", "TRANSPORT", "TRANSPORTED", "RTB"];
 private _parkTasks = ["IDLE", "DEFEND", "PATROL"];
-private _entityTypes = ["CAManBase", "LandVehicle", "Air", "Ship"];
 private _defRadius = [_cmd, "objectiveRadius"] call AIC_fnc_getSetting;
-if (isNil "_defRadius" || { !(_defRadius isEqualType 0) }) then { _defRadius = 300; };
+private _GARRISON_WAIT = 1100; // s: an INF DEFEND group whose garrison never finished is parked anyway
 
 // --- enemy positions the commander already knows about (contacts + cluster centres)
-private _enemyPositions = [];
-{
-    if (_x isEqualType createHashMap) then {
+private _enemyPositions = (((_cmd getOrDefault ["knownEnemies", []]) + (_cmd getOrDefault ["threats", []])) select {
+    _x isEqualType createHashMap && {
         private _p = _x getOrDefault ["pos", []];
-        if (_p isEqualType [] && { count _p >= 2 }) then { _enemyPositions pushBack _p; };
-    };
-} forEach ((_cmd getOrDefault ["knownEnemies", []]) + (_cmd getOrDefault ["threats", []]));
+        _p isEqualType [] && { count _p >= 2 }
+    }
+}) apply { _x get "pos" };
+
+// --- every hostile unit, once per cycle (parked groups are blind, and a
+// group must not be parked next to an enemy). Crews of vehicles are units
+// too; captives (surrendered / captured) do not count.
+private _hostilePositions = (allUnits select {
+    alive _x && { !captive _x } && {
+        private _eSide = side group _x;
+        _eSide in [west, east, independent, civilian]
+        && { _eSide isNotEqualTo _side }
+        && { (_side getFriend _eSide) < AIC_HOSTILE_FRIEND }
+    }
+}) apply { getPosATL _x };
+// is a hostile unit within range of a position?
+private _fnc_hostileNear = {
+    params ["_p"];
+    (_hostilePositions findIf { (_x distance2D _p) < _range }) > -1
+};
 
 private _parked = 0;
 private _woken = 0;
@@ -121,17 +145,9 @@ private _woken = 0;
         _wake = _engaged isEqualType 0 && { (time - _engaged) < 120 };
     };
 
-    // parked groups can't see: one proximity query per parked group and cycle
+    // parked groups can't see: hostile units close to the leader
     if (!_wake && { _isParked }) then {
-        _wake = ((_leader nearEntities [_entityTypes, _range]) findIf {
-            alive _x
-            && {
-                private _eSide = if (_x isKindOf "CAManBase") then { side group _x } else { side _x };
-                _eSide in [west, east, independent, civilian]
-                && { _eSide isNotEqualTo _side }
-                && { (_side getFriend _eSide) < AIC_HOSTILE_FRIEND }
-            }
-        }) > -1;
+        _wake = [_lpos] call _fnc_hostileNear;
     };
 
     if (_wake) then {
@@ -176,7 +192,18 @@ private _woken = 0;
         _wpDone || { (time - _taskTime) > 120 && { (time - _lastMove) > 120 } }
     };
 
-    if (_settled && { [_cmd, _grp, true] call AIC_fnc_setGroupSim }) then { _parked = _parked + 1; };
+    // infantry occupying buildings: only once every unit is in place
+    if (_settled && { _task isEqualTo "DEFEND" } && { (_rec getOrDefault ["type", ""]) isEqualTo "INF" }) then {
+        _settled = (time - _taskTime) > _GARRISON_WAIT
+            || {
+                (_rec getOrDefault ["garrisonDone", false]) isEqualTo true
+                && { (_rec getOrDefault ["garrisonToken", -1]) isEqualTo (_grp getVariable ["AIC_orderToken", 0]) }
+            };
+    };
+
+    // never park next to an enemy (it would be woken again next cycle and
+    // flip between frozen and awake while the enemy closes in)
+    if (_settled && { !([_lpos] call _fnc_hostileNear) } && { [_cmd, _grp, true] call AIC_fnc_setGroupSim }) then { _parked = _parked + 1; };
 } forEach _records;
 
 if ((_parked + _woken) > 0 && { !isNil "AIC_ns" } && { AIC_ns getOrDefault ["debug", false] isEqualTo true }) then {

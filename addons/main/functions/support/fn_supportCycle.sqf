@@ -51,7 +51,6 @@ if (_groups isEqualTo []) exitWith { [false, false] };
 
 private _now = time;
 private _retreatThreshold = [_cmd, "retreatThreshold"] call AIC_fnc_getSetting;
-if !(_retreatThreshold isEqualType 0) then { _retreatThreshold = 0.3; };
 
 // newest sighting inside a cluster
 private _fnc_freshness = {
@@ -80,7 +79,6 @@ private _fnc_groupsOfType = {
 private _artyFired = false;
 private _useArty = ([_cmd, "useArtillery"] call AIC_fnc_getSetting) isEqualTo true;
 private _artyCooldown = [_cmd, "artyCooldown"] call AIC_fnc_getSetting;
-if !(_artyCooldown isEqualType 0) then { _artyCooldown = 120; };
 
 if (_useArty && { (_now - (_cmd getOrDefault ["lastArtyTime", -1e6])) >= _artyCooldown }) then {
     private _artyGroups = [["ARTY"]] call _fnc_groupsOfType;
@@ -92,18 +90,16 @@ if (_useArty && { (_now - (_cmd getOrDefault ["lastArtyTime", -1e6])) >= _artyCo
         private _grp = _x;
         private _guns = [];
         {
-            private _veh = vehicle _x;
-            if (_veh != _x
+            private _veh = objectParent _x;
+            if (!isNull _veh
                 && { alive _veh }
                 && { !(_veh in (_guns apply { _x select 0 })) }
                 && { getNumber (configOf _veh >> "artilleryScanner") == 1 }
                 && { alive gunner _veh }
                 && { canFire _veh }
             ) then {
-                private _mags = (getArtilleryAmmo [_veh]) select {
-                    private _l = toLower _x;
-                    ["smoke", "flare", "illum", "mine", "laser", "guided"] findIf { (_l find _x) >= 0 } < 0
-                };
+                // the same magazine rule AIC_fnc_fireMission fires with
+                private _mags = (getArtilleryAmmo [_veh]) select { ([_x] call AIC_fnc_artilleryMagScore) >= 0 };
                 if (_mags isNotEqualTo []) then { _guns pushBack [_veh, _mags]; };
             };
         } forEach (units _grp);
@@ -140,13 +136,10 @@ if (_useArty && { (_now - (_cmd getOrDefault ["lastArtyTime", -1e6])) >= _artyCo
 private _airTasked = false;
 private _useAir = ([_cmd, "useAir"] call AIC_fnc_getSetting) isEqualTo true;
 private _airCooldown = [_cmd, "airCooldown"] call AIC_fnc_getSetting;
-if !(_airCooldown isEqualType 0) then { _airCooldown = 180; };
 
 if (_useAir && { (_now - (_cmd getOrDefault ["lastAirTime", -1e6])) >= _airCooldown }) then {
     private _airGroups = [["HELI", "PLANE"]] call _fnc_groupsOfType;
     if (_airGroups isEqualTo []) exitWith {};
-
-    private _ignoredWeapons = ["cmflare", "horn", "smokelauncher", "laserdesignator", "fakeweapon", "searchlight", "flare"];
 
     private _available = [];   // [group, vehicle, maxRange]
     private _busyTargets = []; // positions currently being struck
@@ -174,18 +167,11 @@ if (_useAir && { (_now - (_cmd getOrDefault ["lastAirTime", -1e6])) >= _airCoold
         };
         if ((_rec getOrDefault ["strength", 1]) <= _retreatThreshold) then { continue };
 
-        private _veh = vehicle leader _grp;
-        if (_veh == leader _grp || { !alive _veh } || { !canMove _veh } || { fuel _veh < 0.25 }) then { continue };
+        private _veh = objectParent leader _grp;
+        if (isNull _veh || { !alive _veh } || { !canMove _veh } || { fuel _veh < 0.25 }) then { continue };
 
-        // armed? check every turret incl. driver/pilot turret [-1]
-        private _armed = false;
-        {
-            private _weapons = _veh weaponsTurret _x;
-            if (_weapons findIf {
-                private _w = toLower _x;
-                _ignoredWeapons findIf { (_w find _x) >= 0 } < 0
-            } >= 0) exitWith { _armed = true };
-        } forEach ([[-1]] + allTurrets _veh);
+        // armed? every turret incl. driver/pilot turret [-1]
+        private _armed = ([_veh, false] call AIC_fnc_vehicleWeapons) isNotEqualTo [];
         if (!_armed || { !someAmmo _veh }) then { continue };
 
         _available pushBack [_grp, _veh, [6000, 15000] select (_veh isKindOf "Plane")];

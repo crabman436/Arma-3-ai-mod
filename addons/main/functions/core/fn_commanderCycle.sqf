@@ -4,8 +4,9 @@
     Description:
         One full think step of a commander, in contract order:
         register groups, update groups, gather intel, cluster threats,
-        update objectives, determine stance, score objectives, allocate
-        forces and issue orders, garrison distribution, transports,
+        update objectives, determine stance, score objectives, garrison
+        homes (AIC_fnc_garrisonCycle homes only), allocate forces and issue
+        orders, garrison distribution, transports,
         monitor orders, garbage cleanup, dynamic simulation (park / wake), support, debug
         markers and player reports.
 
@@ -38,7 +39,9 @@ if !(_cmd getOrDefault ["enabled", false]) exitWith {};
 [_cmd] call AIC_fnc_determineStance;
 [_cmd] call AIC_fnc_scoreObjectives;
 
-// 8. plan and orders
+// 8. plan and orders. Garrison homes first (homes only, no orders), so the
+// planner sees which groups hold a garrison even on the very first cycle
+[_cmd, true] call AIC_fnc_garrisonCycle;
 private _plan = [_cmd] call AIC_fnc_allocateForces;
 if (isNil "_plan" || { !(_plan isEqualType []) }) then {
     _plan = _cmd getOrDefault ["plan", []];

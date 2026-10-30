@@ -4,14 +4,18 @@
     Description:
         Creates the AI general for a side (server only). Merges the given
         settings with the defaults, stores the commander in AIC_ns "commanders",
-        registers the side's groups, sets the HQ (average position of its
-        groups), collects objectives, adds the implicit base objective
+        registers the side's groups, sets the HQ, collects objectives, adds the implicit base objective
         "BASE_HQ" at the HQ (isBase = true, owner = own side) and starts
         the commander loop. If "manageDynSim" is on, the engine's dynamic
         simulation system is enabled (and the group activation distance is
         set from "dynSimDistance" when > 0).
         If the side already has a commander, that commander is returned
         unchanged.
+        HQ: the base marker of the side (aic_base_<side>*, case-insensitive)
+        nearest to the average leader position of its groups; without such
+        a marker the average itself, moved to the nearest leader on land if
+        it falls into water. Without groups: the side's respawn marker,
+        else the map centre (a base marker still wins).
 
     Parameters:
         0: SIDE    - side to command (west, east, independent, civilian)
@@ -115,7 +119,7 @@ _commanders set [_side, _cmd];
 // --- groups under command
 [_cmd] call AIC_fnc_registerGroups;
 
-// --- HQ: average leader position of commanded groups
+// --- HQ: average leader position of commanded groups (refined below)
 private _groups = (_cmd getOrDefault ["groups", []]) select { !isNull _x && { !isNull leader _x } };
 private _hq = [];
 if (count _groups > 0) then {
@@ -136,6 +140,33 @@ if (count _groups > 0) then {
         _hq set [2, 0];
     } else {
         _hq = [worldSize / 2, worldSize / 2, 0];
+    };
+};
+
+// The average of a split army can land in a field between its bases or in
+// the sea. A base marker placed by the mission maker is the better HQ.
+private _basePrefix = AIC_MARKER_BASE_PREFIX + toLowerANSI str _side;
+private _baseMarkers = allMapMarkers select { ((toLowerANSI _x) find _basePrefix) == 0 };
+if (_baseMarkers isNotEqualTo []) then {
+    private _avg = +_hq;
+    private _bestD = 1e12;
+    {
+        private _mPos = getMarkerPos _x;
+        private _d = _mPos distance2D _avg;
+        if (_d < _bestD) then { _bestD = _d; _hq = [_mPos select 0, _mPos select 1, 0]; };
+    } forEach _baseMarkers;
+} else {
+    if (surfaceIsWater _hq) then {
+        private _landLeaders = (_groups apply { leader _x }) select { !surfaceIsWater (getPosATL _x) };
+        if (_landLeaders isNotEqualTo []) then {
+            private _avg = +_hq;
+            private _bestD = 1e12;
+            {
+                private _lPos = getPosATL _x;
+                private _d = _lPos distance2D _avg;
+                if (_d < _bestD) then { _bestD = _d; _hq = [_lPos select 0, _lPos select 1, 0]; };
+            } forEach _landLeaders;
+        };
     };
 };
 _cmd set ["hq", _hq];
@@ -189,7 +220,7 @@ _base set ["garrison", _base getOrDefault ["garrison", 0]];
 if (([_cmd, "manageDynSim"] call AIC_fnc_getSetting) isEqualTo true) then {
     enableDynamicSimulationSystem true;
     private _dsDist = [_cmd, "dynSimDistance"] call AIC_fnc_getSetting;
-    if (_dsDist isEqualType 0 && { _dsDist > 0 }) then {
+    if (_dsDist > 0) then {
         "Group" setDynamicSimulationDistance _dsDist;
     };
     ["createCommander: dynamic simulation managed for %1 (group distance %2)", [_side, dynamicSimulationDistance "Group"]] call AIC_fnc_log;

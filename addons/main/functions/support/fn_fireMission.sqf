@@ -70,8 +70,8 @@ if (_friendlyIdx >= 0) exitWith {
 // ---------------------------------------------------------------- guns
 private _guns = [];
 {
-    private _veh = vehicle _x;
-    if (_veh != _x
+    private _veh = objectParent _x;
+    if (!isNull _veh
         && { alive _veh }
         && { !(_veh in _guns) }
         && { getNumber (configOf _veh >> "artilleryScanner") == 1 }
@@ -87,27 +87,6 @@ if (_guns isEqualTo []) exitWith {
     false
 };
 
-// Magazine scoring: HE-like magazines first, never smoke/illumination/mines/guided.
-private _fnc_magScore = {
-    params ["_mag"];
-    private _lower = toLower _mag;
-    private _tokens = _lower splitString "_";
-    private _excluded = ["smoke", "flare", "illum", "mine", "laser", "guided", "_lg", "atmine", "apers", "demining"]
-        findIf { (_lower find _x) >= 0 } >= 0;
-    if (_excluded || { "lg" in _tokens }) exitWith { -1 };
-
-    private _score = 1;
-    if ("he" in _tokens || { (_lower find "_he") >= 0 } || { (_lower find "he_") >= 0 }) then { _score = _score + 100; };
-    if ("shells" in _tokens || { "rockets" in _tokens }) then { _score = _score + 50; };
-    if ((_lower find "cluster") >= 0) then { _score = _score + 10; };
-
-    private _ammo = getText (configFile >> "CfgMagazines" >> _mag >> "ammo");
-    if (_ammo != "") then {
-        _score = _score + ((getNumber (configFile >> "CfgAmmo" >> _ammo >> "indirectHit")) min 200) / 10;
-    };
-    _score
-};
-
 // parked guns (dynamic simulation) would not fire: wake the group first
 [_cmd, _group, false] call AIC_fnc_setGroupSim;
 
@@ -119,12 +98,9 @@ private _usedMag = "";
     private _mags = getArtilleryAmmo [_veh];
     if (_mags isEqualTo []) then { continue };
 
-    // best scoring magazine that can reach the target
-    private _scored = [];
-    {
-        private _s = [_x] call _fnc_magScore;
-        if (_s >= 0) then { _scored pushBack [_s, _x]; };
-    } forEach _mags;
+    // best scoring magazine (AIC_fnc_artilleryMagScore: HE first, never
+    // smoke / illumination / mines / guided) that can reach the target
+    private _scored = (_mags apply { [[_x] call AIC_fnc_artilleryMagScore, _x] }) select { (_x select 0) >= 0 };
     if (_scored isEqualTo []) then { continue };
     _scored sort false;
 
@@ -168,14 +144,11 @@ if (count _record > 0) then {
 ]] call AIC_fnc_log;
 
 // ---------------------------------------------------------------- report
-if (([_cmd, "reportToPlayers"] call AIC_fnc_getSetting) isEqualTo true
-    && { (allPlayers findIf { side group _x == _side && { !(_x isKindOf "HeadlessClient_F") } }) >= 0 }
-) then {
-    private _text = format ["Fire mission: %1 gun(s), %2 rounds each on grid %3%4.",
+if (([_cmd, "reportToPlayers"] call AIC_fnc_getSetting) isEqualTo true) then {
+    [_side, format ["Fire mission: %1 gun(s), %2 rounds each on grid %3%4.",
         _fired, _rounds, mapGridPosition _target,
         ["", format [", splash in %1 s", round _eta]] select (_eta > 0)
-    ];
-    [[_side, "HQ"], _text] remoteExec ["sideChat", _side];
+    ]] call AIC_fnc_sideMessage;
 };
 
 true

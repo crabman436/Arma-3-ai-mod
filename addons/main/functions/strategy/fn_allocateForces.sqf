@@ -62,8 +62,9 @@
  *       - the HQ reserve (5./6.) is skipped, BASE_HQ's garrison covers it;
  *       - leftovers are left out of the plan, the garrison system owns them,
  *         except leftovers still on ATTACK / REINFORCE / SUPPORT: they get
- *         DEFEND at the owned objective they were reinforcing, else at
- *         their home, else at BASE_HQ (so they never keep a dead task);
+ *         DEFEND at the owned objective they were attacking (just
+ *         captured) or reinforcing, else at their home, else at BASE_HQ
+ *         (so they never keep a dead task);
  *       - the HQ threat target uses objective id "BASE_HQ" (it replaces
  *         BASE_HQ's own objective DEFEND target), so garrison groups
  *         defending BASE_HQ count as already on it;
@@ -123,10 +124,7 @@ _threats = _threats select {
 };
 
 private _retreatThreshold = [_cmd, "retreatThreshold"] call AIC_fnc_getSetting;
-if (isNil "_retreatThreshold" || {!(_retreatThreshold isEqualType 0)}) then {_retreatThreshold = 0.3};
-private _reserveRatio = [_cmd, "reserveRatio"] call AIC_fnc_getSetting;
-if (isNil "_reserveRatio" || {!(_reserveRatio isEqualType 0)}) then {_reserveRatio = 0.2};
-_reserveRatio = (_reserveRatio max 0) min 1;
+private _reserveRatio = (([_cmd, "reserveRatio"] call AIC_fnc_getSetting) max 0) min 1;
 
 private _ownPower = _cmd getOrDefault ["ownPower", 0];
 if !(_ownPower isEqualType 0) then {_ownPower = 0};
@@ -218,7 +216,7 @@ private _fnc_onTarget = {
     private _recObj = _info get "objective";
     // the HQ target (id "BASE_HQ" with garrisons on) also matches HQ
     // defenders whose order still has no objective id
-    if (_id != "" && {(_target get "kind") == "HQ"} && {_recObj == ""}) exitWith {
+    if (_id != "" && {(_target getOrDefault ["kind", ""]) == "HQ"} && {_recObj == ""}) exitWith {
         ((_info get "taskPos") isEqualType []) && {count (_info get "taskPos") >= 2}
         && {((_info get "taskPos") distance2D (_target get "pos")) < AIC_REISSUE_TOL_MOVING}
     };
@@ -242,7 +240,7 @@ private _fnc_isHome = {
     params ["_info", "_target"];
     private _home = _info get "home";
     private _id = _target get "id";
-    (_id != "" && {_home == _id}) || {(_target get "kind") == "HQ" && {_home == AIC_BASE_ID}}
+    (_id != "" && {_home == _id}) || {(_target getOrDefault ["kind", ""]) == "HQ" && {_home == AIC_BASE_ID}}
 };
 
 // side-effect free estimate of AIC_fnc_canLeaveGarrison (feasibility / candidate lists)
@@ -429,7 +427,12 @@ if (_hqThreat > 0) then {
         // objectives held by a friendly third side are left alone
         if ((_isUnknown || _isHostile) && {_stance != "DEFENSIVE"}) then {
             private _floor = if (_isHostile) then {3 + 2 * (_priority min 3)} else {3};
-            private _urban = [_opos, _radius] call _fnc_isUrban;
+            // terrain never changes: the urban test is cached on the objective
+            private _urban = _obj getOrDefault ["urban", -1];
+            if !(_urban isEqualType true) then {
+                _urban = [_opos, _radius] call _fnc_isUrban;
+                _obj set ["urban", _urban];
+            };
             _targets pushBack ([
                 _id, _name, _opos, _radius, "ATTACK", (_threat * 1.5) max _floor,
                 _score, "OBJ", _threat, _urban
@@ -522,8 +525,11 @@ private _reserveThreat = _hqThreat;
     };
 } forEach _objectives;
 
+// same shape as the planner targets (_fnc_newTarget), so every helper can read it
 private _reserveTarget = createHashMapFromArray [
-    ["id", _reserveId], ["pos", _reservePos], ["task", "DEFEND"], ["urban", false], ["radius", _reserveRadius]
+    ["id", _reserveId], ["name", "reserve"], ["pos", _reservePos], ["task", "DEFEND"], ["urban", false],
+    ["radius", _reserveRadius], ["kind", ["OBJ", "HQ"] select (_reserveId == "")],
+    ["members", []], ["committed", 0], ["threat", _reserveThreat]
 ];
 
 private _ratio = _reserveRatio * (switch (_stance) do {
@@ -795,7 +801,10 @@ if (_manageGarrisons) then {
         private _recObj = _info get "objective";
         private _home = _info get "home";
         private _dest = call {
-            if (_recTask == "REINFORCE" && {_recObj != ""} && {_recObj in _garrisons}) exitWith {_recObj};
+            // an objective it reinforced, or just captured (updateObjectives
+            // runs first, so a captured ATTACK target is an owned garrison
+            // now): stay and hold it instead of marching back home
+            if (_recTask in ["ATTACK", "REINFORCE"] && {_recObj != ""} && {_recObj in _garrisons}) exitWith {_recObj};
             if (_home != "" && {_home in _garrisons}) exitWith {_home};
             _hqObjId
         };

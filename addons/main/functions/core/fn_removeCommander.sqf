@@ -48,11 +48,7 @@ private _toWake = (_cmd getOrDefault ["groups", []]) select { _x isEqualType grp
     _x set ["parked", false];
 
     // remove transport helipads left behind (drop-off LZ and helicopter pickup)
-    private _rec = _x;
-    {
-        private _pad = _rec getOrDefault [_x, objNull];
-        if (_pad isEqualType objNull && { !isNull _pad }) then { deleteVehicle _pad; };
-    } forEach ["lz", "pickupLz"];
+    [_x] call AIC_fnc_deleteHelipads;
 } forEach _records;
 
 private _woken = 0;

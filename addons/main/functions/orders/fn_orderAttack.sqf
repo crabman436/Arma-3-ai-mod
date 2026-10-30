@@ -43,21 +43,6 @@ if (_type isEqualTo "") then { _type = [_group] call AIC_fnc_classifyGroup; };
 _radius = _radius max 50;
 private _target = [_pos select 0, _pos select 1, 0];
 
-// Nearest road position within _r of _p (or _p itself)
-private _fnc_roadPos = {
-    params ["_p", ["_r", 150]];
-    private _roads = _p nearRoads _r;
-    if (_roads isEqualTo []) exitWith {_p};
-    private _best = objNull;
-    private _bestD = 1e10;
-    {
-        private _d = _x distance2D _p;
-        if (_d < _bestD) then { _bestD = _d; _best = _x; };
-    } forEach _roads;
-    private _rp = getPosATL _best;
-    [_rp select 0, _rp select 1, 0]
-};
-
 // Static / artillery cannot attack by moving
 if (_type in ["STATIC", "ARTY"]) exitWith {
     _group setCombatMode "RED";
@@ -69,13 +54,9 @@ if (_type in ["STATIC", "ARTY"]) exitWith {
 
 if (_type == "NAVAL" && {!surfaceIsWater _target}) exitWith {
     // Boats engage from the closest water we can find towards the target
-    private _water = [];
-    for "_d" from 50 to 1000 step 50 do {
-        private _try = _target getPos [_d, _target getDir _leader];
-        if (surfaceIsWater _try) exitWith { _water = _try; };
-    };
+    private _water = [_target, _leader, 1000] call AIC_fnc_waterPos;
     if (_water isEqualTo []) exitWith {false};
-    private _wp = _group addWaypoint [[_water select 0, _water select 1, 0], 0];
+    private _wp = _group addWaypoint [_water, 0];
     _wp setWaypointType "SAD";
     _wp setWaypointBehaviour "COMBAT";
     _wp setWaypointCombatMode "RED";
@@ -116,7 +97,7 @@ private _first = [];
 if (_approachDist > 0 && {_dist > (_approachDist + _radius + 100)}) then {
     private _app = _target getPos [_approachDist + (_radius * 0.5), _target getDir _leaderPos];
     _app = [_app select 0, _app select 1, 0];
-    if (_isGroundVeh) then { _app = [_app, 200] call _fnc_roadPos; };
+    if (_isGroundVeh) then { _app = [_app, 200] call AIC_fnc_roadPos; };
     if (surfaceIsWater _app && {!_isAir}) then {
         _app = _target getPos [_approachDist * 0.5, _target getDir _leaderPos];
         _app = [_app select 0, _app select 1, 0];

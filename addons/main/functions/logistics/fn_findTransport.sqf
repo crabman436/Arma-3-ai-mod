@@ -7,6 +7,9 @@
         Candidates are own groups (records in "groupData") of type MOTOR,
         MECH or HELI where:
           - the task is IDLE, DEFEND or PATROL;
+          - its home garrison is not threatened (no threat cluster near it,
+            "threat" of its "garrisons" entry is 0), so a town under attack
+            never lends out its vehicles;
           - the group crews a vehicle (driver / pilot is an alive member of
             the group) that is alive, canMove, has fuel and is not locked;
           - that vehicle has enough free seats for every alive cargo unit:
@@ -23,7 +26,9 @@
         vehicle. Within a class the cost is distance * (1 + 0.6 * armament),
         armament 0 = unarmed, 1 = machine guns, 2 = cannons / rockets /
         missiles or any tracked vehicle, so trucks and light cars are taken
-        before IFVs and tanks.
+        before IFVs and tanks (weapons as in AIC_fnc_vehicleWeapons).
+        Groups at home in a base are preferred: other homes add 25 % to
+        the cost.
         The chosen vehicle is remembered on the transport group in the local
         group variable "AIC_transportVehicle" for AIC_fnc_orderTransport.
 
@@ -61,14 +66,14 @@ if (!(_groupData isEqualType createHashMap) || { count _groupData == 0 }) exitWi
 
 private _useAir = ([_cmd, "useAir"] call AIC_fnc_getSetting) isEqualTo true;
 private _heliDist = [_cmd, "heliTransportDistance"] call AIC_fnc_getSetting;
-if (isNil "_heliDist" || { !(_heliDist isEqualType 0) }) then { _heliDist = 3000; };
 private _searchR = [_cmd, "transportSearchRadius"] call AIC_fnc_getSetting;
-if (isNil "_searchR" || { !(_searchR isEqualType 0) }) then { _searchR = 4000; };
+
+// garrison state (AIC_fnc_garrisonStatus, fresh from this cycle's planner)
+private _garrisons = _cmd getOrDefault ["garrisons", createHashMap];
+if !(_garrisons isEqualType createHashMap) then { _garrisons = createHashMap; };
 
 private _trip = _cargoPos distance2D _dest;
 private _preferHeli = _useAir && { _trip > _heliDist };
-
-private _ignored = ["horn", "smoke", "cmflare", "flare", "laserdesignator", "fakeweapon", "fake_weapon"];
 
 // free seats of a vehicle for passengers of another group
 private _fnc_freeSeats = {
@@ -81,7 +86,7 @@ private _fnc_freeSeats = {
     } count (fullCrew [_veh, "", true]);
     // own members on foot that will climb back into this vehicle
     private _ownNeed = {
-        alive _x && { vehicle _x isEqualTo _x } && { (assignedVehicle _x) in [objNull, _veh] }
+        alive _x && { isNull objectParent _x } && { (assignedVehicle _x) in [objNull, _veh] }
     } count (units _grp);
     _free - _ownNeed
 };
@@ -91,16 +96,9 @@ private _fnc_armament = {
     params ["_veh"];
     private _level = if (_veh isKindOf "Tank") then { 2 } else { 0 };
     {
-        private _turret = _x;
-        {
-            private _weapon = _x;
-            private _lw = toLower _weapon;
-            if ((_ignored findIf { (_lw find _x) >= 0 }) < 0) then {
-                private _sound = toLower getText (configFile >> "CfgWeapons" >> _weapon >> "nameSound");
-                _level = _level max (if (_sound in ["cannon", "rockets", "missiles"]) then { 2 } else { 1 });
-            };
-        } forEach (_veh weaponsTurret _turret);
-    } forEach ([[-1]] + (allTurrets [_veh, false]));
+        private _sound = toLowerANSI getText (configFile >> "CfgWeapons" >> _x >> "nameSound");
+        _level = _level max (if (_sound in ["cannon", "rockets", "missiles"]) then { 2 } else { 1 });
+    } forEach ([_veh, false] call AIC_fnc_vehicleWeapons);
     _level
 };
 
@@ -119,6 +117,11 @@ private _bestKey = 1e12;
     if (_type == "HELI" && { !_useAir }) then { continue };
     if !((_rec getOrDefault ["task", "IDLE"]) in ["IDLE", "DEFEND", "PATROL"]) then { continue };
     if (_grp getVariable ["AIC_exclude", false]) then { continue };
+    // a threatened garrison keeps its vehicles
+    private _home = _rec getOrDefault ["home", ""];
+    if !(_home isEqualType "") then { _home = ""; };
+    private _homeEntry = _garrisons getOrDefault [_home, createHashMap];
+    if (((_homeEntry getOrDefault ["threat", 0]) max 0) > 0) then { continue };
 
     private _units = (units _grp) select { alive _x };
     if (_units isEqualTo []) then { continue };
@@ -127,8 +130,8 @@ private _bestKey = 1e12;
     // vehicles driven by this group
     private _vehicles = [];
     {
-        private _veh = vehicle _x;
-        if (_veh isNotEqualTo _x) then {
+        private _veh = objectParent _x;
+        if (!isNull _veh) then {
             private _drv = driver _veh;
             if (!isNull _drv && { alive _drv } && { (group _drv) isEqualTo _grp }) then {
                 _vehicles pushBackUnique _veh;
@@ -159,7 +162,9 @@ private _bestKey = 1e12;
 
     private _arm = [_gVeh] call _fnc_armament;
     private _tier = if (_isHeli isEqualTo _preferHeli) then { 0 } else { 1 };
-    private _key = _tier * 1e7 + _d * (1 + 0.6 * _arm);
+    // prefer base vehicles over the ones of a town garrison
+    private _atBase = ([_cmd, _home] call AIC_fnc_getObjective) getOrDefault ["isBase", false];
+    private _key = _tier * 1e7 + _d * (1 + 0.6 * _arm) * ([1.25, 1] select (_atBase isEqualTo true));
     if (_key < _bestKey) then {
         _bestKey = _key;
         _best = _grp;

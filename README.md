@@ -27,14 +27,17 @@ side to let two AI generals fight each other.
 - **Objectives**: from Eden modules, from `aic_obj*` map markers and, if you
   allow it, from towns, villages and airports near HQ. Ownership is worked out
   from the units in the area, and each objective is scored every cycle.
-- **Force allocation**: a reserve defends HQ. Attacks are staffed until the
-  attacking force has 1.5 times the local enemy strength, threatened objectives
-  are defended, damaged groups retreat to HQ, and spare groups patrol. Orders
-  stay in place while they are still valid, so groups are not sent back and
-  forth every cycle.
+- **Force allocation**: attacks are staffed until the attacking force has 1.5
+  times the local enemy strength, threatened objectives are defended, and
+  damaged groups retreat to HQ. By default (`manageGarrisons` on) the
+  `BASE_HQ` garrison and the home garrisons of towns and bases hold the
+  ground; with `manageGarrisons` off a reserve defends HQ and spare groups
+  patrol instead. Orders stay in place while they are still valid, so groups
+  are not sent back and forth every cycle.
 - **Orders**: attack (approach, then search and destroy), defend (hold, or
-  garrison buildings for infantry), patrol, retreat and reinforce. Groups that
-  get stuck receive their orders again.
+  garrison buildings for infantry, driven by the commander cycle without any
+  extra scripts), patrol, retreat and reinforce. Groups that get stuck receive
+  their orders again.
 - **Fire support**: artillery and mortars fire HE on the strongest fresh
   threat in range. The commander checks `inRangeOfArtillery` and refuses any
   mission with friendly units within 150 m (danger close). Missions are
@@ -75,8 +78,12 @@ To keep a group out of the general's hands, put this in the leader's init:
 (group this) setVariable ["AIC_exclude", true, true];
 ```
 
-Groups led by players are never commanded while `excludePlayerGroups` is true,
-which is the default.
+Groups led by a player are never commanded. With `excludePlayerGroups`
+(default true), groups that contain any player are left alone too.
+
+AIC commands only groups that are local to the server. Groups you move to a
+headless client are left alone: AIC's waypoint helpers and unit event
+handlers only work where a group is local.
 
 ## Using it from script
 
@@ -197,7 +204,12 @@ Each cycle the general parks a group when all of these hold:
   the objective radius of it with no waypoints left or more than 120 s into
   the task. A group still marching to a distant town is never parked on the
   way,
-- its leader is not in COMBAT, and no enemy is near.
+- infantry defending a town have finished moving into their building
+  positions (or 120 s have passed since they started), so nobody freezes in
+  the street,
+- its leader is not in COMBAT, and no enemy is near: no known contact and no
+  enemy unit within `dynSimWakeRange` (surrendered or captured units don't
+  count).
 
 It wakes a group when:
 
@@ -213,7 +225,7 @@ taskings wake the artillery or helicopter group first as well. Parked groups
 are never treated as "stuck" by the order monitor. Helicopters in the air
 are never parked. `AIC_fnc_removeCommander` wakes all its groups again, and a
 group that leaves the general's command (excluded, joined by a player, changed
-side) is woken when it is released.
+side, moved to a headless client) is woken when it is released.
 
 To keep a group out of this, for example a group whose dynamic simulation you
 set yourself, set this variable on it:
@@ -252,7 +264,10 @@ There are three kinds of bases:
 Each cycle the garrison system:
 
 1. Gives every homeless group the nearest owned objective or base within
-   1000 m as its home, otherwise `BASE_HQ`.
+   1000 m as its home, otherwise `BASE_HQ`. This also runs right before the
+   attack planner, so even on the first cycle town garrisons are known and
+   not stripped for attacks. An idle group that is not at its home is sent
+   there.
 2. Looks for owned objectives below their desired power, for example a town
    whose troops were sent to an attack, or one that enemies are approaching.
 3. Picks donor groups to refill them. It takes groups from bases first, then
@@ -271,9 +286,12 @@ Each cycle the garrison system:
 The attack planner follows the same rules. A group settled in a garrison is
 only sent to attack or reinforce if its home can spare it. Groups that have no
 job in the plan stay where they are instead of being sent on patrol, and the
-HQ reserve is replaced by the `BASE_HQ` garrison. A group whose attack or
-reinforcement is called off goes back to DEFEND its home (or the town it was
-reinforcing). Damaged groups still retreat to HQ, and join its garrison there.
+HQ reserve is replaced by the `BASE_HQ` garrison. A group that captured its
+attack objective stays and DEFENDs it. A group whose attack or reinforcement
+is called off goes back to DEFEND its home (or the town it was reinforcing).
+Groups sent to reinforce a threatened town count as incoming for it, so the
+garrison system doesn't send extra donors to the same threat. Damaged groups
+still retreat to HQ, and join its garrison there.
 
 ### Transport
 
@@ -282,7 +300,9 @@ DEFEND farther than `transportMinDistance` away gets a ride if one is free:
 
 - Candidates are MOTOR, MECH and HELI groups that are IDLE, DEFENDing or
   PATROLling, can move, are within `transportSearchRadius` of the infantry,
-  and have enough free cargo and FFV seats for the whole group.
+  and have enough free cargo and FFV seats for the whole group. A garrison
+  with enemies near it never lends its vehicles, and vehicles at a base are
+  preferred over those of a town.
 - Unarmed or lightly armed vehicles are preferred over IFVs and tanks, so
   fighting vehicles stay in the fight.
 - Beyond `heliTransportDistance`, helicopters are preferred (when `useAir` is
@@ -295,7 +315,7 @@ or right at the objective if no enemy is near it. After the drop the
 infantry carry out their real order, and the vehicle returns home (task `RTB`)
 and is parked there again (a vehicle that can no longer move is released as
 IDLE instead). If the vehicle is destroyed or the ride takes more than 15
-minutes, the infantry dismount and continue on foot, and that group isn't
+minutes (longer for long trips), the infantry dismount and continue on foot, and that group isn't
 offered another ride for 10 minutes. Helicopters on a
 transport run are never used for CAS. Players on the side are told about each
 dispatch, for example "Sending reinforcements to Kavala by helicopter", and
@@ -338,9 +358,13 @@ event happens. Each commanded group gets them once
   shooter): a parked group wakes the instant it meets the enemy, and its
   record is stamped (`lastEngaged`) so it stays awake for 120 s;
 - group `UnitKilled` and vehicle `MPKilled`: the kill time is stored on the
-  body or wreck (`AIC_killedAt`) and it is queued for cleanup;
-- group `Empty`: the record is dropped and the empty group is deleted at
-  once (where it is local, otherwise on its owner).
+  body or wreck (`AIC_killedAt`) and it is queued for cleanup (bodies only
+  while their group is still commanded, so AI of a group that left command
+  are never deleted by AIC);
+- group `Empty`: the empty group leaves the commander's group list and is
+  deleted at once (where it is local, otherwise on its owner). Its record is
+  dropped at the start of the next cycle, never inside the handler, because
+  the commander cycle may be paused in the middle of reading the records.
 
 `AIC_fnc_cleanupCycle` runs after `monitorOrders` and deletes bodies and
 wrecks of the commander's side that have been dead longer than
@@ -418,7 +442,9 @@ lookups, read with `AIC_fnc_getObjective`), contacts, threats, the current
 plan and support timers.
 
 `AIC_fnc_createCommander` builds that state and registers the side's groups.
-It sets HQ to the average position of those groups, collects objectives, and
+It sets HQ to the side's `aic_base_<side>` marker nearest to the average
+position of those groups (without such a marker: the average itself, moved
+onto land if it falls into water), collects objectives, and
 spawns `AIC_fnc_commanderLoop`. The loop calls `AIC_fnc_commanderCycle` every
 `loopInterval` seconds. Each cycle runs these steps in order:
 
@@ -431,7 +457,7 @@ spawns `AIC_fnc_commanderLoop`. The loop calls `AIC_fnc_commanderCycle` every
 | 5 | Objectives | `updateObjectives` | Owner of each objective from units in its radius |
 | 6 | Stance | `determineStance` | Power ratio × aggression gives OFFENSIVE, BALANCED or DEFENSIVE |
 | 7 | Score | `scoreObjectives` | Priority, enemy ownership, distance and local threat |
-| 8 | Plan + orders | `allocateForces` then `issueOrder` | Assignments (ATTACK, DEFEND, PATROL, RETREAT, ...) turned into waypoints by the `order*` functions |
+| 8 | Plan + orders | `garrisonCycle` (homes only), `allocateForces` then `issueOrder` | Assignments (ATTACK, DEFEND, PATROL, RETREAT, ...) turned into waypoints by the `order*` functions |
 | 9 | Garrisons | `garrisonCycle` (`garrisonStatus`, `canLeaveGarrison`) | Homes for groups and garrison refills from bases and surplus towns (if `manageGarrisons`) |
 | 10 | Transport | `transportCycle` (`findTransport`, `orderTransport`) | Dismounted cargo gets its final order, and empty transports return home |
 | 11 | Follow-up | `monitorOrders` | Finished tasks go back to IDLE, and stuck groups get their orders again |
@@ -457,7 +483,8 @@ tolerances, near-HQ radii, the 1500 m threat radius, transport drop offsets,
 the report throttle, the hostility threshold, ...) are `#define` constants in
 `addons/main/script_component.hpp`, included by each function that uses them
 with `#include "\z\aic\addons\main\script_component.hpp"`. User-tunable
-values stay settings.
+values stay settings: `AIC_fnc_getSetting` returns the default whenever a
+setting is missing or has the wrong type, so no function repeats a default.
 
 The support step works like this. The commander walks the threat clusters from
 strongest to weakest, and only considers clusters with a contact seen in the
@@ -470,7 +497,8 @@ group that is idle, or is back on its loiter waypoint, and has enough fuel.
 `tasksAir` reveals the known enemies at the target to it and gives it a SAD
 waypoint followed by a LOITER waypoint near HQ.
 
-Reports go out through `[[side, "HQ"], text] remoteExec ["sideChat", side]`, so
+Reports go out through `AIC_fnc_sideMessage`, which sends
+`[[side, "HQ"], text] remoteExec ["sideChat", side]`, so
 only players on that side see them. Debug markers are created on the server with
 `createMarker`. Their properties are set with the local setters and broadcast
 once by a final global setter. All markers are deleted and redrawn every cycle.

@@ -19,8 +19,13 @@
           - "incoming": power of groups whose home is this objective but are
             still on their way (DEFEND / PATROL / IDLE outside the radius,
             TRANSPORTED with a ride ending at this objective) or away on a
-            ride (TRANSPORT / RTB vehicle groups). Lets AIC_fnc_garrisonCycle
-            avoid sending a second wave while the first is still travelling.
+            ride (TRANSPORT / RTB vehicle groups). Also the power of groups
+            sent to reinforce this objective by AIC_fnc_allocateForces (task
+            REINFORCE, or TRANSPORTED with a final REINFORCE, record
+            "objective" = this id, home elsewhere). Lets
+            AIC_fnc_garrisonCycle avoid sending a second wave while the
+            first is still travelling, or answering a threat the planner
+            already answers.
           - "released": HashMap hashValue group -> power of the groups
             AIC_fnc_canLeaveGarrison has let go this cycle.
         The result is stored in the commander under "garrisons".
@@ -46,9 +51,7 @@ if (count _cmd == 0) exitWith { createHashMap };
 
 private _side = _cmd getOrDefault ["side", sideUnknown];
 
-private _perPriority = [_cmd, "garrisonPerPriority"] call AIC_fnc_getSetting;
-if (isNil "_perPriority" || { !(_perPriority isEqualType 0) }) then { _perPriority = 5; };
-_perPriority = _perPriority max 0;
+private _perPriority = ([_cmd, "garrisonPerPriority"] call AIC_fnc_getSetting) max 0;
 
 private _objectives = _cmd getOrDefault ["objectives", []];
 if !(_objectives isEqualType []) then { _objectives = []; };
@@ -155,6 +158,36 @@ private _objById = createHashMap; // id -> objective record (only the garrisoned
                     };
                 };
             };
+        };
+    };
+} forEach _groupData;
+
+// ------------------------------------------------------------ reinforcements
+// The planner answers a threatened owned objective with REINFORCE orders
+// that keep the groups' homes: count them as incoming there, so the garrison
+// system does not send donors to the same threat on top. Only "incoming"
+// changes: present / surplus (and canLeaveGarrison) are unaffected.
+{
+    private _rec = _y;
+    if (_rec isEqualType createHashMap) then {
+        private _task = _rec getOrDefault ["task", ""];
+        if (_task isEqualTo "TRANSPORTED") then {
+            private _final = _rec getOrDefault ["final", createHashMap];
+            _task = if (_final isEqualType createHashMap) then { _final getOrDefault ["task", ""] } else { "" };
+        };
+        private _objId = _rec getOrDefault ["objective", ""];
+        private _grp = _rec getOrDefault ["group", grpNull];
+        if (
+            _task isEqualTo "REINFORCE"
+            && { _objId isEqualType "" }
+            && { _objId in _status }
+            && { _objId isNotEqualTo (_rec getOrDefault ["home", ""]) }
+            && { !isNull _grp }
+            && { ({ alive _x } count (units _grp)) > 0 }
+        ) then {
+            private _entry = _status get _objId;
+            private _power = _rec getOrDefault ["power", 0];
+            if (_power isEqualType 0) then { _entry set ["incoming", (_entry get "incoming") + _power]; };
         };
     };
 } forEach _groupData;

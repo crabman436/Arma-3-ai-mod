@@ -132,7 +132,6 @@ if (_objective isNotEqualTo "") then {
     _objRec = [_cmd, _objective] call AIC_fnc_getObjective;
 };
 private _defRadius = [_cmd, "objectiveRadius"] call AIC_fnc_getSetting;
-if (isNil "_defRadius" || {!(_defRadius isEqualType 0)}) then { _defRadius = 300; };
 private _radius = _objRec getOrDefault ["radius", _defRadius];
 if !(_radius isEqualType 0) then { _radius = _defRadius; };
 
@@ -216,7 +215,7 @@ if (_curTask isEqualTo "TRANSPORTED") then {
     private _veh = _record getOrDefault ["transportVeh", objNull];
     if (_veh isEqualType objNull && {!isNull _veh}) then {
         {
-            if (alive _x && {vehicle _x isEqualTo _veh}) then {
+            if (alive _x && {objectParent _x isEqualTo _veh}) then {
                 unassignVehicle _x;
                 [_x] orderGetIn false;
                 doGetOut _x;
@@ -229,11 +228,7 @@ if (_curTask isEqualTo "TRANSPORTED") then {
     _record set ["transportPhase", ""];
 };
 if (_curTask isEqualTo "TRANSPORT") then {
-    {
-        private _pad = _record getOrDefault [_x, objNull];
-        if (_pad isEqualType objNull && {!isNull _pad}) then { deleteVehicle _pad; };
-        _record set [_x, objNull];
-    } forEach ["lz", "pickupLz"];
+    [_record] call AIC_fnc_deleteHelipads;
     private _veh = _record getOrDefault ["transportVeh", objNull];
     if (_veh isEqualType objNull && {!isNull _veh} && {alive _veh} && {_veh isKindOf "Air"}) then { _veh land "NONE"; };
     _record set ["transport", grpNull];
@@ -248,9 +243,8 @@ if (_type == "INF" && {_task in ["ATTACK", "REINFORCE", "DEFEND"]} && {_curTask 
     && {(time - _rideAbort) >= AIC_RIDE_ABORT_COOLDOWN}
     && {([_cmd, "useTransport"] call AIC_fnc_getSetting) isEqualTo true}) then {
     private _minDist = [_cmd, "transportMinDistance"] call AIC_fnc_getSetting;
-    if (isNil "_minDist" || {!(_minDist isEqualType 0)}) then { _minDist = 1200; };
     private _alive = (units _group) select {alive _x};
-    private _mounted = {vehicle _x isNotEqualTo _x} count _alive;
+    private _mounted = {!isNull objectParent _x} count _alive;
     if (_alive isNotEqualTo [] && {(_mounted * 2) <= count _alive}
         && {((getPosATL (leader _group)) distance2D _pos) > _minDist}) then {
         private _tGrp = [_cmd, _group, _pos] call AIC_fnc_findTransport;
@@ -288,6 +282,8 @@ private _ok = switch (_task) do {
                 _wpL setWaypointBehaviour "AWARE";
                 _wpL setWaypointCombatMode "YELLOW";
                 _wpL setWaypointSpeed "NORMAL";
+                // AIC_fnc_supportCycle treats the group as free again once it reaches this waypoint
+                _group setVariable ["AIC_airLoiterWp", _wpL select 1];
             };
             _r
         } else {
@@ -310,6 +306,9 @@ _record set ["taskTime", time];
 _record set ["objective", if (_task == "IDLE") then {""} else {_objective}];
 _record set ["lastPos", getPosATL (leader _group)];
 _record set ["lastMoveTime", time];
+// a new order starts building occupation over (AIC_fnc_monitorGarrison)
+_record set ["garrisonToken", -1];
+_record set ["garrisonDone", false];
 
 if (!isNil "AIC_ns" && { AIC_ns getOrDefault ["debug", false] isEqualTo true }) then {
     ["%1: group %2 (%3) -> %4 %5 obj '%6'%7", [

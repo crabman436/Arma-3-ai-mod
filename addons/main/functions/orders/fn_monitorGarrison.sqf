@@ -50,12 +50,15 @@ if (_valid && {(_rec getOrDefault ["garrisonDone", false]) isEqualTo true}) exit
 // --- not garrisoned for this order yet: wait for the leader to arrive
 if (!_valid) exitWith {
     _radius = (_radius min 200) max 30;
-    if ((_leader distance2D _center) >= ((_radius * 0.5) max 50)) exitWith {false};
-    private _sent = [_group, _center, _radius] call AIC_fnc_garrisonBuildings;
-    _rec set ["garrisonToken", _token];
-    _rec set ["garrisonTime", time];
-    _rec set ["garrisonDone", _sent == 0];
-    _sent == 0
+    private _done = false;
+    if ((_leader distance2D _center) < ((_radius * 0.5) max 50)) then {
+        private _sent = [_group, _center, _radius] call AIC_fnc_garrisonBuildings;
+        _done = _sent == 0;
+        _rec set ["garrisonToken", _token];
+        _rec set ["garrisonTime", time];
+        _rec set ["garrisonDone", _done];
+    };
+    _done
 };
 
 // --- garrisoned: stop units at their positions, give up after 120 s

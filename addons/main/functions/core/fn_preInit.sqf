@@ -13,6 +13,9 @@
             "objectiveModules" - array of AIC_ModuleObjective logics
             "debug"            - bool, default false (systemChat logging)
             "version"          - string, mod version "1.0.0"
+            "defaultSettings"  - HashMap of AIC_fnc_defaultSettings, built
+                                 once; read only by AIC_fnc_getSetting
+                                 (never modify it)
 
     Parameters:
         None
@@ -39,5 +42,8 @@ if !((AIC_ns getOrDefault ["debug", 0]) isEqualType true) then {
     AIC_ns set ["debug", false];
 };
 AIC_ns set ["version", "1.0.0"];
+// cached defaults for AIC_fnc_getSetting (rebuilt every preInit, so a changed
+// AIC_fnc_defaultSettings always wins)
+AIC_ns set ["defaultSettings", [] call AIC_fnc_defaultSettings];
 
 AIC_ns

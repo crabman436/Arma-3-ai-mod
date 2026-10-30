@@ -48,11 +48,8 @@ if !(([_cmd, "manageCleanup"] call AIC_fnc_getSetting) isEqualTo true) exitWith 
 };
 
 private _delay = [_cmd, "cleanupDelay"] call AIC_fnc_getSetting;
-if (!(_delay isEqualType 0)) then { _delay = 300; };
 private _playerDist = [_cmd, "cleanupPlayerDistance"] call AIC_fnc_getSetting;
-if (!(_playerDist isEqualType 0)) then { _playerDist = 500; };
 private _maxPerCycle = [_cmd, "cleanupMaxPerCycle"] call AIC_fnc_getSetting;
-if (!(_maxPerCycle isEqualType 0)) then { _maxPerCycle = 20; };
 
 private _queue = _cmd getOrDefault ["deadQueue", []];
 if !(_queue isEqualType []) then {
@@ -119,13 +116,7 @@ private _emptyGroups = (groups _side) select {
     && { _x getVariable ["AIC_ehAttached", false] }
     && { !(_x getVariable ["AIC_keep", false]) }
 };
-{
-    if (local _x) then {
-        deleteGroup _x;
-    } else {
-        _x remoteExecCall ["deleteGroup", groupOwner _x];
-    };
-} forEach _emptyGroups;
+{ [_x] call AIC_fnc_deleteGroup; } forEach _emptyGroups;
 
 if ((_deleted > 0 || { _emptyGroups isNotEqualTo [] }) && { !isNil "AIC_ns" } && { AIC_ns getOrDefault ["debug", false] isEqualTo true }) then {
     ["cleanupCycle: %1 deleted %2 bodies/wrecks and %3 empty groups, %4 queued", [_side, _deleted, count _emptyGroups, count _queue]] call AIC_fnc_log;

@@ -112,7 +112,7 @@ private _fnc_freeSeats = {
         isNull _unit && { (_role == "cargo") || { _isFFV isEqualTo true } }
     } count (fullCrew [_veh, "", true]);
     private _ownNeed = {
-        alive _x && { vehicle _x isEqualTo _x } && { (assignedVehicle _x) in [objNull, _veh] }
+        alive _x && { isNull objectParent _x } && { (assignedVehicle _x) in [objNull, _veh] }
     } count (units _grp);
     _free - _ownNeed
 };
@@ -129,8 +129,8 @@ if (!([_veh] call _fnc_usable) || { ([_veh, _tGroup] call _fnc_freeSeats) < _car
     private _bestSeats = -1;
     private _seen = [];
     {
-        private _v = vehicle _x;
-        if (_v isNotEqualTo _x && { !(_v in _seen) }) then {
+        private _v = objectParent _x;
+        if (!isNull _v && { !(_v in _seen) }) then {
             _seen pushBack _v;
             if ([_v] call _fnc_usable) then {
                 private _s = [_v, _tGroup] call _fnc_freeSeats;
@@ -146,20 +146,6 @@ if (isNull _veh) exitWith {
 private _isHeli = _veh isKindOf "Air";
 
 // ---------------------------------------------------------------- helpers
-private _fnc_roadPos = {
-    params ["_p", "_r"];
-    private _roads = _p nearRoads _r;
-    if (_roads isEqualTo []) exitWith { _p };
-    private _bestR = objNull;
-    private _bestD = 1e10;
-    {
-        private _d = _x distance2D _p;
-        if (_d < _bestD) then { _bestD = _d; _bestR = _x; };
-    } forEach _roads;
-    private _rp = getPosATL _bestR;
-    [_rp select 0, _rp select 1, 0]
-};
-
 // flat, open spot for a helicopter near _c (max _r m), or _c itself
 private _fnc_lzPos = {
     params ["_c", "_r"];
@@ -175,13 +161,8 @@ private _fnc_lzPos = {
 };
 
 // old helipads of a previous transport order
-{
-    private _pad = _x;
-    if (_pad isEqualType objNull && { !isNull _pad }) then { deleteVehicle _pad; };
-} forEach [
-    _tRec getOrDefault ["lz", objNull], _tRec getOrDefault ["pickupLz", objNull],
-    _cRec getOrDefault ["lz", objNull], _cRec getOrDefault ["pickupLz", objNull]
-];
+[_tRec] call AIC_fnc_deleteHelipads;
+[_cRec] call AIC_fnc_deleteHelipads;
 
 // ---------------------------------------------------------------- pickup point
 private _cLeader = leader _cGroup;
@@ -195,7 +176,7 @@ if (_isHeli) then {
     _pickupPos = [_cPos, 150] call _fnc_lzPos;
     _pickupLz = createVehicle ["Land_HelipadEmpty_F", _pickupPos, [], 0, "CAN_COLLIDE"];
 } else {
-    _pickupPos = [_cPos, 80] call _fnc_roadPos;
+    _pickupPos = [_cPos, 80] call AIC_fnc_roadPos;
     if (surfaceIsWater _pickupPos) then { _pickupPos = _cPos; };
 };
 
@@ -223,7 +204,7 @@ if (_isHeli) then {
     private _short = ((if (_threatened) then { AIC_DROP_OFFSET_GROUND_THREAT } else { AIC_DROP_OFFSET_GROUND }) min (_trip * 0.4)) max 0;
     private _p = _dest getPos [_short, _dirBack];
     _p = [_p select 0, _p select 1, 0];
-    private _r = [_p, 120] call _fnc_roadPos;
+    private _r = [_p, 120] call AIC_fnc_roadPos;
     // keep the road snap from undoing the stand-off
     if (!surfaceIsWater _r && { (_r distance2D _dest) >= (_short * 0.5) }) then { _p = _r; };
     if (surfaceIsWater _p) then { _p = +_dest; };
@@ -245,7 +226,7 @@ if (_isHeli) then { _veh land "NONE"; };
 
 // own members on foot climb back in
 {
-    if (alive _x && { vehicle _x isEqualTo _x }) then {
+    if (alive _x && { isNull objectParent _x }) then {
         private _av = assignedVehicle _x;
         if (isNull _av || { !alive _av }) then { _x assignAsCargo _veh; };
         [_x] orderGetIn true;

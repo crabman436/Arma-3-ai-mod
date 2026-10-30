@@ -64,16 +64,13 @@ _hq = [_hq select 0, _hq select 1, 0];
         {
             if (alive _x) then { _group reveal [_x, 2.5]; };
         } forEach (units _enemyGroup);
-        private _enemyVeh = vehicle leader _enemyGroup;
-        if (_enemyVeh != leader _enemyGroup) then { _group reveal [_enemyVeh, 2.5]; };
+        private _enemyVeh = objectParent leader _enemyGroup;
+        if (!isNull _enemyVeh) then { _group reveal [_enemyVeh, 2.5]; };
     };
 } forEach (_cmd getOrDefault ["knownEnemies", []]);
 
-if (_isPlane) then {
-    { (vehicle _x) flyInHeight 300; } forEach (units _group select { alive _x && { vehicle _x != _x } });
-} else {
-    { (vehicle _x) flyInHeight 80; } forEach (units _group select { alive _x && { vehicle _x != _x } });
-};
+private _flyHeight = [80, 300] select _isPlane;
+{ (objectParent _x) flyInHeight _flyHeight; } forEach (units _group select { alive _x && { !isNull objectParent _x } });
 
 private _wpStrike = _group addWaypoint [_target, 0];
 _wpStrike setWaypointType "SAD";
@@ -120,13 +117,10 @@ if (count _record > 0) then {
     _side, groupId _group, typeOf _veh, mapGridPosition _target
 ]] call AIC_fnc_log;
 
-if (([_cmd, "reportToPlayers"] call AIC_fnc_getSetting) isEqualTo true
-    && { (allPlayers findIf { side group _x == _side && { !(_x isKindOf "HeadlessClient_F") } }) >= 0 }
-) then {
+if (([_cmd, "reportToPlayers"] call AIC_fnc_getSetting) isEqualTo true) then {
     private _name = getText (configOf _veh >> "displayName");
     if (_name isEqualTo "") then { _name = "Air support"; };
-    private _text = format ["%1 (%2) inbound for close air support on grid %3.", groupId _group, _name, mapGridPosition _target];
-    [[_side, "HQ"], _text] remoteExec ["sideChat", _side];
+    [_side, format ["%1 (%2) inbound for close air support on grid %3.", groupId _group, _name, mapGridPosition _target]] call AIC_fnc_sideMessage;
 };
 
 true

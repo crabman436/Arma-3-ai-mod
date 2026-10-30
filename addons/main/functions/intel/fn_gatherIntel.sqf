@@ -48,15 +48,10 @@ private _knowThreshold = 1.5;
 private _forgetAfter = 300;
 
 // ------------------------------------------------------------ own observers
-private _observers = [];
-{
-    if (!isNull _x) then {
-        private _ldr = leader _x;
-        if (alive _ldr) then {
-            _observers pushBack [getPosATL _ldr, _x, _ldr];
-        };
-    };
-} forEach (_cmd getOrDefault ["groups", []]);
+private _observers = ((_cmd getOrDefault ["groups", []]) select { !isNull _x && { alive leader _x } }) apply {
+    private _ldr = leader _x;
+    [getPosATL _ldr, _x, _ldr]
+};
 
 // ------------------------------------------------------------ previous contacts by group hash
 private _previous = createHashMap;
@@ -89,8 +84,8 @@ if (_observers isNotEqualTo []) then {
                 if (_near isNotEqualTo []) then {
                     // probe objects: leader, its vehicle, and up to two more members / their vehicles
                     private _probes = [_eLeader];
-                    private _veh = vehicle _eLeader;
-                    if (_veh != _eLeader) then { _probes pushBack _veh; };
+                    private _veh = objectParent _eLeader;
+                    if (!isNull _veh) then { _probes pushBack _veh; };
                     {
                         if (count _probes >= 4) exitWith {};
                         private _v = vehicle _x;

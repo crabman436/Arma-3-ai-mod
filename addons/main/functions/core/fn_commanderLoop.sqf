@@ -42,9 +42,7 @@ while { _cmd getOrDefault ["enabled", false] } do {
         ["%1 cycle %2 took %3 ms", [_side, _cycle, round (_elapsed * 1000)]] call AIC_fnc_log;
     };
 
-    private _interval = [_cmd, "loopInterval"] call AIC_fnc_getSetting;
-    if !(_interval isEqualType 0) then { _interval = 30; };
-    _interval = _interval max 5;
+    private _interval = ([_cmd, "loopInterval"] call AIC_fnc_getSetting) max 5;
 
     sleep ((_interval - _elapsed) max 1);
 };

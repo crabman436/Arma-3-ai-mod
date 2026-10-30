@@ -50,7 +50,7 @@ if !((_cmd getOrDefault ["objectives", []]) isEqualType []) then { _cmd set ["ob
 if !("objectives" in _cmd) then { _cmd set ["objectives", []]; };
 
 private _defRadius = [_cmd, "objectiveRadius"] call AIC_fnc_getSetting;
-if (isNil "_defRadius" || { !(_defRadius isEqualType 0) } || { _defRadius <= 0 }) then { _defRadius = 300; };
+if (_defRadius <= 0) then { _defRadius = [createHashMap, "objectiveRadius"] call AIC_fnc_getSetting; };
 
 // ---------------------------------------------------------------- 1. modules
 if (isNil "AIC_ns") then { call AIC_fnc_preInit; };
@@ -147,7 +147,6 @@ if (_side in [west, east, independent, civilian]) then {
 // ---------------------------------------------------------------- 3. locations
 if (([_cmd, "autoObjectives"] call AIC_fnc_getSetting) isEqualTo true) then {
     private _max = [_cmd, "maxAutoObjectives"] call AIC_fnc_getSetting;
-    if !(_max isEqualType 0) then { _max = 12; };
 
     private _objectives = _cmd get "objectives";
     private _have = { (_x getOrDefault ["source", ""]) isEqualTo "LOCATION" } count _objectives;

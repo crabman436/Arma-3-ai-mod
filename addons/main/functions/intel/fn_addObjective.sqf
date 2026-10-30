@@ -61,7 +61,7 @@ private _posATL = [_pos select 0, _pos select 1, 0];
 
 if (_radius <= 0) then {
     _radius = [_cmd, "objectiveRadius"] call AIC_fnc_getSetting;
-    if (isNil "_radius" || { !(_radius isEqualType 0) } || { _radius <= 0 }) then { _radius = 300; };
+    if (_radius <= 0) then { _radius = [createHashMap, "objectiveRadius"] call AIC_fnc_getSetting; };
 };
 if (_priority <= 0) then { _priority = 1; };
 

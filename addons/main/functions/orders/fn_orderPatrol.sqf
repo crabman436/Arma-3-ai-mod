@@ -49,20 +49,6 @@ if (_type in ["STATIC", "ARTY"]) exitWith {
     false
 };
 
-private _fnc_roadPos = {
-    params ["_p", ["_r", 150]];
-    private _roads = _p nearRoads _r;
-    if (_roads isEqualTo []) exitWith {_p};
-    private _best = objNull;
-    private _bestD = 1e10;
-    {
-        private _d = _x distance2D _p;
-        if (_d < _bestD) then { _bestD = _d; _best = _x; };
-    } forEach _roads;
-    private _rp = getPosATL _best;
-    [_rp select 0, _rp select 1, 0]
-};
-
 [_group] call AIC_fnc_clearWaypoints;
 
 if (_type == "PLANE") exitWith {
@@ -98,7 +84,7 @@ while {count _points < _wanted && {_tries < 40}} do {
     _tries = _tries + 1;
     private _p = _center getPos [(_radius * 0.3) + random (_radius * 0.7), random 360];
     _p = [_p select 0, _p select 1, 0];
-    if (_isGroundVeh) then { _p = [_p, 150] call _fnc_roadPos; };
+    if (_isGroundVeh) then { _p = [_p, 150] call AIC_fnc_roadPos; };
     private _wet = surfaceIsWater _p;
     private _ok = switch (true) do {
         case (_isAir): {true};

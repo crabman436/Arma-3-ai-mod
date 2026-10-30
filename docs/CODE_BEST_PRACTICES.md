@@ -153,8 +153,18 @@ of groups.
 
 **Scheduled vs unscheduled code:**
 - Only `AIC_fnc_commanderLoop` is spawned (scheduled), because it needs `sleep`.
-- Everything it calls runs unscheduled inside `call`. **Never `sleep` or
-  `waitUntil` inside a called function or an event handler.**
+  No other function spawns a script: work that has to wait (for example
+  infantry moving into buildings) is done one step per commander cycle.
+- Everything the loop calls with `call` (the whole `AIC_fnc_commanderCycle`)
+  **runs scheduled too**: the engine can suspend it between any two
+  statements, and event handlers (unscheduled) can run in that gap.
+  **Never `sleep` or `waitUntil` inside a called function or an event
+  handler** all the same, so a cycle is never stretched on purpose.
+- Because a cycle can be interrupted, event handlers never change shared
+  commander state in a way that breaks a running iteration: no `deleteAt` on
+  `"groupData"` (mark the record, let `AIC_fnc_registerGroups` drop it), and
+  arrays such as `"groups"` are replaced by a new array, never changed in
+  place. Code that deletes from a HashMap it iterates uses a `keys` snapshot.
 - Event-handler code must be tiny: look up the commander, flip a flag, return.
   Leave heavy work to the next cycle.
 

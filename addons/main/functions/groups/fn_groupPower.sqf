@@ -17,7 +17,8 @@
  *     NAVAL     4       1
  *
  *   "Armed" means the vehicle has a real weapon (horns, smoke launchers,
- *   flares and designators ignored) on a turret that is occupied by an
+ *   flares, searchlights, designators and fake weapons ignored - see
+ *   AIC_fnc_vehicleWeapons) on a turret that is occupied by an
  *   alive unit and the vehicle can still fire. Vehicle value is scaled by
  *   (1 - damage); immobilised mobile vehicles are scaled by 0.6.
  *
@@ -46,15 +47,14 @@ private _unarmedValue = createHashMapFromArray [
     ["MOTOR", 1], ["MECH", 3], ["ARMOR", 3], ["HELI", 2],
     ["PLANE", 2], ["ARTY", 1], ["STATIC", 0.5], ["NAVAL", 1]
 ];
-private _ignoredWeapons = ["horn", "smokelauncher", "cmflare", "laserdesignator", "fakeweapon", "fake_weapon"];
 
 private _power = 0;
 private _vehicles = [];
 
 {
     private _unit = _x;
-    private _veh = vehicle _unit;
-    if (_veh isEqualTo _unit) then {
+    private _veh = objectParent _unit;
+    if (isNull _veh) then {
         _power = _power + (1 - (damage _unit));
     } else {
         _vehicles pushBackUnique _veh;
@@ -82,37 +82,10 @@ private _vehicles = [];
     _power = _power + _passengers;
 
     if (_ourCrew isNotEqualTo []) then {
-        private _cfg = configOf _veh;
-        private _vType = call {
-            if (_veh isKindOf "Plane") exitWith {"PLANE"};
-            if (_veh isKindOf "Helicopter" || {_veh isKindOf "Air"}) exitWith {"HELI"};
-            if (_veh isKindOf "Ship") exitWith {"NAVAL"};
-            if (getNumber (_cfg >> "artilleryScanner") == 1) exitWith {"ARTY"};
-            if (_veh isKindOf "StaticWeapon") exitWith {"STATIC"};
-            if (_veh isKindOf "Wheeled_APC_F" || {_veh isKindOf "Tracked_APC"}) exitWith {"MECH"};
-            if (_veh isKindOf "Tank") exitWith {
-                if (
-                    getText (_cfg >> "editorSubcategory") == "EdSubcat_APCs"
-                    || {getNumber (_cfg >> "transportSoldier") >= 6}
-                ) then {"MECH"} else {"ARMOR"}
-            };
-            "MOTOR"
-        };
+        private _vType = [_veh] call AIC_fnc_vehicleType;
 
         // Weapons on turrets that are actually manned (driver = [-1])
-        private _armed = false;
-        private _turretPaths = [[-1]] + (allTurrets [_veh, false]);
-        {
-            private _path = _x;
-            private _operator = if (_path isEqualTo [-1]) then {driver _veh} else {_veh turretUnit _path};
-            if (!_armed && {!isNull _operator} && {alive _operator}) then {
-                private _realWeapons = (_veh weaponsTurret _path) select {
-                    private _w = toLower _x;
-                    (_ignoredWeapons findIf {(_w find _x) >= 0}) < 0
-                };
-                if (_realWeapons isNotEqualTo []) then {_armed = true};
-            };
-        } forEach _turretPaths;
+        private _armed = ([_veh, true] call AIC_fnc_vehicleWeapons) isNotEqualTo [];
 
         if (_armed && {!canFire _veh}) then {_armed = false};
 

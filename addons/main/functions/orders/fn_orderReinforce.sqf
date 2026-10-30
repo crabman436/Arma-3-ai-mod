@@ -39,29 +39,11 @@ if (_type in ["STATIC", "ARTY"]) exitWith {
     false
 };
 
-private _fnc_roadPos = {
-    params ["_p", ["_r", 150]];
-    private _roads = _p nearRoads _r;
-    if (_roads isEqualTo []) exitWith {_p};
-    private _best = objNull;
-    private _bestD = 1e10;
-    {
-        private _d = _x distance2D _p;
-        if (_d < _bestD) then { _bestD = _d; _best = _x; };
-    } forEach _roads;
-    private _rp = getPosATL _best;
-    [_rp select 0, _rp select 1, 0]
-};
-
 private _isGroundVeh = _type in ["MOTOR", "MECH", "ARMOR"];
 private _isAir = _type in ["HELI", "PLANE"];
 
 if (_type == "NAVAL" && {!surfaceIsWater _target}) then {
-    private _water = [];
-    for "_d" from 50 to 1000 step 50 do {
-        private _try = _target getPos [_d, _target getDir _leader];
-        if (surfaceIsWater _try) exitWith { _water = [_try select 0, _try select 1, 0]; };
-    };
+    private _water = [_target, _leader, 1000] call AIC_fnc_waterPos;
     if (_water isNotEqualTo []) then { _target = _water; };
 };
 if (_type == "NAVAL" && {!surfaceIsWater _target}) exitWith { false };
@@ -83,7 +65,7 @@ private _stageDist = switch (true) do {
 if (_stageDist > 0 && {_dist > _stageDist + 150}) then {
     private _stage = _target getPos [_stageDist, _target getDir _leader];
     _stage = [_stage select 0, _stage select 1, 0];
-    if (_isGroundVeh) then { _stage = [_stage, 200] call _fnc_roadPos; };
+    if (_isGroundVeh) then { _stage = [_stage, 200] call AIC_fnc_roadPos; };
     if (!_isAir && {_type != "NAVAL"} && {surfaceIsWater _stage}) then { _stage = _target; };
     private _wpM = _group addWaypoint [_stage, 0];
     _wpM setWaypointType "MOVE";

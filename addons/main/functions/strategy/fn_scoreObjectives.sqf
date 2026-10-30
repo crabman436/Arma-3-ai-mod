@@ -54,7 +54,6 @@ if !(_ownPower isEqualType 0) then {_ownPower = 0};
 _ownPower = _ownPower max 1;
 
 private _aggression = [_cmd, "aggression"] call AIC_fnc_getSetting;
-if (isNil "_aggression" || {!(_aggression isEqualType 0)}) then {_aggression = 0.5};
 _aggression = (_aggression max 0) min 1;
 
 private _distScale = switch (_stance) do {

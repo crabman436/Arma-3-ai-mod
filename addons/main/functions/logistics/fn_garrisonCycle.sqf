@@ -17,8 +17,11 @@
                - a group without home gets the nearest owned objective or
                  base within 1000 m of its leader, else "BASE_HQ";
                - an IDLE group away from its home (e.g. after an attack)
-                 joins an owned objective within 1000 m, otherwise it is
-                 sent back home (DEFEND).
+                 joins an owned objective within 1000 m;
+               - an IDLE INF / MOTOR / MECH / ARMOR group that (still) is
+                 not at its home is sent there (DEFEND), so it never idles
+                 next to a town while the town's garrison counts it as
+                 "incoming".
           2. AIC_fnc_garrisonStatus is recomputed.
           3. Transfers. Objectives whose deficit (desired - present -
              incoming) is more than 2 power are served first by
@@ -37,19 +40,32 @@
              when the home already has more defenders than patrols (so every
              second group patrols).
 
+        With the optional homes-only flag only step 1 (without orders) and
+        step 2 run: AIC_fnc_commanderCycle uses it right before
+        AIC_fnc_allocateForces, so even on the very first cycle every group
+        already belongs to a garrison and the planner does not strip towns
+        that have not been assigned yet.
+
     Parameters:
         0: HASHMAP - commander
+        1: BOOL    - (optional) homes only: assign homes, recompute the
+                     garrison status, issue no orders. Default false
 
     Returns:
-        NUMBER - number of garrison transfers ordered this cycle
+        NUMBER - number of garrison transfers ordered this cycle (0 with
+                 homes only)
 
     Example:
         [_cmd] call AIC_fnc_garrisonCycle;
+        [_cmd, true] call AIC_fnc_garrisonCycle; // homes only
 */
 
 #include "\z\aic\addons\main\script_component.hpp"
 
-params [["_cmd", createHashMap, [createHashMap]]];
+params [
+    ["_cmd", createHashMap, [createHashMap]],
+    ["_homesOnly", false, [false]]
+];
 
 if (!isServer) exitWith { 0 };
 if (count _cmd == 0) exitWith { 0 };
@@ -60,12 +76,8 @@ private _side = _cmd getOrDefault ["side", sideUnknown];
 private _groupData = _cmd getOrDefault ["groupData", createHashMap];
 if !(_groupData isEqualType createHashMap) exitWith { 0 };
 
-private _maxMoves = [_cmd, "garrisonMovesPerCycle"] call AIC_fnc_getSetting;
-if (isNil "_maxMoves" || { !(_maxMoves isEqualType 0) }) then { _maxMoves = 2; };
-_maxMoves = round (_maxMoves max 0);
-
+private _maxMoves = round (([_cmd, "garrisonMovesPerCycle"] call AIC_fnc_getSetting) max 0);
 private _threshold = [_cmd, "retreatThreshold"] call AIC_fnc_getSetting;
-if (isNil "_threshold" || { !(_threshold isEqualType 0) }) then { _threshold = 0.3; };
 
 private _objectives = (_cmd getOrDefault ["objectives", []]) select {
     _x isEqualType createHashMap
@@ -166,19 +178,26 @@ private _sentHome = 0;
             _home = [_leaderPos] call _fnc_nearestHome;
             if (_home isEqualTo "") then { _home = _hqId; };
         } else {
-            // idle away from home: join a local garrison, else walk back home
-            if (_task isEqualTo "IDLE" && { _home in _homeIds }) then {
-                private _homeObj = _objById get _home;
-                if !([_grp, _homeObj] call _fnc_atObjective) then {
-                    private _local = [_leaderPos] call _fnc_nearestHome;
-                    if (_local isNotEqualTo "") then {
-                        _home = _local;
-                    } else {
-                        if ([_cmd, _grp, "DEFEND", _homeObj get "pos", _home] call AIC_fnc_issueOrder) then {
-                            _sentHome = _sentHome + 1;
-                        };
-                    };
-                };
+            // idle away from home: join a local garrison
+            if (_task isEqualTo "IDLE" && { _home in _homeIds } && { !([_grp, _objById get _home] call _fnc_atObjective) }) then {
+                private _local = [_leaderPos] call _fnc_nearestHome;
+                if (_local isNotEqualTo "") then { _home = _local; };
+            };
+        };
+
+        // idle but not at its (final) home: walk there. Otherwise dynamic
+        // simulation parks it where it stands, and garrisonStatus counts it
+        // as "incoming" for good, masking the home's deficit.
+        if (
+            !_homesOnly
+            && { _task isEqualTo "IDLE" }
+            // groups that can walk (static weapons / artillery stay put)
+            && { (_rec getOrDefault ["type", ""]) in _donorTypes }
+            && { _home in _homeIds }
+            && { !([_grp, _objById get _home] call _fnc_atObjective) }
+        ) then {
+            if ([_cmd, _grp, "DEFEND", (_objById get _home) get "pos", _home] call AIC_fnc_issueOrder) then {
+                _sentHome = _sentHome + 1;
             };
         };
 
@@ -193,6 +212,7 @@ private _sentHome = 0;
 
 // ------------------------------------------------------------ 2. status
 private _status = [_cmd] call AIC_fnc_garrisonStatus;
+if (_homesOnly) exitWith { 0 };
 
 // ------------------------------------------------------------ 3. transfers
 private _moves = 0;

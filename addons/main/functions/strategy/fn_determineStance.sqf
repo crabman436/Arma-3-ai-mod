@@ -31,7 +31,6 @@ private _enemyPower = _cmd getOrDefault ["enemyPower", 0];
 if !(_enemyPower isEqualType 0) then {_enemyPower = 0};
 
 private _aggression = [_cmd, "aggression"] call AIC_fnc_getSetting;
-if (isNil "_aggression" || {!(_aggression isEqualType 0)}) then {_aggression = 0.5};
 _aggression = (_aggression max 0) min 1;
 
 private _previous = _cmd getOrDefault ["stance", "BALANCED"];
