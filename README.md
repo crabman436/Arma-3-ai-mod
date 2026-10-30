@@ -112,8 +112,37 @@ if (count _cmd > 0) then {
 [east] call AIC_fnc_removeCommander;
 
 // Verbose logging to systemChat (always logged to the RPT with the [AIC] prefix)
-AIC_debug = true;
+AIC_ns set ["debug", true];
 ```
+
+### Mod namespace `AIC_ns`
+
+All mod-wide state lives in one global HashMap, `AIC_ns`, created by
+`AIC_fnc_preInit` on every machine before mission init:
+
+| Key | Type | Meaning |
+|---|---|---|
+| `"commanders"` | HashMap side -> commander | the running generals (use `AIC_fnc_getCommander`) |
+| `"objectiveModules"` | array | `AIC_ModuleObjective` logics, picked up by commanders created later |
+| `"debug"` | bool, default false | also echo `[AIC]` log lines to `systemChat` |
+| `"version"` | string | mod version, `"1.0.0"` |
+
+Read it with the accessor functions (`AIC_fnc_getCommander`, ...) or with
+`AIC_ns getOrDefault [key, default]`. Type `AIC_ns` in the debug console to
+inspect everything at once.
+
+**Removed globals (since 1.0.0).** The loose globals of earlier builds no
+longer exist and are no longer read. Scripts that used them must switch to
+`AIC_ns`:
+
+| Old global (removed) | Replacement |
+|---|---|
+| `AIC_commanders` | `AIC_ns get "commanders"`, or better `[side] call AIC_fnc_getCommander` |
+| `AIC_objectiveModules` | `AIC_ns get "objectiveModules"` |
+| `AIC_debug = true;` | `AIC_ns set ["debug", true];` |
+
+The public function API (`AIC_fnc_createCommander`, `AIC_fnc_getCommander`,
+`AIC_fnc_removeCommander`, ...) is unchanged.
 
 ## Settings
 
@@ -381,7 +410,8 @@ mod.cpp
 ## Architecture
 
 All state lives in plain HashMaps, as specified in `CONTRACT.md`.
-`AIC_commanders` maps each side to a commander HashMap, which holds settings,
+The mod namespace `AIC_ns` (one global HashMap) holds everything; its
+`"commanders"` entry maps each side to a commander HashMap, which holds settings,
 groups, group records (keyed by `hashValue group`), objectives (an array for
 ordered iteration plus the `objectiveIndex` HashMap id -> record for
 lookups, read with `AIC_fnc_getObjective`), contacts, threats, the current
@@ -421,6 +451,13 @@ Subsystems are split by folder, and each one owns the commander keys listed in
 - **support**: artillery and CAS.
 - **logistics**: dynamic simulation parking, garrisons and transport.
 - **ui**: reports, debug markers and colours.
+
+Fixed values that several functions share (stuck timeout, re-issue
+tolerances, near-HQ radii, the 1500 m threat radius, transport drop offsets,
+the report throttle, the hostility threshold, ...) are `#define` constants in
+`addons/main/script_component.hpp`, included by each function that uses them
+with `#include "\z\aic\addons\main\script_component.hpp"`. User-tunable
+values stay settings.
 
 The support step works like this. The commander walks the threat clusters from
 strongest to weakest, and only considers clusters with a contact seen in the

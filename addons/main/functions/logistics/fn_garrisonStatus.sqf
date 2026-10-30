@@ -38,6 +38,8 @@
         systemChat format ["HQ garrison %1/%2", _hq get "present", _hq get "desired"];
 */
 
+#include "\z\aic\addons\main\script_component.hpp"
+
 params [["_cmd", createHashMap, [createHashMap]]];
 
 if (count _cmd == 0) exitWith { createHashMap };
@@ -70,7 +72,7 @@ private _objById = createHashMap; // id -> objective record (only the garrisoned
         if (
             _id isNotEqualTo ""
             && { _pos isEqualType [] && { count _pos >= 2 } }
-            && { (_id isEqualTo "BASE_HQ") || { (_obj getOrDefault ["owner", sideUnknown]) isEqualTo _side } }
+            && { (_id isEqualTo AIC_BASE_ID) || { (_obj getOrDefault ["owner", sideUnknown]) isEqualTo _side } }
             && { !(_id in _status) }
         ) then {
             private _priority = _obj getOrDefault ["priority", 1];
@@ -87,7 +89,7 @@ private _objById = createHashMap; // id -> objective record (only the garrisoned
 
             private _threat = 0;
             {
-                if (((_x getOrDefault ["pos", [0, 0, 0]]) distance2D _pos) <= 1500) then {
+                if (((_x getOrDefault ["pos", [0, 0, 0]]) distance2D _pos) <= AIC_THREAT_RADIUS) then {
                     private _p = _x getOrDefault ["power", 0];
                     if (_p isEqualType 0) then { _threat = _threat + _p; };
                 };
@@ -164,7 +166,7 @@ private _objById = createHashMap; // id -> objective record (only the garrisoned
 
 _cmd set ["garrisons", _status];
 
-if (!isNil "AIC_debug" && { AIC_debug isEqualTo true }) then {
+if (!isNil "AIC_ns" && { AIC_ns getOrDefault ["debug", false] isEqualTo true }) then {
     ["garrisonStatus: %1 %2", [
         _side,
         (keys _status) apply {

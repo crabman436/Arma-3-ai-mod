@@ -42,6 +42,8 @@
         [_cmd] call AIC_fnc_report;
 */
 
+#include "\z\aic\addons\main\script_component.hpp"
+
 params [["_cmd", createHashMap, [createHashMap]]];
 
 if (!isServer) exitWith { false };
@@ -50,7 +52,7 @@ if !(([_cmd, "reportToPlayers"] call AIC_fnc_getSetting) isEqualTo true) exitWit
 
 private _side = _cmd getOrDefault ["side", sideUnknown];
 private _now = time;
-private _throttle = 20;
+private _throttle = AIC_REPORT_THROTTLE;
 
 private _stance = _cmd getOrDefault ["stance", "BALANCED"];
 private _objectives = (_cmd getOrDefault ["objectives", []]) select { _x isEqualType createHashMap };

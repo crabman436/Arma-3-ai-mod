@@ -68,6 +68,8 @@
         [_cmd] call AIC_fnc_transportCycle;
 */
 
+#include "\z\aic\addons\main\script_component.hpp"
+
 params [["_cmd", createHashMap, [createHashMap]]];
 
 if (!isServer) exitWith { 0 };
@@ -84,7 +86,7 @@ if (_cargoRecs isEqualTo [] && { _transportRecs isEqualTo [] }) exitWith { 0 };
 
 private _PICKUP_STALL = 240;
 private _FALLBACK_RANGE = 150;
-private _PICKUP_TIMEOUT = 900;
+private _PICKUP_TIMEOUT = AIC_RIDE_TIMEOUT;
 
 private _changes = 0;
 private _finals = []; // [group, record, reason, abort]
@@ -128,7 +130,7 @@ private _fnc_boardFallback = {
             if (_isFFV isEqualTo true) then {
                 _ffv pushBack _path;
             } else {
-                if ((toLower _role) isEqualTo "cargo" && { _cIdx >= 0 } && { !(_veh lockedCargo _cIdx) }) then {
+                if (_role == "cargo" && { _cIdx >= 0 } && { !(_veh lockedCargo _cIdx) }) then {
                     _cargoIdx pushBack _cIdx;
                 };
             };
@@ -196,7 +198,7 @@ private _fnc_boardFallback = {
 
     // movement bookkeeping (monitorOrders skips TRANSPORTED groups)
     private _lastPos = _rec getOrDefault ["lastPos", []];
-    if (!([_lastPos] call _fnc_validPos) || { (_lpos distance2D _lastPos) > 20 }) then {
+    if (!([_lastPos] call _fnc_validPos) || { (_lpos distance2D _lastPos) > AIC_MOVE_THRESHOLD }) then {
         _rec set ["lastPos", _lpos];
         _rec set ["lastMoveTime", time];
     };
@@ -316,9 +318,9 @@ private _fnc_boardFallback = {
         continue;
     };
 
-    private _rideLimit = _rec getOrDefault ["rideLimit", 900];
-    if !(_rideLimit isEqualType 0) then { _rideLimit = 900; };
-    if (_phaseAge > (_rideLimit max 900)) then {
+    private _rideLimit = _rec getOrDefault ["rideLimit", AIC_RIDE_TIMEOUT];
+    if !(_rideLimit isEqualType 0) then { _rideLimit = AIC_RIDE_TIMEOUT; };
+    if (_phaseAge > (_rideLimit max AIC_RIDE_TIMEOUT)) then {
         [_units, _veh, _grp] call _fnc_unload;
         _finals pushBack [_grp, _rec, "ride timed out", true];
         continue;
@@ -326,7 +328,7 @@ private _fnc_boardFallback = {
 
     // transport movement bookkeeping
     private _tLast = _tRec getOrDefault ["lastPos", []];
-    if (!([_tLast] call _fnc_validPos) || { (_vPos distance2D _tLast) > 20 }) then {
+    if (!([_tLast] call _fnc_validPos) || { (_vPos distance2D _tLast) > AIC_MOVE_THRESHOLD }) then {
         _tRec set ["lastPos", _vPos];
         _tRec set ["lastMoveTime", time];
     };
@@ -370,7 +372,7 @@ private _fnc_boardFallback = {
     };
 
     // ride stuck away from the drop -> get out and walk
-    if (_tStill > 180 && { _stopped }) then {
+    if (_tStill > AIC_STUCK_TIMEOUT && { _stopped }) then {
         [_units, _veh, _grp] call _fnc_unload;
         _finals pushBack [_grp, _rec, format ["transport stuck %1 m from drop", round _dDrop], true];
     };
@@ -464,7 +466,7 @@ private _fnc_objPos = {
 
     // home: own garrison objective, else BASE_HQ, else commander hq
     private _homePos = [_rec getOrDefault ["home", ""]] call _fnc_objPos;
-    if (_homePos isEqualTo []) then { _homePos = ["BASE_HQ"] call _fnc_objPos; };
+    if (_homePos isEqualTo []) then { _homePos = [AIC_BASE_ID] call _fnc_objPos; };
     if (_homePos isEqualTo []) then {
         private _hq = _cmd getOrDefault ["hq", []];
         _homePos = if ([_hq] call _fnc_validPos) then { _hq } else { getPosATL (leader _grp) };

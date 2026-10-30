@@ -33,6 +33,8 @@
         systemChat str count (_cmd get "knownEnemies");
 */
 
+#include "\z\aic\addons\main\script_component.hpp"
+
 params [["_cmd", createHashMap, [createHashMap]]];
 
 if (count _cmd == 0) exitWith { [] };
@@ -74,7 +76,7 @@ if (_observers isNotEqualTo []) then {
         if (
             _eSide in [west, east, independent, civilian]
             && { _eSide != _side }
-            && { (_side getFriend _eSide) < 0.6 }
+            && { (_side getFriend _eSide) < AIC_HOSTILE_FRIEND }
         ) then {
             private _eLeader = leader _eg;
             private _alive = (units _eg) select { alive _x };
@@ -170,7 +172,7 @@ private _enemyPower = 0;
 _cmd set ["knownEnemies", _contacts];
 _cmd set ["enemyPower", _enemyPower];
 
-if (!isNil "AIC_debug" && { AIC_debug isEqualTo true }) then {
+if (!isNil "AIC_ns" && { AIC_ns getOrDefault ["debug", false] isEqualTo true }) then {
     ["gatherIntel: %1 knows %2 enemy groups (power %3, %4 fresh)", [_side, count _contacts, _enemyPower, count _seen]] call AIC_fnc_log;
 };
 

@@ -35,6 +35,8 @@
         [_cmd, _mortarGroup, getPosATL _enemyLeader, 4] call AIC_fnc_fireMission;
 */
 
+#include "\z\aic\addons\main\script_component.hpp"
+
 params [
     ["_cmd", createHashMap, [createHashMap]],
     ["_group", grpNull, [grpNull]],
@@ -54,7 +56,7 @@ private _dangerRadius = 150;
 private _friendlyIdx = allUnits findIf {
     alive _x
     && { (_x distance2D _target) < _dangerRadius }
-    && { (_side getFriend (side group _x)) >= 0.6 }
+    && { (_side getFriend (side group _x)) >= AIC_HOSTILE_FRIEND }
     && { (side group _x) != civilian || { _side == civilian } }
     && { !((vehicle _x) isKindOf "Air" && { ((getPosATL _x) select 2) > 50 }) }
 };

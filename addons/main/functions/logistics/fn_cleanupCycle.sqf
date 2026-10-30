@@ -127,7 +127,7 @@ private _emptyGroups = (groups _side) select {
     };
 } forEach _emptyGroups;
 
-if ((_deleted > 0 || { _emptyGroups isNotEqualTo [] }) && { !isNil "AIC_debug" } && { AIC_debug isEqualTo true }) then {
+if ((_deleted > 0 || { _emptyGroups isNotEqualTo [] }) && { !isNil "AIC_ns" } && { AIC_ns getOrDefault ["debug", false] isEqualTo true }) then {
     ["cleanupCycle: %1 deleted %2 bodies/wrecks and %3 empty groups, %4 queued", [_side, _deleted, count _emptyGroups, count _queue]] call AIC_fnc_log;
 };
 

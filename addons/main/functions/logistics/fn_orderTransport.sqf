@@ -66,6 +66,8 @@
         [_cmd, _truckGrp, _infGrp, _objPos, "ATTACK", _objPos, _objId] call AIC_fnc_orderTransport;
 */
 
+#include "\z\aic\addons\main\script_component.hpp"
+
 params [
     ["_cmd", createHashMap, [createHashMap]],
     ["_tGroup", grpNull, [grpNull]],
@@ -82,7 +84,7 @@ if (count _dest < 2) exitWith { false };
 _dest = [_dest select 0, _dest select 1, 0];
 if (count _finalPos < 2) then { _finalPos = +_dest; };
 _finalPos = [_finalPos select 0, _finalPos select 1, 0];
-_finalTask = toUpper _finalTask;
+_finalTask = toUpperANSI _finalTask;
 if (_finalTask in ["", "TRANSPORT", "TRANSPORTED"]) then { _finalTask = "DEFEND"; };
 
 private _side = _cmd getOrDefault ["side", sideUnknown];
@@ -107,7 +109,7 @@ private _fnc_freeSeats = {
     // also counted as a cargo seat)
     private _free = {
         _x params ["_unit", "_role", "_cargoIdx", "_path", ["_isFFV", false]];
-        isNull _unit && { ((toLower _role) isEqualTo "cargo") || { _isFFV isEqualTo true } }
+        isNull _unit && { (_role == "cargo") || { _isFFV isEqualTo true } }
     } count (fullCrew [_veh, "", true]);
     private _ownNeed = {
         alive _x && { vehicle _x isEqualTo _x } && { (assignedVehicle _x) in [objNull, _veh] }
@@ -202,7 +204,7 @@ private _threatened = (((_cmd getOrDefault ["knownEnemies", []]) + (_cmd getOrDe
     _x isEqualType createHashMap
     && { (_x getOrDefault ["pos", []]) isEqualType [] }
     && { count (_x getOrDefault ["pos", []]) >= 2 }
-    && { ((_x get "pos") distance2D _dest) < 800 }
+    && { ((_x get "pos") distance2D _dest) < AIC_LZ_THREAT_RADIUS }
 }) >= 0;
 
 private _trip = _pickupPos distance2D _dest;
@@ -211,14 +213,14 @@ private _dropPos = +_dest;
 private _lz = objNull;
 if (_isHeli) then {
     private _center = if (_threatened) then {
-        _dest getPos [(450 min (_trip * 0.5)), _dirBack]
+        _dest getPos [(AIC_LZ_OFFSET_HELI min (_trip * 0.5)), _dirBack]
     } else {
         +_dest
     };
     _dropPos = [_center, 150] call _fnc_lzPos;
     _lz = createVehicle ["Land_HelipadEmpty_F", _dropPos, [], 0, "CAN_COLLIDE"];
 } else {
-    private _short = ((if (_threatened) then { 400 } else { 250 }) min (_trip * 0.4)) max 0;
+    private _short = ((if (_threatened) then { AIC_DROP_OFFSET_GROUND_THREAT } else { AIC_DROP_OFFSET_GROUND }) min (_trip * 0.4)) max 0;
     private _p = _dest getPos [_short, _dirBack];
     _p = [_p select 0, _p select 1, 0];
     private _r = [_p, 120] call _fnc_roadPos;
@@ -285,7 +287,7 @@ _cGroup setCurrentWaypoint _wpGetIn;
 // ---------------------------------------------------------------- records
 private _tLeader = leader _tGroup;
 private _rideLength = _pickupPos distance2D _dropPos;
-private _rideLimit = 900 max (round (2 * _rideLength / (if (_isHeli) then { 35 } else { 8 }) + 240));
+private _rideLimit = AIC_RIDE_TIMEOUT max (round (2 * _rideLength / (if (_isHeli) then { 35 } else { 8 }) + 240));
 
 _tRec set ["task", "TRANSPORT"];
 _tRec set ["taskPos", +_dropPos];

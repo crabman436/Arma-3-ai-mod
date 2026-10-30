@@ -30,6 +30,8 @@
  *   [_commander] call AIC_fnc_scoreObjectives;
  */
 
+#include "\z\aic\addons\main\script_component.hpp"
+
 params [["_cmd", createHashMap, [createHashMap]]];
 
 if (count _cmd == 0) exitWith {[]};
@@ -89,7 +91,7 @@ private _distScale = switch (_stance) do {
 
             private _isOwn = _owner isEqualTo _side;
             private _isUnknown = _owner isEqualTo sideUnknown;
-            private _isHostile = !_isOwn && {!_isUnknown} && {(_side getFriend _owner) < 0.6};
+            private _isHostile = !_isOwn && {!_isUnknown} && {(_side getFriend _owner) < AIC_HOSTILE_FRIEND};
 
             private _score = switch (true) do {
                 case (_isOwn): {

@@ -30,6 +30,8 @@ class CfgFunctions
             class availableGroups {};
             class attachGroupEHs {};
             class groupEngaged {};
+            class vehicleType {};
+            class vehicleWeapons {};
         };
 
         class intel
@@ -62,6 +64,10 @@ class CfgFunctions
             class orderRetreat {};
             class orderReinforce {};
             class monitorOrders {};
+            class roadPos {};
+            class waterPos {};
+            class garrisonBuildings {};
+            class monitorGarrison {};
         };
 
         class support
@@ -70,6 +76,7 @@ class CfgFunctions
             class supportCycle {};
             class fireMission {};
             class tasksAir {};
+            class artilleryMagScore {};
         };
 
         class logistics
@@ -84,6 +91,8 @@ class CfgFunctions
             class orderTransport {};
             class transportCycle {};
             class cleanupCycle {};
+            class deleteHelipads {};
+            class deleteGroup {};
         };
 
         class ui
@@ -92,6 +101,7 @@ class CfgFunctions
             class report {};
             class updateDebugMarkers {};
             class sideColor {};
+            class sideMessage {};
         };
     };
 };

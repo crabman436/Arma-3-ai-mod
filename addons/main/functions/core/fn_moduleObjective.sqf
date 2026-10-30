@@ -5,7 +5,7 @@
         Eden module function of AIC_ModuleObjective (server only).
         Normalises the module attributes on the logic ("Name", "Radius",
         "Priority", "Garrison" (number >= 0, 0 = auto) and "IsBase"
-        (bool)), stores the logic in AIC_objectiveModules so that
+        (bool)), stores the logic in AIC_ns "objectiveModules" so that
         commanders created later pick it up (AIC_fnc_collectObjectives),
         and adds the objective to every existing commander (setting the
         record keys "garrison" and "isBase" from the module).
@@ -27,14 +27,14 @@ params [["_logic", objNull, [objNull]], ["_units", [], [[]]], ["_activated", tru
 if (!isServer) exitWith { true };
 if (isNull _logic || { !_activated }) exitWith { true };
 
-if (isNil "AIC_commanders") then { AIC_commanders = createHashMap; };
-if (isNil "AIC_objectiveModules") then { AIC_objectiveModules = []; };
+if (isNil "AIC_ns") then { call AIC_fnc_preInit; };
+private _objectiveModules = AIC_ns get "objectiveModules";
 
 // --- normalise attributes
 private _name = _logic getVariable ["Name", ""];
 if !(_name isEqualType "") then { _name = str _name; };
 if (_name isEqualTo "") then {
-    _name = format ["Objective %1", count AIC_objectiveModules + 1];
+    _name = format ["Objective %1", count _objectiveModules + 1];
 };
 
 private _radius = _logic getVariable ["Radius", 300];
@@ -52,7 +52,7 @@ _garrison = _garrison max 0;
 
 private _isBase = _logic getVariable ["IsBase", false];
 if (_isBase isEqualType 0) then { _isBase = _isBase > 0; };
-if (_isBase isEqualType "") then { _isBase = (toLower _isBase) in ["true", "1"]; };
+if (_isBase isEqualType "") then { _isBase = (toLowerANSI _isBase) in ["true", "1"]; };
 if !(_isBase isEqualType true) then { _isBase = false; };
 
 _logic setVariable ["Name", _name];
@@ -61,7 +61,7 @@ _logic setVariable ["Priority", _priority];
 _logic setVariable ["Garrison", _garrison];
 _logic setVariable ["IsBase", _isBase];
 
-AIC_objectiveModules pushBackUnique _logic;
+_objectiveModules pushBackUnique _logic;
 
 // --- add to all running commanders
 private _pos = getPosATL _logic;
@@ -73,7 +73,7 @@ private _pos = getPosATL _logic;
             _rec set ["isBase", _isBase];
         };
     };
-} forEach AIC_commanders;
+} forEach (AIC_ns get "commanders");
 
 ["Objective module '%1' registered at %2 (r %3, priority %4, garrison %5, base %6)", [_name, _pos apply { round _x }, _radius, _priority, _garrison, _isBase]] call AIC_fnc_log;
 

@@ -50,7 +50,7 @@ _cmd set ["markers", _markers];
 
 private _side = _cmd getOrDefault ["side", sideUnknown];
 private _sideColor = [_side] call AIC_fnc_sideColor;
-private _prefix = format ["aic_dbg_%1_", toLower str _side];
+private _prefix = format ["aic_dbg_%1_", toLowerANSI str _side];
 private _iconPrefix = switch (_side) do {
     case west: { "b_" };
     case east: { "o_" };

@@ -4,7 +4,7 @@
     Description:
         Builds (or extends) a commander's objective list from these sources,
         in this order:
-          1. Eden objective modules stored in AIC_objectiveModules
+          1. Eden objective modules stored in AIC_ns "objectiveModules"
              (logic variables "Name", "Radius", "Priority", and the
              logistics attributes "Garrison" (number, default 0 = auto) and
              "IsBase" (checkbox, default false)).
@@ -40,6 +40,8 @@
         [_cmd] call AIC_fnc_collectObjectives;
 */
 
+#include "\z\aic\addons\main\script_component.hpp"
+
 params [["_cmd", createHashMap, [createHashMap]]];
 
 if (count _cmd == 0) exitWith { 0 };
@@ -51,7 +53,9 @@ private _defRadius = [_cmd, "objectiveRadius"] call AIC_fnc_getSetting;
 if (isNil "_defRadius" || { !(_defRadius isEqualType 0) } || { _defRadius <= 0 }) then { _defRadius = 300; };
 
 // ---------------------------------------------------------------- 1. modules
-if (!isNil "AIC_objectiveModules" && { AIC_objectiveModules isEqualType [] }) then {
+if (isNil "AIC_ns") then { call AIC_fnc_preInit; };
+private _objectiveModules = AIC_ns getOrDefault ["objectiveModules", []];
+if (_objectiveModules isEqualType []) then {
     {
         private _logic = _x;
         if (!isNull _logic) then {
@@ -69,11 +73,11 @@ if (!isNil "AIC_objectiveModules" && { AIC_objectiveModules isEqualType [] }) th
             _garrison = _garrison max 0;
             private _isBase = _logic getVariable ["IsBase", false];
             if (_isBase isEqualType 0) then { _isBase = _isBase > 0; };
-            if (_isBase isEqualType "") then { _isBase = (toLower _isBase) in ["true", "1"]; };
+            if (_isBase isEqualType "") then { _isBase = (toLowerANSI _isBase) in ["true", "1"]; };
             if !(_isBase isEqualType false) then { _isBase = false; };
             [_cmd, getPosATL _logic, _name, _radius, _priority, "MODULE", _isBase, _garrison] call AIC_fnc_addObjective;
         };
-    } forEach AIC_objectiveModules;
+    } forEach _objectiveModules;
 };
 
 // last "_p<number>" in a lower-case marker name -> priority, else the default
@@ -109,8 +113,8 @@ private _fnc_markerRadius = {
 // ---------------------------------------------------------------- 2. markers
 {
     private _marker = _x;
-    private _lower = toLower _marker;
-    if ((_lower find "aic_obj") == 0) then {
+    private _lower = toLowerANSI _marker;
+    if ((_lower find AIC_MARKER_OBJ_PREFIX) == 0) then {
         private _name = markerText _marker;
         if (_name isEqualTo "") then { _name = _marker; };
 
@@ -123,14 +127,16 @@ private _fnc_markerRadius = {
 
 // ---------------------------------------------------------------- 2b. base markers (own side only)
 private _side = _cmd getOrDefault ["side", sideUnknown];
-private _basePrefix = "aic_base_" + toLower str _side; // west / east / guer / civ
+private _basePrefix = AIC_MARKER_BASE_PREFIX + toLowerANSI str _side; // west / east / guer / civ
 if (_side in [west, east, independent, civilian]) then {
     {
         private _marker = _x;
-        private _lower = toLower _marker;
+        private _lower = toLowerANSI _marker;
         if ((_lower find _basePrefix) == 0) then {
             private _name = markerText _marker;
-            if (_name isEqualTo "") then { _name = _marker; };
+            // id "BASE_<name>": a marker labelled "HQ" must not take the id
+            // of the implicit base at the commander's "hq"
+            if (_name isEqualTo "" || { format ["BASE_%1", _name] == AIC_BASE_ID }) then { _name = _marker; };
             private _radius = [_marker] call _fnc_markerRadius;
             private _priority = [_lower, 1] call _fnc_markerPriority;
             [_cmd, getMarkerPos _marker, _name, _radius, _priority, "BASE", true, 0] call AIC_fnc_addObjective;
@@ -195,7 +201,7 @@ if (([_cmd, "autoObjectives"] call AIC_fnc_getSetting) isEqualTo true) then {
 private _hqPos = _cmd getOrDefault ["hq", []];
 if (
     _hqPos isEqualType [] && { count _hqPos >= 2 } && { (_hqPos select 0) isEqualType 0 } && { (_hqPos select 1) isEqualType 0 }
-    && { count ([_cmd, "BASE_HQ"] call AIC_fnc_getObjective) == 0 }
+    && { count ([_cmd, AIC_BASE_ID] call AIC_fnc_getObjective) == 0 }
 ) then {
     // id = "<source>_<name>" = "BASE_HQ"; source BASE -> isBase true, owner = own side
     private _hqObj = [_cmd, _hqPos, "HQ", _defRadius min 300, 1, "BASE", true, 0] call AIC_fnc_addObjective;

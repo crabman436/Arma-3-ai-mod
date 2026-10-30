@@ -27,8 +27,8 @@ params [["_logic", objNull, [objNull]], ["_units", [], [[]]], ["_activated", tru
 if (!isServer) exitWith { true };
 if (isNull _logic) exitWith { true };
 
-if (isNil "AIC_commanders") then { AIC_commanders = createHashMap; };
-if (isNil "AIC_objectiveModules") then { AIC_objectiveModules = []; };
+if (isNil "AIC_ns") then { call AIC_fnc_preInit; };
+private _objectiveModules = AIC_ns get "objectiveModules";
 
 // --- attribute helpers
 private _fnc_num = {
@@ -44,7 +44,7 @@ private _fnc_bool = {
     if (isNil "_value") exitWith { _default };
     if (_value isEqualType true) exitWith { _value };
     if (_value isEqualType 0) exitWith { _value > 0 };
-    if (_value isEqualType "") exitWith { (toLower _value) in ["true", "1"] };
+    if (_value isEqualType "") exitWith { (toLowerANSI _value) in ["true", "1"] };
     _default
 };
 
@@ -77,7 +77,7 @@ private _settings = createHashMapFromArray [
 // --- synced objective modules: make sure they are known before objectives are collected
 private _objModules = (synchronizedObjects _logic) select { typeOf _x == "AIC_ModuleObjective" };
 {
-    if (_x getVariable ["Name", ""] isEqualTo "" || { !(_x in AIC_objectiveModules) }) then {
+    if (_x getVariable ["Name", ""] isEqualTo "" || { !(_x in _objectiveModules) }) then {
         // not initialised yet (or attributes not normalised): run its module function now
         [_x, [], true] call AIC_fnc_moduleObjective;
     };
@@ -86,7 +86,7 @@ private _objModules = (synchronizedObjects _logic) select { typeOf _x == "AIC_Mo
 private _cmd = [_side, _settings] call AIC_fnc_createCommander;
 if (count _cmd == 0) exitWith { true };
 
-// collectObjectives already reads AIC_objectiveModules; addObjective dedupes by id,
+// collectObjectives already reads AIC_ns "objectiveModules"; addObjective dedupes by id,
 // this guarantees synced objectives even if the commander already existed.
 {
     private _garrison = ([_x getVariable ["Garrison", 0], 0] call _fnc_num) max 0;

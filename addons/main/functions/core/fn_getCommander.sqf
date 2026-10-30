@@ -18,6 +18,6 @@
 
 params [["_side", sideUnknown, [sideUnknown]]];
 
-if (isNil "AIC_commanders") then { AIC_commanders = createHashMap; };
+if (isNil "AIC_ns") then { call AIC_fnc_preInit; };
 
-AIC_commanders getOrDefault [_side, createHashMap]
+(AIC_ns get "commanders") getOrDefault [_side, createHashMap]

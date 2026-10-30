@@ -41,6 +41,8 @@
         [_cmd] call AIC_fnc_dynSimCycle;
 */
 
+#include "\z\aic\addons\main\script_component.hpp"
+
 params [["_cmd", createHashMap, [createHashMap]]];
 
 if (!isServer) exitWith { [0, 0] };
@@ -127,7 +129,7 @@ private _woken = 0;
                 private _eSide = if (_x isKindOf "CAManBase") then { side group _x } else { side _x };
                 _eSide in [west, east, independent, civilian]
                 && { _eSide isNotEqualTo _side }
-                && { (_side getFriend _eSide) < 0.6 }
+                && { (_side getFriend _eSide) < AIC_HOSTILE_FRIEND }
             }
         }) > -1;
     };
@@ -177,7 +179,7 @@ private _woken = 0;
     if (_settled && { [_cmd, _grp, true] call AIC_fnc_setGroupSim }) then { _parked = _parked + 1; };
 } forEach _records;
 
-if ((_parked + _woken) > 0 && { !isNil "AIC_debug" } && { AIC_debug isEqualTo true }) then {
+if ((_parked + _woken) > 0 && { !isNil "AIC_ns" } && { AIC_ns getOrDefault ["debug", false] isEqualTo true }) then {
     ["dynSimCycle %1: parked %2, woke %3, now parked %4/%5", [
         _side, _parked, _woken,
         { _x getOrDefault ["parked", false] } count _records, count _records

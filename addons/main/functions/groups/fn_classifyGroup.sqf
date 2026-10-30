@@ -76,7 +76,7 @@ private _vehicles = [];
         _x params ["_crewUnit", "_role", "", "", ["_isPersonTurret", false]];
         alive _crewUnit
         && {group _crewUnit isEqualTo _group}
-        && {toLower _role != "cargo"}
+        && {_role != "cargo"}
         && {!_isPersonTurret}
     };
 

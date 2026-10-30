@@ -83,6 +83,8 @@
  *   private _plan = [_commander] call AIC_fnc_allocateForces;
  */
 
+#include "\z\aic\addons\main\script_component.hpp"
+
 params [["_cmd", createHashMap, [createHashMap]]];
 
 if (count _cmd == 0) exitWith {[]};
@@ -140,7 +142,7 @@ if (_manageGarrisons) then {
     if (isNil "_garrisons" || {!(_garrisons isEqualType createHashMap)}) then {_garrisons = createHashMap};
 };
 // objective id the HQ DEFEND order uses ("BASE_HQ" lets the garrison system adopt the group)
-private _hqObjId = if (_manageGarrisons && {"BASE_HQ" in _garrisons}) then {"BASE_HQ"} else {""};
+private _hqObjId = if (_manageGarrisons && {AIC_BASE_ID in _garrisons}) then {AIC_BASE_ID} else {""};
 
 private _now = time;
 private _stableWindow = 300;
@@ -218,14 +220,14 @@ private _fnc_onTarget = {
     // defenders whose order still has no objective id
     if (_id != "" && {(_target get "kind") == "HQ"} && {_recObj == ""}) exitWith {
         ((_info get "taskPos") isEqualType []) && {count (_info get "taskPos") >= 2}
-        && {((_info get "taskPos") distance2D (_target get "pos")) < 400}
+        && {((_info get "taskPos") distance2D (_target get "pos")) < AIC_REISSUE_TOL_MOVING}
     };
     if (_id != "") then {
         _recObj == _id
     } else {
         _recObj == "" && {((_info get "taskPos") isEqualType [])}
         && {count (_info get "taskPos") >= 2}
-        && {((_info get "taskPos") distance2D (_target get "pos")) < 400}
+        && {((_info get "taskPos") distance2D (_target get "pos")) < AIC_REISSUE_TOL_MOVING}
     }
 };
 
@@ -240,7 +242,7 @@ private _fnc_isHome = {
     params ["_info", "_target"];
     private _home = _info get "home";
     private _id = _target get "id";
-    (_id != "" && {_home == _id}) || {(_target get "kind") == "HQ" && {_home == "BASE_HQ"}}
+    (_id != "" && {_home == _id}) || {(_target get "kind") == "HQ" && {_home == AIC_BASE_ID}}
 };
 
 // side-effect free estimate of AIC_fnc_canLeaveGarrison (feasibility / candidate lists)
@@ -293,15 +295,15 @@ private _fnc_takeFromGarrison = {
         // groups (vehicles: road snap up to ~150 m + defend offset, air:
         // loiter circles), otherwise groups oscillate RETREAT <-> DEFEND.
         private _homeR = switch (_type) do {
-            case "PLANE": {1500};
-            case "HELI": {400};
-            default {250};
+            case "PLANE": {AIC_NEAR_HQ_PLANE};
+            case "HELI": {AIC_NEAR_HQ_HELI};
+            default {AIC_NEAR_HQ_GROUND};
         };
         private _recPos = _rec getOrDefault ["taskPos", []];
         private _defendingHq = _task == "DEFEND"
             && {(_rec getOrDefault ["objective", ""]) in ["", _hqObjId]}
             && {_recPos isEqualType []} && {count _recPos >= 2}
-            && {(_recPos distance2D _hq) < 50};
+            && {(_recPos distance2D _hq) < AIC_REISSUE_TOL_FIXED};
         if (_defendingHq || {(_lpos distance2D _hq) < _homeR}) then {
             if !(_type in ["HELI", "PLANE"]) then {
                 [_grp, "DEFEND", _hq, _hqObjId] call _fnc_assign;
@@ -423,7 +425,7 @@ if (_hqThreat > 0) then {
         };
     } else {
         private _isUnknown = _owner isEqualTo sideUnknown;
-        private _isHostile = !_isUnknown && {(_side getFriend _owner) < 0.6};
+        private _isHostile = !_isUnknown && {(_side getFriend _owner) < AIC_HOSTILE_FRIEND};
         // objectives held by a friendly third side are left alone
         if ((_isUnknown || _isHostile) && {_stance != "DEFENSIVE"}) then {
             private _floor = if (_isHostile) then {3 + 2 * (_priority min 3)} else {3};
@@ -446,7 +448,7 @@ if (_stance == "DEFENSIVE") then {
         if (!(_cpow isEqualType 0) || {_cpow <= 0}) then {continue};
         if (_cpow > 0.35 * _ownPower) then {continue};
 
-        private _near = (_cpos distance2D _hq) < 1500
+        private _near = (_cpos distance2D _hq) < AIC_THREAT_RADIUS
             || {(_ownObjs findIf {((_x get "pos") distance2D _cpos) < ((_x getOrDefault ["radius", 300]) + 1000)}) >= 0};
         if (!_near) then {continue};
 
@@ -487,7 +489,7 @@ _targets = _sortable apply {_targets select (_x select 1)};
         if (!(_fPos isEqualType []) || {count _fPos < 2}) exitWith {};
         private _ti = _targets findIf {
             [_fTask, _x get "task"] call _fnc_taskFits
-            && {if ((_x get "id") != "") then {_fObj == (_x get "id")} else {_fObj == "" && {(_fPos distance2D (_x get "pos")) < 400}}}
+            && {if ((_x get "id") != "") then {_fObj == (_x get "id")} else {_fObj == "" && {(_fPos distance2D (_x get "pos")) < AIC_REISSUE_TOL_MOVING}}}
         };
         if (_ti < 0) exitWith {};
         private _target = _targets select _ti;
@@ -811,7 +813,7 @@ if (_manageGarrisons) then {
 // ---------------------------------------------------------------------------
 _cmd set ["plan", _plan];
 
-if (!isNil "AIC_debug" && {AIC_debug isEqualTo true}) then {
+if (!isNil "AIC_ns" && { AIC_ns getOrDefault ["debug", false] isEqualTo true }) then {
     private _counts = createHashMap;
     {
         private _t = _x get "task";

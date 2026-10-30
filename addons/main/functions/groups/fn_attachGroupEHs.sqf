@@ -56,6 +56,8 @@
         [createHashMap, _group, _newUnit] call AIC_fnc_attachGroupEHs;
 */
 
+#include "\z\aic\addons\main\script_component.hpp"
+
 params [
     ["_cmd", createHashMap, [createHashMap]],
     ["_group", grpNull, [grpNull]],
@@ -78,7 +80,7 @@ private _fnc_attachVehicle = {
         params ["_veh"];
         private _grp = group (effectiveCommander _veh);
         if (isNull _grp) exitWith {};
-        if (!dynamicSimulationEnabled _grp && { (time - (_grp getVariable ["AIC_engagedAt", -1e6])) < 10 }) exitWith {};
+        if (!dynamicSimulationEnabled _grp && { (time - (_grp getVariable ["AIC_engagedAt", -1e6])) < AIC_EH_THROTTLE }) exitWith {};
         [_grp] call AIC_fnc_groupEngaged;
     }];
     _veh addMPEventHandler ["MPKilled", {
@@ -106,15 +108,15 @@ private _fnc_attachUnit = {
         params ["_unit"];
         private _grp = group _unit;
         if (isNull _grp) exitWith {};
-        if (!dynamicSimulationEnabled _grp && { (time - (_grp getVariable ["AIC_engagedAt", -1e6])) < 10 }) exitWith {};
+        if (!dynamicSimulationEnabled _grp && { (time - (_grp getVariable ["AIC_engagedAt", -1e6])) < AIC_EH_THROTTLE }) exitWith {};
         [_grp] call AIC_fnc_groupEngaged;
     }];
     _unit addEventHandler ["FiredNear", {
         params ["_unit", "_firer"];
         private _grp = group _unit;
         if (isNull _grp || { isNull _firer }) exitWith {};
-        if (!dynamicSimulationEnabled _grp && { (time - (_grp getVariable ["AIC_engagedAt", -1e6])) < 10 }) exitWith {};
-        if (((side _grp) getFriend (side group _firer)) >= 0.6) exitWith {};
+        if (!dynamicSimulationEnabled _grp && { (time - (_grp getVariable ["AIC_engagedAt", -1e6])) < AIC_EH_THROTTLE }) exitWith {};
+        if (((side _grp) getFriend (side group _firer)) >= AIC_HOSTILE_FRIEND) exitWith {};
         [_grp] call AIC_fnc_groupEngaged;
     }];
 };
@@ -200,7 +202,7 @@ _group addEventHandler ["VehicleAdded", {
     [[side _group] call AIC_fnc_getCommander, _group, _veh] call AIC_fnc_attachGroupEHs;
 }];
 
-if (!isNil "AIC_debug" && { AIC_debug isEqualTo true }) then {
+if (!isNil "AIC_ns" && { AIC_ns getOrDefault ["debug", false] isEqualTo true }) then {
     ["attachGroupEHs: %1 handlers attached to group %2", [_side, groupId _group]] call AIC_fnc_log;
 };
 

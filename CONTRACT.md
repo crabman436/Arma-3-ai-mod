@@ -25,10 +25,52 @@ AI generals can fight each other.
 
 ## Globals
 
+The mod has exactly one global variable (besides its `AIC_fnc_*` functions):
+
 | Name | Type | Owner |
 |---|---|---|
-| `AIC_commanders` | HashMap: side -> commander HashMap | core |
-| `AIC_debug` | bool, default false | core |
+| `AIC_ns` | HashMap — the mod namespace, created by `AIC_fnc_preInit` | core |
+
+Keys of `AIC_ns`:
+
+| Key | Type | Meaning |
+|---|---|---|
+| `"commanders"` | HashMap: side -> commander HashMap | running commanders; read with `AIC_fnc_getCommander`, written only by `createCommander` / `removeCommander` |
+| `"objectiveModules"` | array of `AIC_ModuleObjective` logics | written by `AIC_fnc_moduleObjective`, read by `collectObjectives` / `moduleCommander` |
+| `"debug"` | bool, default false | `AIC_fnc_log` also echoes to `systemChat`; extra debug logging in subsystems |
+| `"version"` | string, `"1.0.0"` | mod version |
+
+- Lazy-init guard in entry points: `if (isNil "AIC_ns") then { call AIC_fnc_preInit; };`
+  (`AIC_fnc_preInit` is idempotent: it keeps existing keys and adds missing ones).
+- Debug test (any machine, any time): `!isNil "AIC_ns" && { AIC_ns getOrDefault ["debug", false] isEqualTo true }`.
+- New mod-wide state goes into a new `AIC_ns` key (document it here), never a new global.
+- **Removed** (no longer exist, no longer read): `AIC_commanders`,
+  `AIC_objectiveModules`, `AIC_debug`. Replacements: `AIC_ns get "commanders"`
+  (or `AIC_fnc_getCommander`), `AIC_ns get "objectiveModules"`,
+  `AIC_ns set ["debug", true]`.
+
+## Shared constants (`addons/main/script_component.hpp`)
+
+Hard-coded values used by more than one function are `#define`d there
+(UPPERCASE, no semicolon, no function-like macros) and pulled in after the
+header comment with `#include "\z\aic\addons\main\script_component.hpp"`
+(PBO-prefix path, works for CfgFunctions-compiled files and HEMTT).
+User-tunable values are settings, not constants.
+
+| Macro | Value | Used by |
+|---|---|---|
+| `AIC_HOSTILE_FRIEND` | 0.6 | hostility test `getFriend < X` (gatherIntel, dynSimCycle, updateObjectives, scoreObjectives, allocateForces, attachGroupEHs); friendly `>= X` in fireMission |
+| `AIC_STUCK_TIMEOUT` | 180 | monitorOrders stuck detection, transportCycle stuck transport |
+| `AIC_MOVE_THRESHOLD` | 20 | `"lastPos"` / `"lastMoveTime"` bookkeeping (monitorOrders, transportCycle) |
+| `AIC_REISSUE_TOL_MOVING` | 400 | issueOrder same-job tolerance for ATTACK/REINFORCE without objective; allocateForces on-target test |
+| `AIC_REISSUE_TOL_FIXED` | 50 | issueOrder same-job tolerance for fixed points; allocateForces "already DEFENDing HQ" |
+| `AIC_NEAR_HQ_GROUND` / `_HELI` / `_PLANE` | 250 / 400 / 1500 | allocateForces "at HQ" radius; PLANE also monitorOrders RETREAT/RTB completion |
+| `AIC_THREAT_RADIUS` | 1500 | garrisonStatus threat sum, allocateForces DEFENSIVE counter-attack near HQ |
+| `AIC_RIDE_TIMEOUT` | 900 | orderTransport `"rideLimit"` minimum, transportCycle ride abort |
+| `AIC_RIDE_ABORT_COOLDOWN` | 600 | issueOrder: no new ride after `"rideAbortTime"` (set by transportCycle) |
+| `AIC_LZ_THREAT_RADIUS`, `AIC_LZ_OFFSET_HELI`, `AIC_DROP_OFFSET_GROUND`, `AIC_DROP_OFFSET_GROUND_THREAT` | 800, 450, 250, 400 | orderTransport drop point stand-offs |
+| `AIC_EH_THROTTLE` | 10 | attachGroupEHs Hit/FiredNear throttle |
+| `AIC_REPORT_THROTTLE` | 20 | report: min seconds between messages |
 
 ## Commander state (HashMap)
 
@@ -122,7 +164,7 @@ HashMap: `"group"`, `"task"`, `"pos"`, `"objective"` (id or `""`).
 ## Function list (CfgFunctions — exact names, category = folder)
 
 ### core (`functions/core`)
-- `AIC_fnc_createCommander` — `[side, settingsHashMap(optional)] call` → commander HashMap. Server only. Merges settings with defaults, stores in `AIC_commanders`, collects groups/objectives (calls `AIC_fnc_registerGroups`, `AIC_fnc_collectObjectives`), sets `"hq"`, starts `AIC_fnc_commanderLoop` via `spawn`, returns commander. If a commander for that side exists, returns it.
+- `AIC_fnc_createCommander` — `[side, settingsHashMap(optional)] call` → commander HashMap. Server only. Merges settings with defaults, stores in `AIC_ns get "commanders"`, collects groups/objectives (calls `AIC_fnc_registerGroups`, `AIC_fnc_collectObjectives`), sets `"hq"`, starts `AIC_fnc_commanderLoop` via `spawn`, returns commander. If a commander for that side exists, returns it.
 - `AIC_fnc_removeCommander` — `[side] call` → bool. Stops loop, releases groups (clears waypoints not required), deletes markers.
 - `AIC_fnc_getCommander` — `[side] call` → commander HashMap, or an empty HashMap if none (callers check `count _cmd == 0`).
 - `AIC_fnc_getSetting` — `[commander, key] call` → value (falls back to defaults).
@@ -141,9 +183,9 @@ HashMap: `"group"`, `"task"`, `"pos"`, `"objective"` (id or `""`).
   10. `AIC_fnc_supportCycle`
   11. `AIC_fnc_updateDebugMarkers` (if `debugMarkers`) and `AIC_fnc_report`
   Wraps nothing in try; each step must be robust to empty data.
-- `AIC_fnc_log` — `[message, args(optional array)] call`. `diag_log format ["[AIC] " + msg, args...]`; also `systemChat` if `AIC_debug`.
+- `AIC_fnc_log` — `[message, args(optional array)] call`. `diag_log format ["[AIC] " + msg, args...]`; also `systemChat` if `AIC_ns get "debug"` is true.
 - `AIC_fnc_moduleCommander` — Eden module function for `AIC_ModuleCommander` (standard module params `[_logic, _units, _activated]`). Reads module attributes, builds settings, calls `AIC_fnc_createCommander`. Objective modules synced to it are added.
-- `AIC_fnc_moduleObjective` — Eden module function for `AIC_ModuleObjective`. Registers the objective with all existing commanders (and stores itself in `AIC_objectiveModules` global array — **allowed extra global**) so commanders created later also pick it up.
+- `AIC_fnc_moduleObjective` — Eden module function for `AIC_ModuleObjective`. Registers the objective with all existing commanders (and stores itself in the `AIC_ns get "objectiveModules"` array) so commanders created later also pick it up.
 
 ### groups (`functions/groups`)
 - `AIC_fnc_registerGroups` — `[commander] call`. Adds all groups of the side with alive units, `!isPlayer` leaders (respect `excludePlayerGroups`), not `group getVariable ["AIC_exclude", false]`; removes empty/dead groups. Creates group records.
@@ -155,7 +197,7 @@ HashMap: `"group"`, `"task"`, `"pos"`, `"objective"` (id or `""`).
 ### intel (`functions/intel`)
 - `AIC_fnc_gatherIntel` — `[commander] call`. For every own group leader, enemies it `knowsAbout > 1.5` (use `targets`/`nearTargets` or `knowsAbout` over enemy groups within 1500m) become contact records (one per enemy group, merged; pos = perceived pos). Forget contacts older than 300s. Updates `"knownEnemies"`, `"enemyPower"`. Use `side getFriend side < 0.6` for hostility.
 - `AIC_fnc_clusterThreats` — `[commander] call`. Group contacts within 500m into threat cluster records → `"threats"`, sorted descending by power.
-- `AIC_fnc_collectObjectives` — `[commander] call`. Builds objective list from `AIC_objectiveModules`, `aic_obj*` markers, and if `autoObjectives`, map locations (`NameCityCapital`, `NameCity`, `NameVillage`, `Airport`) nearest to HQ up to `maxAutoObjectives`. Priority: capital 3, city 2, airport 2.5, village 1. Avoid duplicate ids.
+- `AIC_fnc_collectObjectives` — `[commander] call`. Builds objective list from `AIC_ns get "objectiveModules"`, `aic_obj*` markers, and if `autoObjectives`, map locations (`NameCityCapital`, `NameCity`, `NameVillage`, `Airport`) nearest to HQ up to `maxAutoObjectives`. Priority: capital 3, city 2, airport 2.5, village 1. Avoid duplicate ids.
 - `AIC_fnc_addObjective` — `[commander, pos, name, radius, priority, source] call` → objective record (dedupes by id).
 - `AIC_fnc_updateObjectives` — `[commander] call`. For each objective count alive units by side within radius (`allUnits` / `nearEntities`); owner = side with > 2:1 ratio of units over everyone else, else keep previous owner if nobody, `sideUnknown` if contested.
 
@@ -213,13 +255,15 @@ _myGroup setVariable ["AIC_exclude", true, true];
 ## Addendum (core): preInit
 
 - `AIC_fnc_preInit` (core, `preInit = 1` in CfgFunctions) — runs on every
-  machine before mission init and creates the globals if nil:
-  `AIC_commanders = createHashMap`, `AIC_objectiveModules = []`,
-  `AIC_debug = false`. Core entry points (`createCommander`, `getCommander`,
-  `removeCommander`, module functions) also re-create them lazily with
-  `isNil` checks, so other subsystems may assume they exist but should still
-  use `getOrDefault` / guard against empty data.
-- `AIC_objectiveModules` is an array of `AIC_ModuleObjective` logic objects.
+  machine before mission init and creates the namespace `AIC_ns` with the
+  keys `"commanders"` (empty HashMap), `"objectiveModules"` (`[]`),
+  `"debug"` (false) and `"version"` (`"1.0.0"`); idempotent, returns
+  `AIC_ns`. Core entry points (`createCommander`, `getCommander`,
+  `removeCommander`, module functions, `collectObjectives`) call it lazily
+  with `if (isNil "AIC_ns") then { call AIC_fnc_preInit; };`, so other
+  subsystems may assume it exists but should still use `getOrDefault` /
+  guard against empty data.
+- `AIC_ns get "objectiveModules"` is an array of `AIC_ModuleObjective` logic objects.
   `AIC_fnc_moduleObjective` normalises their variables before pushing them:
   `"Name"` (non-empty string), `"Radius"` (number > 0, default 300),
   `"Priority"` (number > 0). Position = `getPosATL _logic`.
@@ -345,7 +389,7 @@ New objective sources:
 ### Addendum (core): module variables and commander start
 
 - `AIC_fnc_moduleObjective` also normalises two logic variables before
-  pushing the logic to `AIC_objectiveModules`: `"Garrison"` (number ≥ 0,
+  pushing the logic to `AIC_ns get "objectiveModules"`: `"Garrison"` (number ≥ 0,
   default 0 = auto) and `"IsBase"` (bool, default false). Readers
   (`collectObjectives`, `moduleCommander`) can rely on these names and
   pass them to `AIC_fnc_addObjective` as params 6 (`isBase`) and 7

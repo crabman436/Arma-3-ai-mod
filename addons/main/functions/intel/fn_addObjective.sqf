@@ -65,7 +65,7 @@ if (_radius <= 0) then {
 };
 if (_priority <= 0) then { _priority = 1; };
 
-_source = toUpper _source;
+_source = toUpperANSI _source;
 if !(_source in ["MODULE", "MARKER", "LOCATION", "BASE"]) then { _source = "MODULE"; };
 if (_source isEqualTo "BASE") then { _isBase = true; };
 _garrison = _garrison max 0;
@@ -148,7 +148,7 @@ private _record = createHashMapFromArray [
 _objectives pushBack _record;
 _index set [_id, _record];
 
-if (!isNil "AIC_debug" && { AIC_debug isEqualTo true }) then {
+if (!isNil "AIC_ns" && { AIC_ns getOrDefault ["debug", false] isEqualTo true }) then {
     ["addObjective: %1 added '%2' (%3) at %4 r %5 p %6 base %7 garrison %8", [
         _cmd getOrDefault ["side", sideUnknown], _name, _id, _grid, _radius, _priority, _isBase, _garrison
     ]] call AIC_fnc_log;

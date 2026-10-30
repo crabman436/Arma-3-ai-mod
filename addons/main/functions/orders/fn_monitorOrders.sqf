@@ -47,6 +47,8 @@
  *   [_commander] call AIC_fnc_monitorOrders;
  */
 
+#include "\z\aic\addons\main\script_component.hpp"
+
 params [["_cmd", createHashMap, [createHashMap]]];
 
 if (!isServer) exitWith {0};
@@ -61,8 +63,6 @@ if !(_enemies isEqualType []) then { _enemies = []; };
 private _defRadius = [_cmd, "objectiveRadius"] call AIC_fnc_getSetting;
 if (isNil "_defRadius" || {!(_defRadius isEqualType 0)}) then { _defRadius = 300; };
 
-private _STUCK_TIME = 180;
-private _MOVE_EPS = 20;
 private _changes = 0;
 private _reissue = [];
 
@@ -95,7 +95,7 @@ private _fnc_setIdle = {
         _rec set ["lastMoveTime", time];
         _lastPos = _leaderPos;
     };
-    if ((_leaderPos distance2D _lastPos) > _MOVE_EPS) then {
+    if ((_leaderPos distance2D _lastPos) > AIC_MOVE_THRESHOLD) then {
         _rec set ["lastPos", _leaderPos];
         _rec set ["lastMoveTime", time];
     };
@@ -155,7 +155,7 @@ private _fnc_setIdle = {
             if (_task == "RTB" && {_lv != _leader} && {!alive _lv || {!canMove _lv}}) then { true } else {
                 switch (_type) do {
                     // planes end the retreat in a 1200 m LOITER and never stop
-                    case "PLANE": { _dist < 1500 && {_age > 60} };
+                    case "PLANE": { _dist < AIC_NEAR_HQ_PLANE && {_age > 60} };
                     // helicopters HOLD/hover above the rally point
                     case "HELI": { _dist < 300 && {_age > 30} };
                     // vehicles are road-snapped up to 150 m from HQ (+60 m wp radius)
@@ -182,7 +182,7 @@ private _fnc_setIdle = {
         };
         [_rec] call _fnc_setIdle;
         _changes = _changes + 1;
-        if (!isNil "AIC_debug" && {AIC_debug}) then {
+        if (!isNil "AIC_ns" && { AIC_ns getOrDefault ["debug", false] isEqualTo true }) then {
             ["%1: group %2 finished %3", [_cmd getOrDefault ["side", sideUnknown], groupId _group, _task]] call AIC_fnc_log;
         };
         continue;
@@ -199,7 +199,7 @@ private _fnc_setIdle = {
     // --- stuck detection --------------------------------------------------------
     if (_type in ["STATIC", "ARTY", "PLANE"]) then { continue };
     if !(_task in ["ATTACK", "REINFORCE", "RETREAT", "RTB", "PATROL", "DEFEND", "SUPPORT"]) then { continue };
-    if (time - _lastMoveTime < _STUCK_TIME) then { continue };
+    if (time - _lastMoveTime < AIC_STUCK_TIMEOUT) then { continue };
 
     private _far = if (_task == "PATROL") then { true } else { _dist > (_arriveR max 200) };
     if (!_far) then { continue };

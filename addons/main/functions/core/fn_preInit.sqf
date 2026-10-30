@@ -2,22 +2,42 @@
     Function: AIC_fnc_preInit
 
     Description:
-        Runs once on every machine before mission objects initialise
-        (CfgFunctions preInit = 1). Creates the AIC global state so that
-        module functions and scripts can rely on it existing.
+        Creates the mod's namespace AIC_ns: one global HashMap that holds
+        all mod-wide state. Runs once on every machine before mission
+        objects initialise (CfgFunctions preInit = 1). Core entry points call
+        it again lazily (if (isNil "AIC_ns") then { call AIC_fnc_preInit; };),
+        so it is idempotent: existing keys are kept, missing keys are added.
+
+        Keys:
+            "commanders"       - HashMap: side -> commander HashMap
+            "objectiveModules" - array of AIC_ModuleObjective logics
+            "debug"            - bool, default false (systemChat logging)
+            "version"          - string, mod version "1.0.0"
 
     Parameters:
         None
 
     Returns:
-        Nothing
+        HashMap - AIC_ns
 
     Example:
         Called automatically by the engine.
+        if (isNil "AIC_ns") then { call AIC_fnc_preInit; };
 */
 
-if (isNil "AIC_commanders") then { AIC_commanders = createHashMap; };
-if (isNil "AIC_objectiveModules") then { AIC_objectiveModules = []; };
-if (isNil "AIC_debug") then { AIC_debug = false; };
+if (isNil "AIC_ns" || { !(AIC_ns isEqualType createHashMap) }) then {
+    AIC_ns = createHashMap;
+};
 
-nil
+if !((AIC_ns getOrDefault ["commanders", 0]) isEqualType createHashMap) then {
+    AIC_ns set ["commanders", createHashMap];
+};
+if !((AIC_ns getOrDefault ["objectiveModules", 0]) isEqualType []) then {
+    AIC_ns set ["objectiveModules", []];
+};
+if !((AIC_ns getOrDefault ["debug", 0]) isEqualType true) then {
+    AIC_ns set ["debug", false];
+};
+AIC_ns set ["version", "1.0.0"];
+
+AIC_ns

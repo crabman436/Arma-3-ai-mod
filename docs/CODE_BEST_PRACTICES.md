@@ -51,7 +51,19 @@ The mod owns exactly one prefix: **`AIC`**. Nothing global exists without it.
 `AIC_fnc_preInit`, holding all mod-wide state (`"commanders"`,
 `"objectiveModules"`, `"debug"`, `"version"`, ...). Access it only through the
 accessor functions (`AIC_fnc_getCommander`, `AIC_fnc_getSetting`, ...) or with
-`AIC_ns getOrDefault [...]`. A single namespace means:
+`AIC_ns getOrDefault [...]`. Entry points that may run before preInit
+(module functions, `createCommander`, ...) guard it lazily:
+
+```sqf
+if (isNil "AIC_ns") then { call AIC_fnc_preInit; };
+private _commanders = AIC_ns get "commanders";
+
+// debug-only logging, safe anywhere:
+if (!isNil "AIC_ns" && { AIC_ns getOrDefault ["debug", false] isEqualTo true }) then { ... };
+```
+
+The old loose globals `AIC_commanders`, `AIC_objectiveModules` and `AIC_debug`
+are removed. A single namespace means:
 - no collisions with other mods or mission variables
 - one place to inspect while debugging (`AIC_ns` in the debug console)
 - a clean shutdown: removing a commander only touches its own entry
@@ -98,8 +110,21 @@ params [
     `addons/main/script_component.hpp`, then `#include` that file.
 
 ```sqf
+// addons/main/script_component.hpp
 #define AIC_STUCK_TIMEOUT 180
+
+// in the function, right after the header comment:
+#include "\z\aic\addons\main\script_component.hpp"
+
+if (time - _lastMoveTime < AIC_STUCK_TIMEOUT) then { continue };
 ```
+
+- Use the absolute PBO-prefix path (`\z\aic\addons\main\...`). CfgFunctions
+  compiles each file with `preprocessFileLineNumbers`, and the prefix path
+  resolves both in game and in HEMTT builds, whatever folder the file is in.
+- Replace a literal with a constant only where it really means the same
+  thing; equal numbers with different meanings stay separate.
+- `CONTRACT.md` lists every constant and where it is used.
 
 ## 6. Performance rules
 

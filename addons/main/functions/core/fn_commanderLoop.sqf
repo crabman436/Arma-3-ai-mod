@@ -38,7 +38,7 @@ while { _cmd getOrDefault ["enabled", false] } do {
     _cycle = _cycle + 1;
 
     private _elapsed = diag_tickTime - _start;
-    if (!isNil "AIC_debug" && { AIC_debug isEqualTo true }) then {
+    if (!isNil "AIC_ns" && { AIC_ns getOrDefault ["debug", false] isEqualTo true }) then {
         ["%1 cycle %2 took %3 ms", [_side, _cycle, round (_elapsed * 1000)]] call AIC_fnc_log;
     };
 

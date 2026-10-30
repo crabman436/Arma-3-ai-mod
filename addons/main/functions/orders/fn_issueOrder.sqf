@@ -64,6 +64,8 @@
  *   [_cmd, _grp, "ATTACK", _obj get "pos", _obj get "id"] call AIC_fnc_issueOrder;
  */
 
+#include "\z\aic\addons\main\script_component.hpp"
+
 params [
     ["_cmd", createHashMap, [createHashMap]],
     ["_group", grpNull, [grpNull]],
@@ -77,7 +79,7 @@ if (!isServer) exitWith {false};
 if (count _cmd == 0 || {isNull _group} || {_task isEqualTo ""}) exitWith {false};
 if (({alive _x} count units _group) == 0) exitWith {false};
 
-_task = toUpper _task;
+_task = toUpperANSI _task;
 if !(_task in ["IDLE", "ATTACK", "DEFEND", "PATROL", "RETREAT", "REINFORCE", "SUPPORT", "RTB", "TRANSPORT", "TRANSPORTED"]) exitWith {
     ["issueOrder: unknown task '%1' for group %2", [_task, groupId _group]] call AIC_fnc_log;
     false
@@ -118,7 +120,7 @@ if (_type isEqualTo "") then {
 private _curTask = _record getOrDefault ["task", "IDLE"];
 if !(_curTask isEqualType "") then { _curTask = "IDLE"; };
 if (!_force && {_curTask in ["TRANSPORT", "TRANSPORTED"]}) exitWith {
-    if (!isNil "AIC_debug" && {AIC_debug}) then {
+    if (!isNil "AIC_ns" && { AIC_ns getOrDefault ["debug", false] isEqualTo true }) then {
         ["issueOrder: group %1 is %2, order %3 skipped (transport system owns it)", [groupId _group, _curTask, _task]] call AIC_fnc_log;
     };
     false
@@ -199,7 +201,7 @@ if (!_force && {_curTask == _task}) then {
         // on a drifting threat-cluster centre) count as the same job within
         // 400 m - the same tolerance AIC_fnc_allocateForces uses. Fixed
         // points (HQ DEFEND/PATROL/RETREAT, SUPPORT) use 50 m.
-        private _tol = if (_task in ["ATTACK", "REINFORCE"]) then {400} else {50};
+        private _tol = if (_task in ["ATTACK", "REINFORCE"]) then {AIC_REISSUE_TOL_MOVING} else {AIC_REISSUE_TOL_FIXED};
         _curObj isEqualTo "" && {[_curPos] call _fnc_validPos} && {(_curPos distance2D _pos) < _tol}
     };
     if (_same) then { _task = "" };
@@ -243,7 +245,7 @@ if (_curTask isEqualTo "TRANSPORT") then {
 private _rideAbort = _record getOrDefault ["rideAbortTime", -1e6];
 if !(_rideAbort isEqualType 0) then { _rideAbort = -1e6; };
 if (_type == "INF" && {_task in ["ATTACK", "REINFORCE", "DEFEND"]} && {_curTask isNotEqualTo "TRANSPORTED"}
-    && {(time - _rideAbort) >= 600}
+    && {(time - _rideAbort) >= AIC_RIDE_ABORT_COOLDOWN}
     && {([_cmd, "useTransport"] call AIC_fnc_getSetting) isEqualTo true}) then {
     private _minDist = [_cmd, "transportMinDistance"] call AIC_fnc_getSetting;
     if (isNil "_minDist" || {!(_minDist isEqualType 0)}) then { _minDist = 1200; };
@@ -309,7 +311,7 @@ _record set ["objective", if (_task == "IDLE") then {""} else {_objective}];
 _record set ["lastPos", getPosATL (leader _group)];
 _record set ["lastMoveTime", time];
 
-if (!isNil "AIC_debug" && {AIC_debug}) then {
+if (!isNil "AIC_ns" && { AIC_ns getOrDefault ["debug", false] isEqualTo true }) then {
     ["%1: group %2 (%3) -> %4 %5 obj '%6'%7", [
         _cmd getOrDefault ["side", sideUnknown], groupId _group, _type, _task,
         _pos apply {round _x}, _objective, if (_force) then {" (forced)"} else {""}

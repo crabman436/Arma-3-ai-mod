@@ -3,7 +3,7 @@
 
     Description:
         Creates the AI general for a side (server only). Merges the given
-        settings with the defaults, stores the commander in AIC_commanders,
+        settings with the defaults, stores the commander in AIC_ns "commanders",
         registers the side's groups, sets the HQ (average position of its
         groups), collects objectives, adds the implicit base objective
         "BASE_HQ" at the HQ (isBase = true, owner = own side) and starts
@@ -26,20 +26,21 @@
         [west, _s] call AIC_fnc_createCommander;
 */
 
+#include "\z\aic\addons\main\script_component.hpp"
+
 params [["_side", sideUnknown, [sideUnknown]], ["_userSettings", createHashMap, [createHashMap]]];
 
 if (!isServer) exitWith { createHashMap };
 
-if (isNil "AIC_commanders") then { AIC_commanders = createHashMap; };
-if (isNil "AIC_objectiveModules") then { AIC_objectiveModules = []; };
-if (isNil "AIC_debug") then { AIC_debug = false; };
+if (isNil "AIC_ns") then { call AIC_fnc_preInit; };
+private _commanders = AIC_ns get "commanders";
 
 if !(_side in [west, east, independent, civilian]) exitWith {
     ["createCommander: invalid side %1", [_side]] call AIC_fnc_log;
     createHashMap
 };
 
-private _existing = AIC_commanders getOrDefault [_side, createHashMap];
+private _existing = _commanders getOrDefault [_side, createHashMap];
 if (count _existing > 0) exitWith {
     ["createCommander: commander for %1 already exists", [_side]] call AIC_fnc_log;
     _existing
@@ -109,7 +110,7 @@ private _cmd = createHashMapFromArray [
     ["loopHandle", scriptNull]
 ];
 
-AIC_commanders set [_side, _cmd];
+_commanders set [_side, _cmd];
 
 // --- groups under command
 [_cmd] call AIC_fnc_registerGroups;
@@ -146,7 +147,7 @@ _cmd set ["hq", _hq];
 private _baseRadius = ([_cmd, "objectiveRadius"] call AIC_fnc_getSetting) min 300;
 private _objCountBefore = count (_cmd getOrDefault ["objectives", []]);
 private _base = [_cmd, _hq, "HQ", _baseRadius, 1, "BASE", true, 0] call AIC_fnc_addObjective;
-if !((_base getOrDefault ["id", ""]) isEqualTo "BASE_HQ") then {
+if !((_base getOrDefault ["id", ""]) isEqualTo AIC_BASE_ID) then {
     // addObjective did not produce the "BASE_HQ" id (e.g. source not accepted):
     // drop the stray record it may have appended and add BASE_HQ directly
     ["createCommander: addObjective returned '%1' for the HQ base, adding BASE_HQ directly", [_base getOrDefault ["id", ""]]] call AIC_fnc_log;
@@ -158,12 +159,12 @@ if !((_base getOrDefault ["id", ""]) isEqualTo "BASE_HQ") then {
             (_cmd getOrDefault ["objectiveIndex", createHashMap]) deleteAt (_base getOrDefault ["id", ""]);
         };
     };
-    private _existingBase = [_cmd, "BASE_HQ"] call AIC_fnc_getObjective;
+    private _existingBase = [_cmd, AIC_BASE_ID] call AIC_fnc_getObjective;
     if (count _existingBase > 0) then {
         _base = _existingBase;
     } else {
         _base = createHashMapFromArray [
-            ["id", "BASE_HQ"],
+            ["id", AIC_BASE_ID],
             ["name", "HQ"],
             ["pos", [_hq select 0, _hq select 1, 0]],
             ["radius", _baseRadius],
@@ -175,7 +176,7 @@ if !((_base getOrDefault ["id", ""]) isEqualTo "BASE_HQ") then {
         _objectives pushBack _base;
         _cmd set ["objectives", _objectives];
         private _index = _cmd getOrDefault ["objectiveIndex", createHashMap];
-        _index set ["BASE_HQ", _base];
+        _index set [AIC_BASE_ID, _base];
         _cmd set ["objectiveIndex", _index];
     };
 };

@@ -71,7 +71,7 @@ private _vehicles = [];
     {
         _x params ["_crewUnit", "_role", "", "", ["_isPersonTurret", false]];
         if (alive _crewUnit && {group _crewUnit isEqualTo _group}) then {
-            if (toLower _role == "cargo" || {_isPersonTurret}) then {
+            if (_role == "cargo" || {_isPersonTurret}) then {
                 _passengers = _passengers + (1 - (damage _crewUnit));
             } else {
                 _ourCrew pushBack _crewUnit;

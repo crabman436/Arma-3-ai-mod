@@ -21,9 +21,10 @@
 params [["_side", sideUnknown, [sideUnknown]]];
 
 if (!isServer) exitWith { false };
-if (isNil "AIC_commanders") then { AIC_commanders = createHashMap; };
+if (isNil "AIC_ns") then { call AIC_fnc_preInit; };
+private _commanders = AIC_ns get "commanders";
 
-private _cmd = AIC_commanders getOrDefault [_side, createHashMap];
+private _cmd = _commanders getOrDefault [_side, createHashMap];
 if (count _cmd == 0) exitWith { false };
 
 _cmd set ["enabled", false];
@@ -68,7 +69,7 @@ _cmd set ["groups", []];
 _cmd set ["groupData", createHashMap];
 _cmd set ["plan", []];
 
-AIC_commanders deleteAt _side;
+_commanders deleteAt _side;
 
 ["Commander for %1 removed, %2 groups released (%3 woken)", [_side, _released, _woken]] call AIC_fnc_log;
 

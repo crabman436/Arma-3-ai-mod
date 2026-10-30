@@ -3,7 +3,7 @@
 
     Description:
         Writes a message to the RPT (diag_log) prefixed with "[AIC] ".
-        If AIC_debug is true the message is also shown via systemChat.
+        If AIC_ns "debug" is true the message is also shown via systemChat.
 
     Parameters:
         0: STRING - message, may contain format placeholders %1, %2, ...
@@ -21,7 +21,7 @@ params [["_msg", "", [""]], ["_args", [], [[]]]];
 private _text = format ([("[AIC] " + _msg)] + _args);
 diag_log text _text;
 
-if (!isNil "AIC_debug" && {AIC_debug isEqualTo true}) then {
+if (!isNil "AIC_ns" && { AIC_ns getOrDefault ["debug", false] isEqualTo true }) then {
     systemChat _text;
 };
 

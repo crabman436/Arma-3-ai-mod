@@ -83,7 +83,7 @@ private _newData = createHashMap;
             ["transport", grpNull],
             ["final", createHashMap]
         ];
-        if (!isNil "AIC_debug" && {AIC_debug}) then {
+        if (!isNil "AIC_ns" && { AIC_ns getOrDefault ["debug", false] isEqualTo true }) then {
             ["Commander %1 took control of group %2 (%3)", [_side, groupId _grp, _record get "type"]] call AIC_fnc_log;
         };
     } else {
@@ -125,7 +125,7 @@ private _staleKeys = (keys _groupData) select {!(_x in _newData)};
             if (_pad isEqualType objNull && {!isNull _pad}) then {deleteVehicle _pad};
         } forEach ["lz", "pickupLz"];
     };
-    if (!isNil "AIC_debug" && {AIC_debug}) then {
+    if (!isNil "AIC_ns" && { AIC_ns getOrDefault ["debug", false] isEqualTo true }) then {
         ["Commander %1 released group %2", [_side, if (isNull _oldGrp) then {"<dead>"} else {groupId _oldGrp}]] call AIC_fnc_log;
     };
     _groupData deleteAt _x;

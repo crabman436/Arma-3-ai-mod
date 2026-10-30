@@ -38,7 +38,7 @@ if (isNil "_threshold" || {!(_threshold isEqualType 0)}) then {_threshold = 0.3}
 
 private _excludedTasks = ["RETREAT", "TRANSPORT", "TRANSPORTED", "RTB"];
 
-private _upperTypes = _types apply {toUpper _x};
+private _upperTypes = _types apply {toUpperANSI _x};
 private _useFilter = _upperTypes isNotEqualTo [];
 
 private _result = [];

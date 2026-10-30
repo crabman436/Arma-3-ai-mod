@@ -77,7 +77,7 @@ private _fnc_freeSeats = {
     // also counted as a cargo seat)
     private _free = {
         _x params ["_unit", "_role", "_cargoIdx", "_path", ["_isFFV", false]];
-        isNull _unit && { ((toLower _role) isEqualTo "cargo") || { _isFFV isEqualTo true } }
+        isNull _unit && { (_role == "cargo") || { _isFFV isEqualTo true } }
     } count (fullCrew [_veh, "", true]);
     // own members on foot that will climb back into this vehicle
     private _ownNeed = {
@@ -168,7 +168,7 @@ private _bestKey = 1e12;
 } forEach _groupData;
 
 if (isNull _best) exitWith {
-    if (!isNil "AIC_debug" && { AIC_debug }) then {
+    if (!isNil "AIC_ns" && { AIC_ns getOrDefault ["debug", false] isEqualTo true }) then {
         ["%1: no transport for group %2 (%3 units, trip %4 m)", [
             _cmd getOrDefault ["side", sideUnknown], groupId _cargo, _cargoCount, round _trip
         ]] call AIC_fnc_log;

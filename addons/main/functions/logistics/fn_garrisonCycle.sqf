@@ -47,6 +47,8 @@
         [_cmd] call AIC_fnc_garrisonCycle;
 */
 
+#include "\z\aic\addons\main\script_component.hpp"
+
 params [["_cmd", createHashMap, [createHashMap]]];
 
 if (!isServer) exitWith { 0 };
@@ -77,11 +79,11 @@ private _objById = createHashMap;
 
 // owned objectives and bases a group may call home (BASE_HQ always)
 private _homes = _objectives select {
-    ((_x get "id") isEqualTo "BASE_HQ") || { (_x getOrDefault ["owner", sideUnknown]) isEqualTo _side }
+    ((_x get "id") isEqualTo AIC_BASE_ID) || { (_x getOrDefault ["owner", sideUnknown]) isEqualTo _side }
 };
 if (_homes isEqualTo []) exitWith { 0 };
 private _homeIds = _homes apply { _x get "id" };
-private _hqId = if ("BASE_HQ" in _homeIds) then { "BASE_HQ" } else { "" };
+private _hqId = if (AIC_BASE_ID in _homeIds) then { AIC_BASE_ID } else { "" };
 
 private _settleTasks = ["IDLE", "DEFEND", "PATROL"];
 private _COOLDOWN = 600; // s a group must stay at a new home before it can be moved again
@@ -182,7 +184,7 @@ private _sentHome = 0;
 
         if (_home isNotEqualTo (_rec getOrDefault ["home", ""])) then {
             _rec set ["home", _home];
-            if (!isNil "AIC_debug" && { AIC_debug isEqualTo true }) then {
+            if (!isNil "AIC_ns" && { AIC_ns getOrDefault ["debug", false] isEqualTo true }) then {
                 ["garrisonCycle: %1 group %2 home -> '%3'", [_side, groupId _grp, _home]] call AIC_fnc_log;
             };
         };
