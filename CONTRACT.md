@@ -332,3 +332,26 @@ New objective sources:
 - UI:
   - Debug markers show parked groups (alpha 0.4 or a "Z" suffix), transports (a line from cargo to drop) and garrison deficits (objective text `G present/desired`).
   - `report` announces transport dispatches ("Sending reinforcements to X by helicopter") and garrison moves, throttled as before.
+
+### Addendum (core): module variables and commander start
+
+- `AIC_fnc_moduleObjective` also normalises two logic variables before
+  pushing the logic to `AIC_objectiveModules`: `"Garrison"` (number ≥ 0,
+  default 0 = auto) and `"IsBase"` (bool, default false). Readers
+  (`collectObjectives`, `moduleCommander`) can rely on these names and
+  pass them to `AIC_fnc_addObjective` as params 6 (`isBase`) and 7
+  (`garrison`); module functions additionally set `"isBase"` / `"garrison"`
+  directly on the returned record.
+- `AIC_fnc_createCommander` adds `BASE_HQ` after `collectObjectives` with
+  `[cmd, hq, "HQ", objectiveRadius min 300, 1, "BASE", true, 0]`, then sets
+  `isBase = true` and `owner = side` on the returned record. If the
+  returned id is not `"BASE_HQ"` it builds the record itself. The commander
+  is created with `"garrisons"` = empty HashMap.
+- `AIC_fnc_setGroupSim` returns BOOL: true if the group's dynamic simulation
+  state actually changed. `AIC_fnc_dynSimCycle` returns `[parked, woken]`
+  counts for this cycle; when `manageDynSim` is off it only wakes groups
+  whose record has `"parked"` true. It also never parks a group whose leader
+  is in `COMBAT` behaviour.
+- Groups with the variable `"AIC_noDynSim"` set to true are never parked or
+  woken by AIC, and `removeCommander` doesn't wake them either, so a mission
+  maker's own setting stays as it is.

@@ -2,21 +2,32 @@
     Function: AIC_fnc_collectObjectives
 
     Description:
-        Builds (or extends) a commander's objective list from three sources,
+        Builds (or extends) a commander's objective list from these sources,
         in this order:
           1. Eden objective modules stored in AIC_objectiveModules
-             (logic variables "Name", "Radius", "Priority").
+             (logic variables "Name", "Radius", "Priority", and the
+             logistics attributes "Garrison" (number, default 0 = auto) and
+             "IsBase" (checkbox, default false)).
           2. Map markers whose name starts with "aic_obj" (case-insensitive).
              Name = marker text (or marker name if no text). Area markers
              (ELLIPSE / RECTANGLE) use their largest half-size as radius,
              other markers use the "objectiveRadius" setting. Priority 1.5,
              or the number after "_p" in the marker name if present
              (e.g. "aic_obj_bridge_p3" -> priority 3).
+          2b. Base markers of this commander's side only: names starting with
+             "aic_base_<side>" (case-insensitive, <side> = west, east, guer
+             or civ). They become base objectives (source "BASE",
+             isBase true, owned by the commander's side), priority 1 or the
+             "_p<number>" suffix, radius as for "aic_obj" markers.
           3. If setting "autoObjectives": map locations of type
              NameCityCapital (priority 3), NameCity (2), Airport (2.5) and
              NameVillage (1), nearest to the commander HQ, until the commander
              holds "maxAutoObjectives" LOCATION objectives. A location is
-             skipped if an existing objective already covers its centre.
+             skipped if an existing non-"BASE" objective already covers its
+             centre (a base inside a town does not hide the town).
+          4. The implicit base objective "BASE_HQ" at the commander's "hq"
+             (isBase, priority 1, radius min(objectiveRadius, 300), owner =
+             own side), if it does not exist yet.
         Safe to call repeatedly: AIC_fnc_addObjective dedupes by id.
 
     Parameters:
@@ -52,9 +63,47 @@ if (!isNil "AIC_objectiveModules" && { AIC_objectiveModules isEqualType [] }) th
             private _priority = _logic getVariable ["Priority", 2];
             if (_priority isEqualType "") then { _priority = parseNumber _priority; };
             if !(_priority isEqualType 0) then { _priority = 2; };
-            [_cmd, getPosATL _logic, _name, _radius, _priority, "MODULE"] call AIC_fnc_addObjective;
+            private _garrison = _logic getVariable ["Garrison", 0];
+            if (_garrison isEqualType "") then { _garrison = parseNumber _garrison; };
+            if !(_garrison isEqualType 0) then { _garrison = 0; };
+            _garrison = _garrison max 0;
+            private _isBase = _logic getVariable ["IsBase", false];
+            if (_isBase isEqualType 0) then { _isBase = _isBase > 0; };
+            if (_isBase isEqualType "") then { _isBase = (toLower _isBase) in ["true", "1"]; };
+            if !(_isBase isEqualType false) then { _isBase = false; };
+            [_cmd, getPosATL _logic, _name, _radius, _priority, "MODULE", _isBase, _garrison] call AIC_fnc_addObjective;
         };
     } forEach AIC_objectiveModules;
+};
+
+// last "_p<number>" in a lower-case marker name -> priority, else the default
+private _fnc_markerPriority = {
+    params ["_lower", "_default"];
+    private _priority = _default;
+    private _pIdx = -1;
+    private _from = 0;
+    while { true } do {
+        private _i = (_lower select [_from]) find "_p";
+        if (_i < 0) exitWith {};
+        _pIdx = _from + _i;
+        _from = _pIdx + 2;
+    };
+    if (_pIdx > 0) then {
+        private _num = parseNumber (_lower select [_pIdx + 2]);
+        if (_num > 0) then { _priority = _num; };
+    };
+    _priority
+};
+
+// area markers: largest half-size, else the default radius
+private _fnc_markerRadius = {
+    params ["_marker"];
+    private _radius = _defRadius;
+    if ((markerShape _marker) in ["ELLIPSE", "RECTANGLE"]) then {
+        private _size = markerSize _marker;
+        _radius = ((_size select 0) max (_size select 1)) max 25;
+    };
+    _radius
 };
 
 // ---------------------------------------------------------------- 2. markers
@@ -65,30 +114,29 @@ if (!isNil "AIC_objectiveModules" && { AIC_objectiveModules isEqualType [] }) th
         private _name = markerText _marker;
         if (_name isEqualTo "") then { _name = _marker; };
 
-        private _radius = _defRadius;
-        if ((markerShape _marker) in ["ELLIPSE", "RECTANGLE"]) then {
-            private _size = markerSize _marker;
-            _radius = ((_size select 0) max (_size select 1)) max 25;
-        };
-
-        private _priority = 1.5;
-        // last "_p<number>" in the name
-        private _pIdx = -1;
-        private _from = 0;
-        while { true } do {
-            private _i = (_lower select [_from]) find "_p";
-            if (_i < 0) exitWith {};
-            _pIdx = _from + _i;
-            _from = _pIdx + 2;
-        };
-        if (_pIdx > 0) then {
-            private _num = parseNumber (_lower select [_pIdx + 2]);
-            if (_num > 0) then { _priority = _num; };
-        };
+        private _radius = [_marker] call _fnc_markerRadius;
+        private _priority = [_lower, 1.5] call _fnc_markerPriority;
 
         [_cmd, getMarkerPos _marker, _name, _radius, _priority, "MARKER"] call AIC_fnc_addObjective;
     };
 } forEach allMapMarkers;
+
+// ---------------------------------------------------------------- 2b. base markers (own side only)
+private _side = _cmd getOrDefault ["side", sideUnknown];
+private _basePrefix = "aic_base_" + toLower str _side; // west / east / guer / civ
+if (_side in [west, east, independent, civilian]) then {
+    {
+        private _marker = _x;
+        private _lower = toLower _marker;
+        if ((_lower find _basePrefix) == 0) then {
+            private _name = markerText _marker;
+            if (_name isEqualTo "") then { _name = _marker; };
+            private _radius = [_marker] call _fnc_markerRadius;
+            private _priority = [_lower, 1] call _fnc_markerPriority;
+            [_cmd, getMarkerPos _marker, _name, _radius, _priority, "BASE", true, 0] call AIC_fnc_addObjective;
+        };
+    } forEach allMapMarkers;
+};
 
 // ---------------------------------------------------------------- 3. locations
 if (([_cmd, "autoObjectives"] call AIC_fnc_getSetting) isEqualTo true) then {
@@ -126,7 +174,8 @@ if (([_cmd, "autoObjectives"] call AIC_fnc_getSetting) isEqualTo true) then {
 
         // skip if already covered by another objective (e.g. a module placed in the town)
         private _covered = ((_cmd get "objectives") findIf {
-            ((_x getOrDefault ["pos", [0, 0, 0]]) distance2D _pos) < ((_x getOrDefault ["radius", 0]) max 50)
+            (_x getOrDefault ["source", ""]) isNotEqualTo "BASE"
+            && { ((_x getOrDefault ["pos", [0, 0, 0]]) distance2D _pos) < ((_x getOrDefault ["radius", 0]) max 50) }
         }) > -1;
 
         if (!_covered) then {
@@ -140,6 +189,17 @@ if (([_cmd, "autoObjectives"] call AIC_fnc_getSetting) isEqualTo true) then {
             if (count _rec > 0) then { _have = _have + 1; };
         };
     } forEach _locations;
+};
+
+// ---------------------------------------------------------------- 4. BASE_HQ
+private _hqPos = _cmd getOrDefault ["hq", []];
+if (
+    _hqPos isEqualType [] && { count _hqPos >= 2 } && { (_hqPos select 0) isEqualType 0 } && { (_hqPos select 1) isEqualType 0 }
+    && { ((_cmd getOrDefault ["objectives", []]) findIf { (_x getOrDefault ["id", ""]) isEqualTo "BASE_HQ" }) < 0 }
+) then {
+    // id = "<source>_<name>" = "BASE_HQ"; source BASE -> isBase true, owner = own side
+    private _hqObj = [_cmd, _hqPos, "HQ", _defRadius min 300, 1, "BASE", true, 0] call AIC_fnc_addObjective;
+    if (count _hqObj > 0) then { _hqObj set ["owner", _side]; };
 };
 
 private _count = count (_cmd getOrDefault ["objectives", []]);

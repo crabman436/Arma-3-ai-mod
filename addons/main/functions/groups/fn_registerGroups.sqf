@@ -9,10 +9,12 @@
  *     - contains no players at all if setting "excludePlayerGroups" is true,
  *     - is not flagged with group variable "AIC_exclude" = true.
  *   New groups get a fresh group record (type via AIC_fnc_classifyGroup,
- *   power via AIC_fnc_groupPower, task "IDLE"). Groups that died, changed
- *   side, got a player or were excluded are dropped together with their
- *   record. Existing records are kept untouched (task state survives).
- *   Server only.
+ *   power via AIC_fnc_groupPower, task "IDLE", logistics keys "parked"
+ *   false, "home" "", "transport" grpNull, "final" empty HashMap).
+ *   Existing records missing the logistics keys get these defaults too.
+ *   Groups that died, changed side, got a player or were excluded are
+ *   dropped together with their record. Existing records keep their
+ *   state (task state survives). Server only.
  *
  * Parameters:
  *   0: HASHMAP - commander
@@ -69,11 +71,21 @@ private _newData = createHashMap;
             ["task", "IDLE"],
             ["taskPos", []],
             ["taskTime", time],
-            ["objective", ""]
+            ["objective", ""],
+            ["parked", false],
+            ["home", ""],
+            ["transport", grpNull],
+            ["final", createHashMap]
         ];
         if (!isNil "AIC_debug" && {AIC_debug}) then {
             ["Commander %1 took control of group %2 (%3)", [_side, groupId _grp, _record get "type"]] call AIC_fnc_log;
         };
+    } else {
+        // Records created elsewhere (e.g. AIC_fnc_issueOrder) may lack the logistics keys
+        if !("parked" in _record) then {_record set ["parked", false]};
+        if !("home" in _record) then {_record set ["home", ""]};
+        if !("transport" in _record) then {_record set ["transport", grpNull]};
+        if !("final" in _record) then {_record set ["final", createHashMap]};
     };
 
     _newData set [_key, _record];

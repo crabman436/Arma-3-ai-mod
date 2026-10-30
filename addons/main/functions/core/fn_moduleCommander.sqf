@@ -3,8 +3,9 @@
 
     Description:
         Eden module function of AIC_ModuleCommander (server only).
-        Reads the module attributes, builds a settings HashMap and creates
-        the commander via AIC_fnc_createCommander. Objective modules
+        Reads the module attributes (including the logistics checkboxes
+        ManageDynSim, ManageGarrisons and UseTransport), builds a settings
+        HashMap and creates the commander via AIC_fnc_createCommander. Objective modules
         synchronised to this module are registered and added to the
         commander. When the module is deactivated (synced trigger
         deactivates) the commander of that side is removed.
@@ -66,7 +67,10 @@ private _settings = createHashMapFromArray [
     ["useAir", [_logic getVariable ["UseAir", true], true] call _fnc_bool],
     ["autoObjectives", [_logic getVariable ["AutoObjectives", true], true] call _fnc_bool],
     ["debugMarkers", [_logic getVariable ["DebugMarkers", false], false] call _fnc_bool],
-    ["reportToPlayers", [_logic getVariable ["ReportToPlayers", true], true] call _fnc_bool]
+    ["reportToPlayers", [_logic getVariable ["ReportToPlayers", true], true] call _fnc_bool],
+    ["manageDynSim", [_logic getVariable ["ManageDynSim", true], true] call _fnc_bool],
+    ["manageGarrisons", [_logic getVariable ["ManageGarrisons", true], true] call _fnc_bool],
+    ["useTransport", [_logic getVariable ["UseTransport", true], true] call _fnc_bool]
 ];
 
 // --- synced objective modules: make sure they are known before objectives are collected
@@ -84,14 +88,22 @@ if (count _cmd == 0) exitWith { true };
 // collectObjectives already reads AIC_objectiveModules; addObjective dedupes by id,
 // this guarantees synced objectives even if the commander already existed.
 {
-    [
+    private _garrison = ([_x getVariable ["Garrison", 0], 0] call _fnc_num) max 0;
+    private _isBase = [_x getVariable ["IsBase", false], false] call _fnc_bool;
+    private _rec = [
         _cmd,
         getPosATL _x,
         _x getVariable ["Name", "Objective"],
         _x getVariable ["Radius", [_cmd, "objectiveRadius"] call AIC_fnc_getSetting],
         _x getVariable ["Priority", 1],
-        "MODULE"
+        "MODULE",
+        _isBase,
+        _garrison
     ] call AIC_fnc_addObjective;
+    if (count _rec > 0) then {
+        _rec set ["garrison", _garrison];
+        _rec set ["isBase", _isBase];
+    };
 } forEach _objModules;
 
 _logic setVariable ["AIC_side", _side];

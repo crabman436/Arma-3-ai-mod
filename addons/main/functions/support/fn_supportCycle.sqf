@@ -22,6 +22,11 @@
         and real weapons (not only countermeasures). Clusters already being
         struck by another air group (within 300 m) are skipped.
 
+        Groups owned by the transport system (task "TRANSPORT",
+        "TRANSPORTED" or "RTB") are never used for fire support or CAS:
+        a helicopter ferrying troops or flying home after a drop is left
+        alone.
+
     Parameters:
         0: HASHMAP - commander
 
@@ -66,7 +71,7 @@ private _fnc_groupsOfType = {
         !isNull _g
         && { count _rec > 0 }
         && { (_rec getOrDefault ["type", ""]) in _types }
-        && { (_rec getOrDefault ["task", "IDLE"]) != "RETREAT" }
+        && { !((_rec getOrDefault ["task", "IDLE"]) in ["RETREAT", "TRANSPORT", "TRANSPORTED", "RTB"]) }
         && { ({ alive _x } count units _g) > 0 }
     }
 };

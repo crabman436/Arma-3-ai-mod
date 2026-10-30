@@ -3,7 +3,8 @@
  * Description:
  *   Returns the commander's groups that can be given a manoeuvre task:
  *     - group not null and has alive units
- *     - record task is not "RETREAT"
+ *     - record task is not "RETREAT", "TRANSPORT", "TRANSPORTED" or "RTB"
+ *       (retreating groups and groups owned by the transport system)
  *     - record strength is above setting "retreatThreshold"
  *     - type filter: if a non-empty types array is given, only groups whose
  *       record type is in it; otherwise every type except "STATIC" and "ARTY".
@@ -35,6 +36,8 @@ if (_groups isEqualTo [] || {!(_groupData isEqualType createHashMap)}) exitWith 
 private _threshold = [_commander, "retreatThreshold"] call AIC_fnc_getSetting;
 if (isNil "_threshold" || {!(_threshold isEqualType 0)}) then {_threshold = 0.3};
 
+private _excludedTasks = ["RETREAT", "TRANSPORT", "TRANSPORTED", "RTB"];
+
 private _upperTypes = _types apply {toUpper _x};
 private _useFilter = _upperTypes isNotEqualTo [];
 
@@ -54,7 +57,7 @@ private _result = [];
                 !(_type in ["STATIC", "ARTY"])
             };
 
-            if (_typeOk && {_task != "RETREAT"} && {_strength > _threshold}) then {
+            if (_typeOk && {!(_task in _excludedTasks)} && {_strength > _threshold}) then {
                 _result pushBack [_record getOrDefault ["power", 0], _forEachIndex];
             };
         };

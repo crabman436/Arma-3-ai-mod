@@ -10,7 +10,9 @@
  *                    vehicles the group crews, clamped to 0..1
  *   Records whose group is null or dead are skipped (they are removed by
  *   AIC_fnc_registerGroups). Missing records for groups in "groups" are
- *   created. Sums all record powers into "ownPower". Server only.
+ *   created, and missing logistics keys are defaulted ("parked" false,
+ *   "home" "", "transport" grpNull, "final" empty HashMap).
+ *   Sums all record powers into "ownPower". Server only.
  *
  * Parameters:
  *   0: HASHMAP - commander
@@ -53,10 +55,20 @@ private _totalPower = 0;
                 ["task", "IDLE"],
                 ["taskPos", []],
                 ["taskTime", time],
-                ["objective", ""]
+                ["objective", ""],
+                ["parked", false],
+                ["home", ""],
+                ["transport", grpNull],
+                ["final", createHashMap]
             ];
             _groupData set [_key, _record];
         };
+
+        // --- Logistics defaults (records created by other subsystems) ---
+        if !("parked" in _record) then {_record set ["parked", false]};
+        if !("home" in _record) then {_record set ["home", ""]};
+        if !("transport" in _record) then {_record set ["transport", grpNull]};
+        if !("final" in _record) then {_record set ["final", createHashMap]};
 
         if (_alive isEqualTo []) then {
             _record set ["power", 0];

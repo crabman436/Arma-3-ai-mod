@@ -46,6 +46,23 @@
  *   7. Leftovers: in OFFENSIVE they join the nearest staffed ATTACK target;
  *      otherwise they PATROL the nearest own objective (sticky), or HQ.
  *
+ *   Logistics extension:
+ *   - Groups on a TRANSPORT, TRANSPORTED or RTB task are never planned (the
+ *     transport system owns them). TRANSPORTED groups count toward the
+ *     target of their "final" order, so the planner does not send a second
+ *     wave while the first one is still riding.
+ *   - When setting "manageGarrisons" is on:
+ *       - the garrison status is recomputed (AIC_fnc_garrisonStatus);
+ *       - a group settled in a garrison (task DEFEND/PATROL/IDLE, home
+ *         garrisoned) may only be staffed onto a target that is not its own
+ *         home if AIC_fnc_canLeaveGarrison allows it (asked only when the
+ *         group is actually taken, since that call reserves surplus). Groups
+ *         already on the target keep it (stable assignments);
+ *       - the HQ reserve (5./6.) is skipped, BASE_HQ's garrison covers it;
+ *       - leftovers are left out of the plan, the garrison system owns them;
+ *       - damaged groups still RETREAT; once at HQ they DEFEND it with
+ *         objective "BASE_HQ", so the garrison system adopts them.
+ *
  *   The plan is stored in the commander under "plan" and returned.
  *
  * Parameters:
@@ -105,6 +122,18 @@ _reserveRatio = (_reserveRatio max 0) min 1;
 private _ownPower = _cmd getOrDefault ["ownPower", 0];
 if !(_ownPower isEqualType 0) then {_ownPower = 0};
 _ownPower = _ownPower max 1;
+
+private _manageGarrisons = ([_cmd, "manageGarrisons"] call AIC_fnc_getSetting) isEqualTo true;
+private _logisticsTasks = ["TRANSPORT", "TRANSPORTED", "RTB"];
+
+// fresh garrison status (also used by AIC_fnc_canLeaveGarrison)
+private _garrisons = createHashMap;
+if (_manageGarrisons) then {
+    _garrisons = [_cmd] call AIC_fnc_garrisonStatus;
+    if (isNil "_garrisons" || {!(_garrisons isEqualType createHashMap)}) then {_garrisons = createHashMap};
+};
+// objective id the HQ DEFEND order uses ("BASE_HQ" lets the garrison system adopt the group)
+private _hqObjId = if (_manageGarrisons && {"BASE_HQ" in _garrisons}) then {"BASE_HQ"} else {""};
 
 private _now = time;
 private _stableWindow = 300;
@@ -193,6 +222,39 @@ private _fnc_taskFits = {
     if (_targetTask == "ATTACK") then {_recTask == "ATTACK"} else {_recTask in ["DEFEND", "REINFORCE"]}
 };
 
+// is the target the group's own garrison (staying there never leaves it)?
+private _fnc_isHome = {
+    params ["_info", "_target"];
+    private _home = _info get "home";
+    private _id = _target get "id";
+    (_id != "" && {_home == _id}) || {(_target get "kind") == "HQ" && {_home == "BASE_HQ"}}
+};
+
+// side-effect free estimate of AIC_fnc_canLeaveGarrison (feasibility / candidate lists)
+private _fnc_mayLeave = {
+    params ["_info", "_target"];
+    if (!_manageGarrisons || {!(_info get "garrisoned")}) exitWith {true};
+    if ([_info, _target] call _fnc_isHome) exitWith {true};
+    private _entry = _garrisons getOrDefault [_info get "home", createHashMap];
+    if (count _entry == 0) exitWith {true};
+    private _released = _entry getOrDefault ["released", createHashMap];
+    if !(_released isEqualType createHashMap) then {_released = createHashMap};
+    if ((_info get "hv") in _released) exitWith {true};
+    private _relSum = 0;
+    {_relSum = _relSum + _y} forEach _released;
+    private _surplus = _entry getOrDefault ["surplus", 0];
+    if !(_surplus isEqualType 0) then {_surplus = 0};
+    (_surplus - _relSum) >= (_info get "rawPower")
+};
+
+// commit-time check: asks AIC_fnc_canLeaveGarrison (reserves the surplus)
+private _fnc_takeFromGarrison = {
+    params ["_info", "_target"];
+    if (!_manageGarrisons || {!(_info get "garrisoned")}) exitWith {true};
+    if ([_info, _target] call _fnc_isHome) exitWith {true};
+    ([_cmd, _info get "group"] call AIC_fnc_canLeaveGarrison) isEqualTo true
+};
+
 // ---------------------------------------------------------------------------
 // 1. Retreat damaged groups
 // ---------------------------------------------------------------------------
@@ -207,6 +269,8 @@ private _fnc_taskFits = {
     if (_type in ["STATIC", "ARTY", "NAVAL"]) then {continue};
     private _task = _rec getOrDefault ["task", "IDLE"];
     if (_task == "SUPPORT") then {continue};
+    // owned by the transport system
+    if (_task in _logisticsTasks) then {_handled set [hashValue _grp, true]; continue};
     private _strength = _rec getOrDefault ["strength", 1];
     if !(_strength isEqualType 0) then {_strength = 1};
 
@@ -222,12 +286,12 @@ private _fnc_taskFits = {
         };
         private _recPos = _rec getOrDefault ["taskPos", []];
         private _defendingHq = _task == "DEFEND"
-            && {(_rec getOrDefault ["objective", ""]) isEqualTo ""}
+            && {(_rec getOrDefault ["objective", ""]) in ["", _hqObjId]}
             && {_recPos isEqualType []} && {count _recPos >= 2}
             && {(_recPos distance2D _hq) < 50};
         if (_defendingHq || {(_lpos distance2D _hq) < _homeR}) then {
             if !(_type in ["HELI", "PLANE"]) then {
-                [_grp, "DEFEND", _hq, ""] call _fnc_assign;
+                [_grp, "DEFEND", _hq, _hqObjId] call _fnc_assign;
             } else {
                 _handled set [hashValue _grp, true];
             };
@@ -255,9 +319,15 @@ private _pool = []; // array of info hashmaps
     if (_type in ["HELI", "PLANE", "NAVAL", "STATIC", "ARTY"]) then {continue};
     private _task = _rec getOrDefault ["task", "IDLE"];
     if (_task in ["SUPPORT", "RETREAT"]) then {continue};
+    if (_task in _logisticsTasks) then {continue};
 
     private _power = _rec getOrDefault ["power", 0];
     if !(_power isEqualType 0) then {_power = 0};
+    private _home = _rec getOrDefault ["home", ""];
+    if !(_home isEqualType "") then {_home = ""};
+    // settled in (or heading to) a garrison the garrison system manages
+    private _garrisoned = _manageGarrisons && {_home != ""} && {_home in _garrisons}
+        && {_task in ["DEFEND", "PATROL", "IDLE"]};
     private _taskPos = _rec getOrDefault ["taskPos", []];
     if !(_taskPos isEqualType []) then {_taskPos = []};
     private _recObj = _rec getOrDefault ["objective", ""];
@@ -270,6 +340,9 @@ private _pool = []; // array of info hashmaps
         ["hv", _hv],
         ["type", _type],
         ["power", _power max 0.5],
+        ["rawPower", _power max 0],
+        ["home", _home],
+        ["garrisoned", _garrisoned],
         ["pos", getPosATL (leader _grp)],
         ["task", _task],
         ["objective", _recObj],
@@ -381,6 +454,35 @@ private _sortable = [];
 _sortable sort false;
 _targets = _sortable apply {_targets select (_x select 1)};
 
+// groups riding a transport count toward the target of their final order
+{
+    private _rec = _y;
+    call {
+        if !(_rec isEqualType createHashMap) exitWith {};
+        if ((_rec getOrDefault ["task", ""]) != "TRANSPORTED") exitWith {};
+        private _grp = _rec getOrDefault ["group", grpNull];
+        if (!(_grp isEqualType grpNull) || {isNull _grp}) exitWith {};
+        if (({alive _x} count (units _grp)) == 0) exitWith {};
+        private _final = _rec getOrDefault ["final", createHashMap];
+        if (!(_final isEqualType createHashMap) || {count _final == 0}) exitWith {};
+        private _fTask = _final getOrDefault ["task", ""];
+        private _fObj = _final getOrDefault ["objective", ""];
+        private _fPos = _final getOrDefault ["pos", []];
+        if (!(_fTask isEqualType "") || {!(_fObj isEqualType "")}) exitWith {};
+        if (!(_fPos isEqualType []) || {count _fPos < 2}) exitWith {};
+        private _ti = _targets findIf {
+            [_fTask, _x get "task"] call _fnc_taskFits
+            && {if ((_x get "id") != "") then {_fObj == (_x get "id")} else {_fObj == "" && {(_fPos distance2D (_x get "pos")) < 400}}}
+        };
+        if (_ti < 0) exitWith {};
+        private _target = _targets select _ti;
+        private _power = _rec getOrDefault ["power", 0];
+        if !(_power isEqualType 0) then {_power = 0};
+        private _eff = (_power max 0.5) * ([_rec getOrDefault ["type", "INF"], _target get "task", _target get "urban"] call _fnc_suit);
+        _target set ["committed", (_target get "committed") + _eff];
+    };
+} forEach _groupData;
+
 // ---------------------------------------------------------------------------
 // 4. Reserve location (HQ or most threatened own objective)
 // ---------------------------------------------------------------------------
@@ -414,7 +516,8 @@ private _ratio = _reserveRatio * (switch (_stance) do {
 });
 _ratio = _ratio min 0.6;
 private _reserveNeed = _poolPower * _ratio;
-private _formReserve = _reserveNeed > 0 && {(count _pool >= 3) || {_stance == "DEFENSIVE" && {count _pool >= 1}}};
+// with garrisons on, BASE_HQ's garrison replaces the HQ reserve
+private _formReserve = !_manageGarrisons && {_reserveNeed > 0} && {(count _pool >= 3) || {_stance == "DEFENSIVE" && {count _pool >= 1}}};
 private _reservePower = 0;
 
 // 4a. stable reserve
@@ -515,7 +618,7 @@ private _staffedAttackTargets = [];
     // beyond the one they already hold)
     if (_isObjAttack && {_attacksStaffed >= _attackCap} && {_members isEqualTo []}) then {continue};
 
-    private _cands = call _fnc_remaining;
+    private _cands = (call _fnc_remaining) select {[_x, _target] call _fnc_mayLeave};
     private _availEff = 0;
     {
         _availEff = _availEff + (_x get "power") * ([_x get "type", _task, _target get "urban"] call _fnc_suit);
@@ -551,10 +654,13 @@ private _staffedAttackTargets = [];
     };
 
     // greedy fill
+    private _blocked = createHashMap; // hashValue -> true: garrison refused to let it go
     private _guard = 0;
     while {(_target get "committed") < _required && {_guard < 200}} do {
         _guard = _guard + 1;
-        private _left = call _fnc_remaining;
+        private _left = (call _fnc_remaining) select {
+            !((_x get "hv") in _blocked) && {[_x, _target] call _fnc_mayLeave}
+        };
         if (_left isEqualTo []) exitWith {};
         private _best = objNull;
         private _bestCost = 1e12;
@@ -563,6 +669,10 @@ private _staffedAttackTargets = [];
             if (_c < _bestCost) then {_bestCost = _c; _best = _x};
         } forEach _left;
         if (_best isEqualType objNull) exitWith {};
+        if !([_best, _target] call _fnc_takeFromGarrison) then {
+            _blocked set [_best get "hv", true];
+            continue;
+        };
 
         private _gTask = _task;
         if (_task == "DEFEND" && {(_target get "threat") > 0}) then {
@@ -599,7 +709,7 @@ private _staffedAttackTargets = [];
 } forEach _targets;
 
 // ---------------------------------------------------------------------------
-// 8. Leftovers
+// 8. Leftovers (left to the garrison system when it is on)
 // ---------------------------------------------------------------------------
 private _ownObjectives = _objectives select {
     (_x getOrDefault ["owner", sideUnknown]) isEqualTo _side
@@ -651,7 +761,7 @@ private _ownIds = _ownObjectives apply {_x get "id"};
         } forEach _ownObjectives;
         [_grp, "PATROL", _bestO get "pos", _bestO get "id"] call _fnc_assign;
     };
-} forEach (call _fnc_remaining);
+} forEach (if (_manageGarrisons) then {[]} else {call _fnc_remaining});
 
 // ---------------------------------------------------------------------------
 // Store & report

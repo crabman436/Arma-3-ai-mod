@@ -4,9 +4,11 @@
     Description:
         Eden module function of AIC_ModuleObjective (server only).
         Normalises the module attributes on the logic ("Name", "Radius",
-        "Priority"), stores the logic in AIC_objectiveModules so that
+        "Priority", "Garrison" (number >= 0, 0 = auto) and "IsBase"
+        (bool)), stores the logic in AIC_objectiveModules so that
         commanders created later pick it up (AIC_fnc_collectObjectives),
-        and adds the objective to every existing commander.
+        and adds the objective to every existing commander (setting the
+        record keys "garrison" and "isBase" from the module).
 
     Parameters:
         0: OBJECT - module logic
@@ -43,9 +45,21 @@ private _priority = _logic getVariable ["Priority", 2];
 if (_priority isEqualType "") then { _priority = parseNumber _priority; };
 if (!(_priority isEqualType 0) || { _priority <= 0 }) then { _priority = 1; };
 
+private _garrison = _logic getVariable ["Garrison", 0];
+if (_garrison isEqualType "") then { _garrison = parseNumber _garrison; };
+if !(_garrison isEqualType 0) then { _garrison = 0; };
+_garrison = _garrison max 0;
+
+private _isBase = _logic getVariable ["IsBase", false];
+if (_isBase isEqualType 0) then { _isBase = _isBase > 0; };
+if (_isBase isEqualType "") then { _isBase = (toLower _isBase) in ["true", "1"]; };
+if !(_isBase isEqualType true) then { _isBase = false; };
+
 _logic setVariable ["Name", _name];
 _logic setVariable ["Radius", _radius];
 _logic setVariable ["Priority", _priority];
+_logic setVariable ["Garrison", _garrison];
+_logic setVariable ["IsBase", _isBase];
 
 AIC_objectiveModules pushBackUnique _logic;
 
@@ -53,10 +67,14 @@ AIC_objectiveModules pushBackUnique _logic;
 private _pos = getPosATL _logic;
 {
     if (count _y > 0) then {
-        [_y, _pos, _name, _radius, _priority, "MODULE"] call AIC_fnc_addObjective;
+        private _rec = [_y, _pos, _name, _radius, _priority, "MODULE", _isBase, _garrison] call AIC_fnc_addObjective;
+        if (count _rec > 0) then {
+            _rec set ["garrison", _garrison];
+            _rec set ["isBase", _isBase];
+        };
     };
 } forEach AIC_commanders;
 
-["Objective module '%1' registered at %2 (r %3, priority %4)", [_name, _pos apply { round _x }, _radius, _priority]] call AIC_fnc_log;
+["Objective module '%1' registered at %2 (r %3, priority %4, garrison %5, base %6)", [_name, _pos apply { round _x }, _radius, _priority, _garrison, _isBase]] call AIC_fnc_log;
 
 true

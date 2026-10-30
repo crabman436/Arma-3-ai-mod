@@ -3,7 +3,8 @@
 
     Description:
         Returns a fresh HashMap with the default commander settings
-        (see CONTRACT.md, "Settings HashMap").
+        (see CONTRACT.md, "Settings HashMap" and the logistics extension:
+        dynamic simulation, garrisons and transport).
 
     Parameters:
         None
@@ -29,5 +30,21 @@ createHashMapFromArray [
     ["debugMarkers", false],
     ["reportToPlayers", true],
     ["artyCooldown", 120],
-    ["airCooldown", 180]
+    ["airCooldown", 180],
+
+    // --- logistics: dynamic simulation
+    ["manageDynSim", true],
+    ["dynSimWakeRange", 1000],
+    ["dynSimDistance", 0],
+
+    // --- logistics: garrisons
+    ["manageGarrisons", true],
+    ["garrisonPerPriority", 5],
+    ["garrisonMovesPerCycle", 2],
+
+    // --- logistics: transport
+    ["useTransport", true],
+    ["transportMinDistance", 1200],
+    ["heliTransportDistance", 3000],
+    ["transportSearchRadius", 4000]
 ]

@@ -12,8 +12,15 @@
             together -> that side owns it;
           - nobody present -> previous owner is kept;
           - otherwise (contested) -> sideUnknown.
-        Also picks up "aic_obj*" markers created after the commander started
-        (re-runs AIC_fnc_collectObjectives if an uncovered one is found).
+        Bases ("isBase" true, including "BASE_HQ") are sticky: they keep
+        their owner while nobody / a mixed force / a friendly side is there,
+        and only change hands when an enemy of the current owner actually
+        holds them (2:1 rule). A base without an owner (sideUnknown) that
+        has source "BASE" (BASE_HQ, own "aic_base_<side>" markers) falls
+        back to the commander's side unless an enemy holds it.
+        Also picks up "aic_obj*" and own "aic_base_<side>*" markers created
+        after the commander started, and a missing "BASE_HQ" (re-runs
+        AIC_fnc_collectObjectives if one is found).
 
     Parameters:
         0: HASHMAP - commander
@@ -37,15 +44,24 @@ if !(_objectives isEqualType []) then {
 };
 
 // ------------------------------------------------------------ late markers
+private _cmdSide = _cmd getOrDefault ["side", sideUnknown];
 private _markerObjs = _objectives select { (_x getOrDefault ["source", ""]) isEqualTo "MARKER" };
+private _baseObjs = _objectives select { (_x getOrDefault ["source", ""]) isEqualTo "BASE" };
+private _basePrefix = "aic_base_" + toLower str _cmdSide;
 private _newMarker = allMapMarkers findIf {
     private _m = _x;
-    ((toLower _m) find "aic_obj") == 0 && {
-        private _mPos = getMarkerPos _m;
+    private _lower = toLower _m;
+    private _mPos = getMarkerPos _m;
+    (((_lower find "aic_obj") == 0) && {
         (_markerObjs findIf { ((_x getOrDefault ["pos", [0, 0, 0]]) distance2D _mPos) <= ((_x getOrDefault ["radius", 0]) max 1) }) < 0
+    }) || {
+        (_cmdSide in [west, east, independent, civilian]) && { (_lower find _basePrefix) == 0 } && {
+            (_baseObjs findIf { ((_x getOrDefault ["pos", [0, 0, 0]]) distance2D _mPos) <= ((_x getOrDefault ["radius", 0]) max 1) }) < 0
+        }
     }
 };
-if (_newMarker > -1) then {
+private _hqMissing = (_objectives findIf { (_x getOrDefault ["id", ""]) isEqualTo "BASE_HQ" }) < 0;
+if (_newMarker > -1 || _hqMissing) then {
     [_cmd] call AIC_fnc_collectObjectives;
     _objectives = _cmd getOrDefault ["objectives", []];
 };
@@ -100,6 +116,22 @@ private _entityTypes = ["CAManBase", "LandVehicle", "Ship", "Air"];
             if (_total == 0) exitWith { _prevOwner };
             if (_topCount > 2 * (_total - _topCount)) exitWith { _topSide };
             sideUnknown
+        };
+
+        // bases only change hands when an enemy actually holds them
+        if ((_obj getOrDefault ["isBase", false]) isEqualTo true) then {
+            private _holder = _prevOwner;
+            if (_holder isEqualTo sideUnknown && { (_obj getOrDefault ["source", ""]) isEqualTo "BASE" }) then {
+                _holder = _cmdSide;
+            };
+            _owner = call {
+                if (_owner isEqualTo sideUnknown) exitWith { _holder };
+                if (_holder isEqualTo sideUnknown) exitWith { _owner };
+                if (_owner isEqualTo _holder) exitWith { _holder };
+                // a different side holds it 2:1 - only an enemy of the holder takes it
+                if ((_holder getFriend _owner) < 0.6) exitWith { _owner };
+                _holder
+            };
         };
 
         if (_owner isNotEqualTo _prevOwner) then {

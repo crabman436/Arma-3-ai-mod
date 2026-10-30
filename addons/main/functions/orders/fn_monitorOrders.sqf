@@ -13,15 +13,21 @@
  *                          (all waypoints done OR no known enemy contact
  *                          near the target), or older than 20 min with all
  *                          waypoints done.
- *     RETREAT            : ground: leader within 220 m of taskPos and
+ *     RETREAT / RTB      : ground: leader within 220 m of taskPos and
  *                          waypoints done or the group has stopped;
  *                          HELI: within 300 m after 30 s; PLANE: within
- *                          1500 m after 60 s.
+ *                          1500 m after 60 s. A helicopter finishing RTB
+ *                          (a transport back home) is told to land, so
+ *                          the dynamic-simulation system can park it.
  *     SUPPORT            : after 10 min (air sorties end in a loiter).
  *     PATROL / DEFEND    : standing orders, never auto-complete.
+ *     TRANSPORT /
+ *     TRANSPORTED        : skipped entirely - AIC_fnc_transportCycle owns
+ *                          transport rides (only the movement bookkeeping
+ *                          below is refreshed).
  *   Stuck detection (group record keys "lastPos" / "lastMoveTime"): the
  *   record remembers the leader position whenever the group moved more
- *   than 20 m. If a moving task (ATTACK, REINFORCE, RETREAT, PATROL,
+ *   than 20 m. If a moving task (ATTACK, REINFORCE, RETREAT, RTB, PATROL,
  *   DEFEND, SUPPORT) has not moved for 180 s while the leader is still far
  *   from taskPos (PATROL: regardless of distance), the order is re-issued
  *   with force through AIC_fnc_issueOrder. Groups in contact (enemy
@@ -95,6 +101,8 @@ private _fnc_setIdle = {
     private _lastMoveTime = _rec getOrDefault ["lastMoveTime", time];
 
     if (_task == "IDLE" || {!(_taskPos isEqualType [])} || {count _taskPos < 2}) then { continue };
+    // transport rides are followed by AIC_fnc_transportCycle
+    if (_task in ["TRANSPORT", "TRANSPORTED"]) then { continue };
 
     private _dist = _leaderPos distance2D _taskPos;
     private _wps = waypoints _group;
@@ -132,7 +140,8 @@ private _fnc_setIdle = {
                 (_near && {_wpDone || _clear} && {_age > 30}) || {_wpDone && {_age > 1200}}
             };
         };
-        case "RETREAT": {
+        case "RETREAT";
+        case "RTB": {
             switch (_type) do {
                 // planes end the retreat in a 1200 m LOITER and never stop
                 case "PLANE": { _dist < 1500 && {_age > 60} };
@@ -146,10 +155,18 @@ private _fnc_setIdle = {
         default { false };
     };
     if (_done) then {
-        if (_task == "RETREAT") then {
+        if (_task in ["RETREAT", "RTB"]) then {
             _group setBehaviour "AWARE";
             _group setCombatMode "YELLOW";
             _group setSpeedMode "NORMAL";
+        };
+        // a transport helicopter back home lands (airborne groups are never parked)
+        if (_task == "RTB" && {_type == "HELI"}) then {
+            private _veh = vehicle _leader;
+            if (_veh != _leader && {alive _veh} && {_veh isKindOf "Helicopter"} && {!isTouchingGround _veh}) then {
+                [_group] call AIC_fnc_clearWaypoints;
+                _veh land "LAND";
+            };
         };
         [_rec] call _fnc_setIdle;
         _changes = _changes + 1;
@@ -169,7 +186,7 @@ private _fnc_setIdle = {
 
     // --- stuck detection --------------------------------------------------------
     if (_type in ["STATIC", "ARTY", "PLANE"]) then { continue };
-    if !(_task in ["ATTACK", "REINFORCE", "RETREAT", "PATROL", "DEFEND", "SUPPORT"]) then { continue };
+    if !(_task in ["ATTACK", "REINFORCE", "RETREAT", "RTB", "PATROL", "DEFEND", "SUPPORT"]) then { continue };
     if (time - _lastMoveTime < _STUCK_TIME) then { continue };
 
     private _far = if (_task == "PATROL") then { true } else { _dist > (_arriveR max 200) };

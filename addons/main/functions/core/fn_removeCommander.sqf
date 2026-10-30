@@ -3,8 +3,10 @@
 
     Description:
         Stops and removes the commander of a side (server only): disables
-        and terminates its loop, deletes its debug markers and releases its
-        groups (they keep their current waypoints and AI behaviour).
+        and terminates its loop, deletes its debug markers, wakes every
+        commanded group (dynamic simulation off, so no group stays frozen
+        without a general) and releases its groups (they keep their current
+        waypoints and AI behaviour).
 
     Parameters:
         0: SIDE - side whose commander is removed
@@ -36,6 +38,27 @@ _cmd set ["loopHandle", scriptNull];
 { deleteMarker _x; } forEach (_cmd getOrDefault ["markers", []]);
 _cmd set ["markers", []];
 
+// wake every commanded group: parked groups must not stay frozen without a general.
+// Groups flagged "AIC_noDynSim" were never touched by AIC and keep the mission maker's setting.
+private _records = (values (_cmd getOrDefault ["groupData", createHashMap])) select { _x isEqualType createHashMap };
+private _toWake = (_cmd getOrDefault ["groups", []]) select { _x isEqualType grpNull };
+{
+    _toWake pushBackUnique (_x getOrDefault ["group", grpNull]);
+    _x set ["parked", false];
+
+    // remove transport LZ helipads left behind
+    private _lz = _x getOrDefault ["lz", objNull];
+    if (_lz isEqualType objNull && { !isNull _lz }) then { deleteVehicle _lz; };
+} forEach _records;
+
+private _woken = 0;
+{
+    if (_x isEqualType grpNull && { !isNull _x } && { !(_x getVariable ["AIC_noDynSim", false]) } && { dynamicSimulationEnabled _x }) then {
+        _x enableDynamicSimulation false;
+        _woken = _woken + 1;
+    };
+} forEach _toWake;
+
 // release groups
 private _released = count (_cmd getOrDefault ["groups", []]);
 _cmd set ["groups", []];
@@ -44,6 +67,6 @@ _cmd set ["plan", []];
 
 AIC_commanders deleteAt _side;
 
-["Commander for %1 removed, %2 groups released", [_side, _released]] call AIC_fnc_log;
+["Commander for %1 removed, %2 groups released (%3 woken)", [_side, _released, _woken]] call AIC_fnc_log;
 
 true

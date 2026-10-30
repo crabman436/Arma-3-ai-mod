@@ -107,6 +107,30 @@ class CfgVehicles
                 typeName = "BOOL";
                 defaultValue = "true";
             };
+            class ManageDynSim: Checkbox
+            {
+                property = "AIC_ModuleCommander_ManageDynSim";
+                displayName = "Manage dynamic simulation";
+                tooltip = "Park idle garrisons with dynamic simulation (frozen while no player is near) and wake them when the general needs them or enemies come close. Lets the general run very large armies without lag. Groups with variable AIC_noDynSim = true are never touched.";
+                typeName = "BOOL";
+                defaultValue = "true";
+            };
+            class ManageGarrisons: Checkbox
+            {
+                property = "AIC_ModuleCommander_ManageGarrisons";
+                displayName = "Manage garrisons";
+                tooltip = "Distribute groups between owned objectives and bases: bases hold a reserve that refills towns whose garrison was sent elsewhere.";
+                typeName = "BOOL";
+                defaultValue = "true";
+            };
+            class UseTransport: Checkbox
+            {
+                property = "AIC_ModuleCommander_UseTransport";
+                displayName = "Use transport";
+                tooltip = "Infantry ordered far away get a ride in an idle truck, APC or helicopter.";
+                typeName = "BOOL";
+                defaultValue = "true";
+            };
             class ModuleDescription: ModuleDescription {};
         };
 
@@ -167,12 +191,28 @@ class CfgVehicles
                 typeName = "NUMBER";
                 defaultValue = "2";
             };
+            class Garrison: Edit
+            {
+                property = "AIC_ModuleObjective_Garrison";
+                displayName = "Garrison power";
+                tooltip = "Desired garrison power while the objective is held (about 1 per infantry soldier, 6 per APC, 10 per tank). 0 = automatic from priority.";
+                typeName = "NUMBER";
+                defaultValue = "0";
+            };
+            class IsBase: Checkbox
+            {
+                property = "AIC_ModuleObjective_IsBase";
+                displayName = "Base / staging area";
+                tooltip = "Base or staging area: only a small guard stays, every other group here is a reserve the general can send anywhere.";
+                typeName = "BOOL";
+                defaultValue = "false";
+            };
             class ModuleDescription: ModuleDescription {};
         };
 
         class ModuleDescription: ModuleDescription
         {
-            description = "Marks a position as an objective for every AI Commander. The module position is the objective centre.";
+            description = "Marks a position as an objective for every AI Commander. The module position is the objective centre. Tick 'Base / staging area' to make it a reserve base whose groups reinforce other objectives.";
             position = 1;
         };
     };

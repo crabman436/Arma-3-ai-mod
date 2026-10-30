@@ -69,6 +69,19 @@ class CfgFunctions
             class tasksAir {};
         };
 
+        class logistics
+        {
+            file = "\z\aic\addons\main\functions\logistics";
+            class setGroupSim {};
+            class dynSimCycle {};
+            class garrisonStatus {};
+            class canLeaveGarrison {};
+            class garrisonCycle {};
+            class findTransport {};
+            class orderTransport {};
+            class transportCycle {};
+        };
+
         class ui
         {
             file = "\z\aic\addons\main\functions\ui";

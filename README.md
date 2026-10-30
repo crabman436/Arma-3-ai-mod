@@ -138,8 +138,163 @@ change them live through `(_cmd get "settings") set [key, value]`.
 | `airCooldown` | 180 | Seconds between CAS taskings |
 
 The Eden module sets Side, Aggression, LoopInterval, UseArtillery, UseAir,
-AutoObjectives, DebugMarkers and ReportToPlayers. The others keep their
-defaults.
+AutoObjectives, DebugMarkers, ReportToPlayers, ManageDynSim, ManageGarrisons
+and UseTransport. The others keep their defaults. The settings for parking,
+garrisons and transport are listed in the next section.
+
+## Large armies: parking, garrisons and transport
+
+A general can command far more groups than the server could normally simulate.
+Groups with nothing important to do are parked. When the general needs them,
+it wakes them up and moves them where they are needed: on foot, by truck, by APC
+or by helicopter. When they arrive and settle into a garrison, it parks them
+again.
+
+### Parking with dynamic simulation
+
+With `manageDynSim` on, the commander turns on Arma's dynamic simulation
+system (`enableDynamicSimulationSystem true`) and switches it on or off per
+group with `group enableDynamicSimulation`. A parked group is frozen by the
+engine while no player is near it, so it costs almost no server time: no AI
+thinking, pathfinding or physics. Hundreds of parked soldiers in towns and
+bases cost little more than empty buildings. Players who come close still see
+a normal, live garrison, because the engine wakes the group for them.
+
+Each cycle the general parks a group when all of these hold:
+
+- its task is IDLE, DEFEND or PATROL,
+- it has stopped moving (no waypoints left, within 100 m of its task position,
+  or more than 120 s into the task),
+- its leader is not in COMBAT, and no enemy is near.
+
+It wakes a group when:
+
+- it gets a moving task (ATTACK, REINFORCE, RETREAT, SUPPORT or a transport
+  task), or
+- a known enemy contact or threat cluster comes within `dynSimWakeRange`, or
+- an enemy unit comes within `dynSimWakeRange` of its leader. Parked groups
+  are blind, so the general checks for nearby enemies for them.
+
+Every order goes through `AIC_fnc_issueOrder`, which wakes the group first, so
+a parked group never gets an order it can't carry out. Helicopters in the air
+are never parked. `AIC_fnc_removeCommander` wakes all its groups again.
+
+To keep a group out of this, for example a group whose dynamic simulation you
+set yourself, set this variable on it:
+
+```sqf
+_myGroup setVariable ["AIC_noDynSim", true];
+```
+
+AIC then never parks or wakes that group, and `removeCommander` leaves its
+setting alone. The general still commands it.
+
+### Bases and garrisons
+
+With `manageGarrisons` on, every ground group belongs to a **home**: an owned
+objective or a base. A town's garrison is the groups whose home is that town.
+Each garrisoned objective has a **desired** garrison power:
+
+- an objective module's `Garrison` attribute, if it is greater than 0,
+- otherwise `priority × garrisonPerPriority` (a village with priority 1 and the
+  default of 5 wants about 5 infantrymen),
+- a base only wants `garrisonPerPriority`, a small guard,
+- plus half the power of enemy threat clusters within 1500 m.
+
+Everything above the desired power is **surplus**. Surplus is what the general
+can send elsewhere.
+
+There are three kinds of bases:
+
+- **`BASE_HQ`**: every commander has an implicit base at its HQ.
+- **Base markers**: map markers named `aic_base_<side>...`, where `<side>` is
+  `west`, `east`, `guer` or `civ`, for example `aic_base_east_airfield`.
+  Each marker becomes a base for that side's commander only.
+- **Objective modules with `IsBase` ticked**: the module's `Garrison`
+  attribute sets the guard size there.
+
+Each cycle the garrison system:
+
+1. Gives every homeless group the nearest owned objective or base within
+   1000 m as its home, otherwise `BASE_HQ`.
+2. Looks for owned objectives below their desired power, for example a town
+   whose troops were sent to an attack, or one that enemies are approaching.
+3. Picks donor groups to refill them. It takes groups from bases first, then
+   from the objectives with the largest surplus, then from the nearest ones.
+   It never strips a garrison below its own desired power, and it never takes
+   from an objective that has enemies within 1500 m.
+4. Wakes each donor, orders it to DEFEND the town that needs it, and makes
+   that town its new home. When the donor arrives and settles in, it is
+   parked again. At most `garrisonMovesPerCycle` transfers are ordered per
+   cycle.
+
+The attack planner follows the same rules. A group settled in a garrison is
+only sent to attack or reinforce if its home can spare it. Groups that have no
+job in the plan stay where they are instead of being sent on patrol, and the
+HQ reserve is replaced by the `BASE_HQ` garrison. Damaged groups still retreat
+to HQ, and join its garrison there.
+
+### Transport
+
+With `useTransport` on, an infantry group ordered to ATTACK, REINFORCE or
+DEFEND farther than `transportMinDistance` away gets a ride if one is free:
+
+- Candidates are MOTOR, MECH and HELI groups that are IDLE, DEFENDing or
+  PATROLling, can move, are within `transportSearchRadius` of the infantry,
+  and have enough free cargo and FFV seats for the whole group.
+- Unarmed or lightly armed vehicles are preferred over IFVs and tanks, so
+  fighting vehicles stay in the fight.
+- Beyond `heliTransportDistance`, helicopters are preferred (when `useAir` is
+  on). Otherwise the closest ground vehicle is used.
+
+The vehicle drives or flies to the infantry, and the infantry boards it. The
+vehicle then carries them to a drop point. Trucks and APCs stop 200 to 400 m
+short of the destination. Helicopters land at an LZ 300 to 600 m short of it,
+or right at the objective if no enemy is near it. After the drop the
+infantry carry out their real order, and the vehicle returns home (task `RTB`)
+and is parked there again. If the vehicle is destroyed or the ride takes more
+than 15 minutes, the infantry dismount and continue on foot. Helicopters on a
+transport run are never used for CAS. Players on the side are told about each
+dispatch, for example "Sending reinforcements to Kavala by helicopter", and
+about each garrison move. With `debugMarkers` on, parked groups are drawn faded
+with a `Z`, each ride gets a line to its drop point, and owned objectives show
+`G present/desired` (red with `!` when the garrison is short).
+
+So a general can, for example, keep a large parked force at a base, send a
+couple of groups to attack, refill the town those groups left with a group
+from the base, and fly a squad in by helicopter to reinforce a town under
+attack. The rest of the army stays parked and costs nothing.
+
+### Settings
+
+| Key | Default | Meaning |
+|---|---|---|
+| `manageDynSim` | true | Park idle groups with dynamic simulation and wake them when needed |
+| `dynSimWakeRange` | 1000 | A parked group wakes if an enemy is within this many metres of its leader |
+| `dynSimDistance` | 0 | If greater than 0, sets `"Group" setDynamicSimulationDistance` at commander start (the engine default otherwise) |
+| `manageGarrisons` | true | Distribute groups between owned objectives and bases |
+| `garrisonPerPriority` | 5 | Desired garrison power per point of objective priority (a base's guard size) |
+| `garrisonMovesPerCycle` | 2 | Maximum garrison transfers ordered per cycle |
+| `useTransport` | true | Infantry ordered far away get a vehicle ride |
+| `transportMinDistance` | 1200 | Infantry orders farther than this (m) look for a transport |
+| `heliTransportDistance` | 3000 | Beyond this distance (m), helicopters are preferred (if `useAir`) |
+| `transportSearchRadius` | 4000 | Maximum distance (m) between the infantry and a candidate transport |
+
+The commander module has `ManageDynSim`, `ManageGarrisons` and `UseTransport`
+checkboxes. The objective module has `Garrison` (power, 0 = automatic) and
+`IsBase`.
+
+### Mission-maker tip
+
+Place your big armies at bases, not spread across the map. Put an
+`aic_base_<side>` marker, or an objective module with `IsBase` ticked, where
+you put a large stock of infantry and vehicles. Give your towns sensible
+`Priority` or `Garrison` values. At mission start the general parks the base,
+so it costs almost nothing. It then draws on the base: it refills towns,
+sends attack groups, and uses the base's trucks and helicopters to move
+infantry around. You can put several bases near the front lines to shorten
+the trips. Keep player-led groups and scripted set pieces out with
+`AIC_exclude` or `AIC_noDynSim`.
 
 ## Building the PBO
 
@@ -197,9 +352,12 @@ spawns `AIC_fnc_commanderLoop`. The loop calls `AIC_fnc_commanderCycle` every
 | 6 | Stance | `determineStance` | Power ratio × aggression gives OFFENSIVE, BALANCED or DEFENSIVE |
 | 7 | Score | `scoreObjectives` | Priority, enemy ownership, distance and local threat |
 | 8 | Plan + orders | `allocateForces` then `issueOrder` | Assignments (ATTACK, DEFEND, PATROL, RETREAT, ...) turned into waypoints by the `order*` functions |
-| 9 | Follow-up | `monitorOrders` | Finished tasks go back to IDLE, and stuck groups get their orders again |
-| 10 | Support | `supportCycle` (`fireMission`, `tasksAir`) | Artillery on the strongest in-range threat and CAS from an idle armed aircraft, each with a cooldown |
-| 11 | Present | `updateDebugMarkers`, `report` | Debug map markers and throttled side-chat reports |
+| 9 | Garrisons | `garrisonCycle` (`garrisonStatus`, `canLeaveGarrison`) | Homes for groups and garrison refills from bases and surplus towns (if `manageGarrisons`) |
+| 10 | Transport | `transportCycle` (`findTransport`, `orderTransport`) | Dismounted cargo gets its final order, and empty transports return home |
+| 11 | Follow-up | `monitorOrders` | Finished tasks go back to IDLE, and stuck groups get their orders again |
+| 12 | Parking | `dynSimCycle` (`setGroupSim`) | Settled groups are parked with dynamic simulation, and needed or threatened ones are woken (if `manageDynSim`) |
+| 13 | Support | `supportCycle` (`fireMission`, `tasksAir`) | Artillery on the strongest in-range threat and CAS from an idle armed aircraft, each with a cooldown |
+| 14 | Present | `updateDebugMarkers`, `report` | Debug map markers and throttled side-chat reports |
 
 Subsystems are split by folder, and each one owns the commander keys listed in
 `CONTRACT.md`:
@@ -210,6 +368,7 @@ Subsystems are split by folder, and each one owns the commander keys listed in
 - **strategy**: stance, scoring and allocation.
 - **orders**: waypoint construction and monitoring.
 - **support**: artillery and CAS.
+- **logistics**: dynamic simulation parking, garrisons and transport.
 - **ui**: reports, debug markers and colours.
 
 The support step works like this. The commander walks the threat clusters from

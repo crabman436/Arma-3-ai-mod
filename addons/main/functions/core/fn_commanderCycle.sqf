@@ -5,8 +5,9 @@
         One full think step of a commander, in contract order:
         register groups, update groups, gather intel, cluster threats,
         update objectives, determine stance, score objectives, allocate
-        forces and issue orders, monitor orders, support, debug markers
-        and player reports.
+        forces and issue orders, garrison distribution, transports,
+        monitor orders, dynamic simulation (park / wake), support, debug
+        markers and player reports.
 
     Parameters:
         0: HASHMAP - commander
@@ -59,13 +60,20 @@ _cmd set ["lastPlanTime", time];
     [_cmd, _group, _task, _pos, _objective] call AIC_fnc_issueOrder;
 } forEach _plan;
 
-// 9. follow up on running orders
+// 9. logistics: garrisons between owned objectives / bases, then transports
+[_cmd] call AIC_fnc_garrisonCycle;
+[_cmd] call AIC_fnc_transportCycle;
+
+// 10. follow up on running orders
 [_cmd] call AIC_fnc_monitorOrders;
 
-// 10. fire support / CAS
+// 11. park idle garrisons / wake groups that are needed or threatened
+[_cmd] call AIC_fnc_dynSimCycle;
+
+// 12. fire support / CAS
 [_cmd] call AIC_fnc_supportCycle;
 
-// 11. presentation
+// 13. presentation
 if (([_cmd, "debugMarkers"] call AIC_fnc_getSetting) isEqualTo true) then {
     [_cmd] call AIC_fnc_updateDebugMarkers;
 } else {

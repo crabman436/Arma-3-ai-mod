@@ -11,7 +11,13 @@
           - an objective with the same id somewhere else (two map locations
             sharing a name) gets the grid appended: "<source>_<name>_<grid>".
         New records start with owner sideUnknown and score 0; the real owner
-        is computed by AIC_fnc_updateObjectives.
+        is computed by AIC_fnc_updateObjectives. Exception: records with
+        source "BASE" (BASE_HQ and the commander's own "aic_base_<side>"
+        markers) start owned by the commander's side.
+        Logistics keys: "isBase" (bool, default false) and "garrison"
+        (desired garrison power override, default 0 = auto). When an
+        existing record is returned, isBase is raised to true and a
+        garrison override > 0 is applied if the new call asks for it.
 
     Parameters:
         0: HASHMAP - commander
@@ -19,7 +25,9 @@
         2: STRING  - display name ("" -> grid reference is used)
         3: NUMBER  - capture radius (<= 0 -> commander setting "objectiveRadius")
         4: NUMBER  - priority (<= 0 -> 1)
-        5: STRING  - source: "MODULE", "MARKER" or "LOCATION"
+        5: STRING  - source: "MODULE", "MARKER", "LOCATION" or "BASE"
+        6: BOOL    - (optional) isBase, default false (forced true for "BASE")
+        7: NUMBER  - (optional) desired garrison power, default 0 (= auto)
 
     Returns:
         HASHMAP - the objective record (new or existing),
@@ -28,6 +36,7 @@
     Example:
         private _obj = [_cmd, getMarkerPos "aic_obj_1", "Hill 205", 250, 2, "MARKER"] call AIC_fnc_addObjective;
         systemChat (_obj get "id"); // "MARKER_Hill 205"
+        private _hqObj = [_cmd, _cmd get "hq", "HQ", 0, 1, "BASE", true, 0] call AIC_fnc_addObjective; // id "BASE_HQ"
 */
 
 params [
@@ -36,7 +45,9 @@ params [
     ["_name", "", [""]],
     ["_radius", 0, [0]],
     ["_priority", 1, [0]],
-    ["_source", "MODULE", [""]]
+    ["_source", "MODULE", [""]],
+    ["_isBase", false, [false]],
+    ["_garrison", 0, [0]]
 ];
 
 if (count _cmd == 0) exitWith { createHashMap };
@@ -52,7 +63,9 @@ if (_radius <= 0) then {
 if (_priority <= 0) then { _priority = 1; };
 
 _source = toUpper _source;
-if !(_source in ["MODULE", "MARKER", "LOCATION"]) then { _source = "MODULE"; };
+if !(_source in ["MODULE", "MARKER", "LOCATION", "BASE"]) then { _source = "MODULE"; };
+if (_source isEqualTo "BASE") then { _isBase = true; };
+_garrison = _garrison max 0;
 
 private _grid = mapGridPosition _posATL;
 if (_name isEqualTo "") then { _name = _grid; };
@@ -99,6 +112,10 @@ if (count _existing > 0) exitWith {
     if (_priority > (_existing getOrDefault ["priority", 0])) then {
         _existing set ["priority", _priority];
     };
+    if (_isBase) then { _existing set ["isBase", true]; };
+    if !("isBase" in _existing) then { _existing set ["isBase", false]; };
+    if (_garrison > 0) then { _existing set ["garrison", _garrison]; };
+    if !("garrison" in _existing) then { _existing set ["garrison", 0]; };
     _existing
 };
 
@@ -108,16 +125,18 @@ private _record = createHashMapFromArray [
     ["pos", _posATL],
     ["radius", _radius],
     ["priority", _priority],
-    ["owner", sideUnknown],
+    ["owner", if (_source isEqualTo "BASE") then { _cmd getOrDefault ["side", sideUnknown] } else { sideUnknown }],
     ["source", _source],
-    ["score", 0]
+    ["score", 0],
+    ["isBase", _isBase],
+    ["garrison", _garrison]
 ];
 
 _objectives pushBack _record;
 
 if (!isNil "AIC_debug" && { AIC_debug isEqualTo true }) then {
-    ["addObjective: %1 added '%2' (%3) at %4 r %5 p %6", [
-        _cmd getOrDefault ["side", sideUnknown], _name, _id, _grid, _radius, _priority
+    ["addObjective: %1 added '%2' (%3) at %4 r %5 p %6 base %7 garrison %8", [
+        _cmd getOrDefault ["side", sideUnknown], _name, _id, _grid, _radius, _priority, _isBase, _garrison
     ]] call AIC_fnc_log;
 };
 

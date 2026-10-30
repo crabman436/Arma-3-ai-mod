@@ -5,7 +5,11 @@
         Creates the AI general for a side (server only). Merges the given
         settings with the defaults, stores the commander in AIC_commanders,
         registers the side's groups, sets the HQ (average position of its
-        groups), collects objectives and starts the commander loop.
+        groups), collects objectives, adds the implicit base objective
+        "BASE_HQ" at the HQ (isBase = true, owner = own side) and starts
+        the commander loop. If "manageDynSim" is on, the engine's dynamic
+        simulation system is enabled (and the group activation distance is
+        set from "dynSimDistance" when > 0).
         If the side already has a commander, that commander is returned
         unchanged.
 
@@ -69,6 +73,13 @@ _settings set ["objectiveRadius", (_settings get "objectiveRadius") max 25];
 _settings set ["maxAutoObjectives", (round (_settings get "maxAutoObjectives")) max 0];
 _settings set ["artyCooldown", (_settings get "artyCooldown") max 0];
 _settings set ["airCooldown", (_settings get "airCooldown") max 0];
+_settings set ["dynSimWakeRange", (_settings get "dynSimWakeRange") max 50];
+_settings set ["dynSimDistance", (_settings get "dynSimDistance") max 0];
+_settings set ["garrisonPerPriority", (_settings get "garrisonPerPriority") max 0];
+_settings set ["garrisonMovesPerCycle", (round (_settings get "garrisonMovesPerCycle")) max 0];
+_settings set ["transportMinDistance", (_settings get "transportMinDistance") max 0];
+_settings set ["heliTransportDistance", (_settings get "heliTransportDistance") max 0];
+_settings set ["transportSearchRadius", (_settings get "transportSearchRadius") max 0];
 
 // --- commander state
 private _cmd = createHashMapFromArray [
@@ -89,6 +100,7 @@ private _cmd = createHashMapFromArray [
     ["lastArtyTime", -1e6],
     ["lastAirTime", -1e6],
     ["markers", []],
+    ["garrisons", createHashMap],
     ["loopHandle", scriptNull]
 ];
 
@@ -124,6 +136,52 @@ _cmd set ["hq", _hq];
 
 // --- objectives (needs HQ for nearest auto objectives)
 [_cmd] call AIC_fnc_collectObjectives;
+
+// --- implicit base objective at the HQ (garrison system home of last resort)
+private _baseRadius = ([_cmd, "objectiveRadius"] call AIC_fnc_getSetting) min 300;
+private _objCountBefore = count (_cmd getOrDefault ["objectives", []]);
+private _base = [_cmd, _hq, "HQ", _baseRadius, 1, "BASE", true, 0] call AIC_fnc_addObjective;
+if !((_base getOrDefault ["id", ""]) isEqualTo "BASE_HQ") then {
+    // addObjective did not produce the "BASE_HQ" id (e.g. source not accepted):
+    // drop the stray record it may have appended and add BASE_HQ directly
+    ["createCommander: addObjective returned '%1' for the HQ base, adding BASE_HQ directly", [_base getOrDefault ["id", ""]]] call AIC_fnc_log;
+    private _objectives = _cmd getOrDefault ["objectives", []];
+    if (count _base > 0 && { count _objectives > _objCountBefore }) then {
+        private _stray = _objectives find _base;
+        if (_stray >= _objCountBefore) then { _objectives deleteAt _stray; };
+    };
+    private _idx = _objectives findIf { (_x getOrDefault ["id", ""]) isEqualTo "BASE_HQ" };
+    if (_idx >= 0) then {
+        _base = _objectives select _idx;
+    } else {
+        _base = createHashMapFromArray [
+            ["id", "BASE_HQ"],
+            ["name", "HQ"],
+            ["pos", [_hq select 0, _hq select 1, 0]],
+            ["radius", _baseRadius],
+            ["priority", 1],
+            ["owner", _side],
+            ["source", "BASE"],
+            ["score", 0]
+        ];
+        _objectives pushBack _base;
+        _cmd set ["objectives", _objectives];
+    };
+};
+_base set ["isBase", true];
+_base set ["owner", _side];
+if !((_base getOrDefault ["garrison", 0]) isEqualType 0) then { _base set ["garrison", 0]; };
+_base set ["garrison", _base getOrDefault ["garrison", 0]];
+
+// --- dynamic simulation: engine system on so parked groups freeze while no player is near
+if (([_cmd, "manageDynSim"] call AIC_fnc_getSetting) isEqualTo true) then {
+    enableDynamicSimulationSystem true;
+    private _dsDist = [_cmd, "dynSimDistance"] call AIC_fnc_getSetting;
+    if (_dsDist isEqualType 0 && { _dsDist > 0 }) then {
+        "Group" setDynamicSimulationDistance _dsDist;
+    };
+    ["createCommander: dynamic simulation managed for %1 (group distance %2)", [_side, dynamicSimulationDistance "Group"]] call AIC_fnc_log;
+};
 
 // --- start thinking
 private _handle = [_cmd] spawn AIC_fnc_commanderLoop;
