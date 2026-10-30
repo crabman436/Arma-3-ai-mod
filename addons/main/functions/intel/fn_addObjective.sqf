@@ -18,6 +18,9 @@
         (desired garrison power override, default 0 = auto). When an
         existing record is returned, isBase is raised to true and a
         garrison override > 0 is applied if the new call asks for it.
+        Maintains the commander key "objectiveIndex" (HashMap id -> record,
+        same records as "objectives"); dedup lookups use it, and every other
+        reader looks objectives up with AIC_fnc_getObjective.
 
     Parameters:
         0: HASHMAP - commander
@@ -76,11 +79,21 @@ if !(_objectives isEqualType []) then {
 };
 _cmd set ["objectives", _objectives];
 
+// id -> record index kept in sync with "objectives" (O(1) lookups for every
+// reader via AIC_fnc_getObjective); rebuilt here if it is missing or stale
+private _index = _cmd getOrDefault ["objectiveIndex", createHashMap];
+if (!(_index isEqualType createHashMap) || { (count _index) != (count _objectives) }) then {
+    _index = createHashMap;
+    {
+        if (_x isEqualType createHashMap) then { _index set [_x getOrDefault ["id", ""], _x]; };
+    } forEach _objectives;
+};
+_cmd set ["objectiveIndex", _index];
+
 // returns the existing record with this id or an empty HashMap
 private _fnc_findById = {
     params ["_id"];
-    private _idx = _objectives findIf { (_x getOrDefault ["id", ""]) isEqualTo _id };
-    if (_idx < 0) then { createHashMap } else { _objectives select _idx }
+    _index getOrDefault [_id, createHashMap]
 };
 
 // same objective if within the larger of both capture radii
@@ -133,6 +146,7 @@ private _record = createHashMapFromArray [
 ];
 
 _objectives pushBack _record;
+_index set [_id, _record];
 
 if (!isNil "AIC_debug" && { AIC_debug isEqualTo true }) then {
     ["addObjective: %1 added '%2' (%3) at %4 r %5 p %6 base %7 garrison %8", [

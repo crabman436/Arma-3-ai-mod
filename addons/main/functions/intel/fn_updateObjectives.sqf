@@ -60,7 +60,7 @@ private _newMarker = allMapMarkers findIf {
         }
     }
 };
-private _hqMissing = (_objectives findIf { (_x getOrDefault ["id", ""]) isEqualTo "BASE_HQ" }) < 0;
+private _hqMissing = count ([_cmd, "BASE_HQ"] call AIC_fnc_getObjective) == 0;
 if (_newMarker > -1 || _hqMissing) then {
     [_cmd] call AIC_fnc_collectObjectives;
     _objectives = _cmd getOrDefault ["objectives", []];

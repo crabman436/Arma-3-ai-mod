@@ -89,7 +89,10 @@ private _PICKUP_TIMEOUT = 900;
 private _changes = 0;
 private _finals = []; // [group, record, reason, abort]
 
-private _fnc_validPos = { _this isEqualType [] && { count _this >= 2 } && { (_this select 0) isEqualType 0 } };
+private _fnc_validPos = {
+    params [["_p", []]];
+    _p isEqualType [] && { count _p >= 2 } && { (_p select 0) isEqualType 0 }
+};
 
 private _fnc_deletePads = {
     params ["_rec"];
@@ -185,15 +188,15 @@ private _fnc_boardFallback = {
     private _final = _rec getOrDefault ["final", createHashMap];
     if !(_final isEqualType createHashMap) then { _final = createHashMap; };
     private _finalPos = _final getOrDefault ["pos", _rec getOrDefault ["taskPos", []]];
-    if !(_finalPos call _fnc_validPos) then { _finalPos = _lpos; };
+    if !([_finalPos] call _fnc_validPos) then { _finalPos = _lpos; };
     private _dropPos = _rec getOrDefault ["dropPos", []];
-    if !(_dropPos call _fnc_validPos) then { _dropPos = _finalPos; };
+    if !([_dropPos] call _fnc_validPos) then { _dropPos = _finalPos; };
     private _pickupPos = _rec getOrDefault ["pickupPos", []];
-    if !(_pickupPos call _fnc_validPos) then { _pickupPos = _lpos; };
+    if !([_pickupPos] call _fnc_validPos) then { _pickupPos = _lpos; };
 
     // movement bookkeeping (monitorOrders skips TRANSPORTED groups)
     private _lastPos = _rec getOrDefault ["lastPos", []];
-    if (!(_lastPos call _fnc_validPos) || { (_lpos distance2D _lastPos) > 20 }) then {
+    if (!([_lastPos] call _fnc_validPos) || { (_lpos distance2D _lastPos) > 20 }) then {
         _rec set ["lastPos", _lpos];
         _rec set ["lastMoveTime", time];
     };
@@ -323,7 +326,7 @@ private _fnc_boardFallback = {
 
     // transport movement bookkeeping
     private _tLast = _tRec getOrDefault ["lastPos", []];
-    if (!(_tLast call _fnc_validPos) || { (_vPos distance2D _tLast) > 20 }) then {
+    if (!([_tLast] call _fnc_validPos) || { (_vPos distance2D _tLast) > 20 }) then {
         _tRec set ["lastPos", _vPos];
         _tRec set ["lastMoveTime", time];
     };
@@ -383,7 +386,7 @@ private _fnc_boardFallback = {
     private _fTask = _final getOrDefault ["task", "DEFEND"];
     if (!(_fTask isEqualType "") || { _fTask in ["", "TRANSPORT", "TRANSPORTED", "IDLE"] }) then { _fTask = "DEFEND"; };
     private _fPos = _final getOrDefault ["pos", _rec getOrDefault ["taskPos", []]];
-    if !(_fPos call _fnc_validPos) then { _fPos = []; };
+    if !([_fPos] call _fnc_validPos) then { _fPos = []; };
     private _fObj = _final getOrDefault ["objective", _rec getOrDefault ["objective", ""]];
     if !(_fObj isEqualType "") then { _fObj = ""; };
     private _tGroup = _rec getOrDefault ["transport", grpNull];
@@ -414,15 +417,11 @@ private _fnc_boardFallback = {
 // =====================================================================
 // Transport groups
 // =====================================================================
-private _objectives = _cmd getOrDefault ["objectives", []];
-if !(_objectives isEqualType []) then { _objectives = []; };
 private _fnc_objPos = {
     params ["_id"];
     if (!(_id isEqualType "") || { _id isEqualTo "" }) exitWith { [] };
-    private _i = _objectives findIf { _x isEqualType createHashMap && { (_x getOrDefault ["id", ""]) isEqualTo _id } };
-    if (_i < 0) exitWith { [] };
-    private _p = (_objectives select _i) getOrDefault ["pos", []];
-    if (_p call _fnc_validPos) then { _p } else { [] }
+    private _p = ([_cmd, _id] call AIC_fnc_getObjective) getOrDefault ["pos", []];
+    if ([_p] call _fnc_validPos) then { _p } else { [] }
 };
 
 {
@@ -468,7 +467,7 @@ private _fnc_objPos = {
     if (_homePos isEqualTo []) then { _homePos = ["BASE_HQ"] call _fnc_objPos; };
     if (_homePos isEqualTo []) then {
         private _hq = _cmd getOrDefault ["hq", []];
-        _homePos = if (_hq call _fnc_validPos) then { _hq } else { getPosATL (leader _grp) };
+        _homePos = if ([_hq] call _fnc_validPos) then { _hq } else { getPosATL (leader _grp) };
     };
 
     [_rec] call _fnc_deletePads;

@@ -4,7 +4,7 @@
     Description:
         Eden module function of AIC_ModuleCommander (server only).
         Reads the module attributes (including the logistics checkboxes
-        ManageDynSim, ManageGarrisons and UseTransport), builds a settings
+        ManageDynSim, ManageGarrisons, UseTransport and ManageCleanup), builds a settings
         HashMap and creates the commander via AIC_fnc_createCommander. Objective modules
         synchronised to this module are registered and added to the
         commander. When the module is deactivated (synced trigger
@@ -70,7 +70,8 @@ private _settings = createHashMapFromArray [
     ["reportToPlayers", [_logic getVariable ["ReportToPlayers", true], true] call _fnc_bool],
     ["manageDynSim", [_logic getVariable ["ManageDynSim", true], true] call _fnc_bool],
     ["manageGarrisons", [_logic getVariable ["ManageGarrisons", true], true] call _fnc_bool],
-    ["useTransport", [_logic getVariable ["UseTransport", true], true] call _fnc_bool]
+    ["useTransport", [_logic getVariable ["UseTransport", true], true] call _fnc_bool],
+    ["manageCleanup", [_logic getVariable ["ManageCleanup", true], true] call _fnc_bool]
 ];
 
 // --- synced objective modules: make sure they are known before objectives are collected

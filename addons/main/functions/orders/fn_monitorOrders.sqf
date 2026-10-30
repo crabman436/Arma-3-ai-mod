@@ -55,8 +55,6 @@ if (count _cmd == 0) exitWith {0};
 private _groupData = _cmd getOrDefault ["groupData", createHashMap];
 if (!(_groupData isEqualType createHashMap) || {count _groupData == 0}) exitWith {0};
 
-private _objectives = _cmd getOrDefault ["objectives", []];
-if !(_objectives isEqualType []) then { _objectives = []; };
 private _side = _cmd getOrDefault ["side", sideUnknown];
 private _enemies = _cmd getOrDefault ["knownEnemies", []];
 if !(_enemies isEqualType []) then { _enemies = []; };
@@ -124,9 +122,8 @@ private _fnc_setIdle = {
     private _radius = 150;
     private _objRec = createHashMap;
     if (_objId isNotEqualTo "") then {
-        private _i = _objectives findIf { _x isEqualType createHashMap && {(_x getOrDefault ["id", ""]) == _objId} };
-        if (_i >= 0) then {
-            _objRec = _objectives select _i;
+        _objRec = [_cmd, _objId] call AIC_fnc_getObjective;
+        if (count _objRec > 0) then {
             _radius = _objRec getOrDefault ["radius", _defRadius];
         };
     };

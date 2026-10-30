@@ -80,6 +80,9 @@ _settings set ["garrisonMovesPerCycle", (round (_settings get "garrisonMovesPerC
 _settings set ["transportMinDistance", (_settings get "transportMinDistance") max 0];
 _settings set ["heliTransportDistance", (_settings get "heliTransportDistance") max 0];
 _settings set ["transportSearchRadius", (_settings get "transportSearchRadius") max 0];
+_settings set ["cleanupDelay", (_settings get "cleanupDelay") max 0];
+_settings set ["cleanupPlayerDistance", (_settings get "cleanupPlayerDistance") max 0];
+_settings set ["cleanupMaxPerCycle", (round (_settings get "cleanupMaxPerCycle")) max 0];
 
 // --- commander state
 private _cmd = createHashMapFromArray [
@@ -90,6 +93,7 @@ private _cmd = createHashMapFromArray [
     ["groups", []],
     ["groupData", createHashMap],
     ["objectives", []],
+    ["objectiveIndex", createHashMap],
     ["knownEnemies", []],
     ["threats", []],
     ["stance", "BALANCED"],
@@ -101,6 +105,7 @@ private _cmd = createHashMapFromArray [
     ["lastAirTime", -1e6],
     ["markers", []],
     ["garrisons", createHashMap],
+    ["deadQueue", []],
     ["loopHandle", scriptNull]
 ];
 
@@ -148,11 +153,14 @@ if !((_base getOrDefault ["id", ""]) isEqualTo "BASE_HQ") then {
     private _objectives = _cmd getOrDefault ["objectives", []];
     if (count _base > 0 && { count _objectives > _objCountBefore }) then {
         private _stray = _objectives find _base;
-        if (_stray >= _objCountBefore) then { _objectives deleteAt _stray; };
+        if (_stray >= _objCountBefore) then {
+            _objectives deleteAt _stray;
+            (_cmd getOrDefault ["objectiveIndex", createHashMap]) deleteAt (_base getOrDefault ["id", ""]);
+        };
     };
-    private _idx = _objectives findIf { (_x getOrDefault ["id", ""]) isEqualTo "BASE_HQ" };
-    if (_idx >= 0) then {
-        _base = _objectives select _idx;
+    private _existingBase = [_cmd, "BASE_HQ"] call AIC_fnc_getObjective;
+    if (count _existingBase > 0) then {
+        _base = _existingBase;
     } else {
         _base = createHashMapFromArray [
             ["id", "BASE_HQ"],
@@ -166,6 +174,9 @@ if !((_base getOrDefault ["id", ""]) isEqualTo "BASE_HQ") then {
         ];
         _objectives pushBack _base;
         _cmd set ["objectives", _objectives];
+        private _index = _cmd getOrDefault ["objectiveIndex", createHashMap];
+        _index set ["BASE_HQ", _base];
+        _cmd set ["objectiveIndex", _index];
     };
 };
 _base set ["isBase", true];

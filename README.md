@@ -138,9 +138,10 @@ change them live through `(_cmd get "settings") set [key, value]`.
 | `airCooldown` | 180 | Seconds between CAS taskings |
 
 The Eden module sets Side, Aggression, LoopInterval, UseArtillery, UseAir,
-AutoObjectives, DebugMarkers, ReportToPlayers, ManageDynSim, ManageGarrisons
-and UseTransport. The others keep their defaults. The settings for parking,
-garrisons and transport are listed in the next section.
+AutoObjectives, DebugMarkers, ReportToPlayers, ManageDynSim, ManageGarrisons,
+UseTransport and ManageCleanup. The others keep their defaults. The settings
+for parking, garrisons and transport are listed in the next section, the
+cleanup settings in "Performance and cleanup".
 
 ## Large armies: parking, garrisons and transport
 
@@ -163,10 +164,10 @@ a normal, live garrison, because the engine wakes the group for them.
 Each cycle the general parks a group when all of these hold:
 
 - its task is IDLE, DEFEND or PATROL,
-- it has arrived (no waypoints left, within 100 m of its task position, or
-  more than 120 s into the task and within 1.5 × the objective radius of its
-  task position). A group still marching to a distant town is never parked
-  on the way,
+- it has arrived: it is within 100 m of its task position, or within 1.5 ×
+  the objective radius of it with no waypoints left or more than 120 s into
+  the task. A group still marching to a distant town is never parked on the
+  way,
 - its leader is not in COMBAT, and no enemy is near.
 
 It wakes a group when:
@@ -297,6 +298,40 @@ The commander module has `ManageDynSim`, `ManageGarrisons` and `UseTransport`
 checkboxes. The objective module has `Garrison` (power, 0 = automatic) and
 `IsBase`.
 
+### Performance and cleanup
+
+The 30 s commander cycle is a deliberate planner. Everything that is a
+reaction uses engine event handlers instead, which cost nothing until the
+event happens. Each commanded group gets them once
+(`AIC_fnc_attachGroupEHs`, group variable `AIC_ehAttached`):
+
+- group `EnemyDetected`, and unit/vehicle `Hit` and `FiredNear` (hostile
+  shooter): a parked group wakes the instant it meets the enemy, and its
+  record is stamped (`lastEngaged`) so it stays awake for 120 s;
+- group `UnitKilled` and vehicle `MPKilled`: the kill time is stored on the
+  body or wreck (`AIC_killedAt`) and it is queued for cleanup;
+- group `Empty`: the record is dropped and the empty group is deleted at
+  once (where it is local, otherwise on its owner).
+
+`AIC_fnc_cleanupCycle` runs after `monitorOrders` and deletes bodies and
+wrecks of the commander's side that have been dead longer than
+`cleanupDelay`, with no player within `cleanupPlayerDistance`, at most
+`cleanupMaxPerCycle` per cycle.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `manageCleanup` | true | Delete empty commanded groups, and old bodies and wrecks of the side |
+| `cleanupDelay` | 300 | Seconds a body or wreck must have been dead before it is deleted |
+| `cleanupPlayerDistance` | 500 | Nothing is deleted while a player is within this many metres |
+| `cleanupMaxPerCycle` | 20 | Maximum bodies and wrecks deleted per commander cycle |
+
+The commander module has a `ManageCleanup` checkbox. To keep a body, wreck or
+group (a set piece, an intel item on a corpse), set `AIC_keep`:
+
+```sqf
+_wreck setVariable ["AIC_keep", true];
+```
+
 ### Mission-maker tip
 
 Place your big armies at bases, not spread across the map. Put an
@@ -347,8 +382,10 @@ mod.cpp
 
 All state lives in plain HashMaps, as specified in `CONTRACT.md`.
 `AIC_commanders` maps each side to a commander HashMap, which holds settings,
-groups, group records (keyed by `hashValue group`), objectives, contacts,
-threats, the current plan and support timers.
+groups, group records (keyed by `hashValue group`), objectives (an array for
+ordered iteration plus the `objectiveIndex` HashMap id -> record for
+lookups, read with `AIC_fnc_getObjective`), contacts, threats, the current
+plan and support timers.
 
 `AIC_fnc_createCommander` builds that state and registers the side's groups.
 It sets HQ to the average position of those groups, collects objectives, and
@@ -368,6 +405,7 @@ spawns `AIC_fnc_commanderLoop`. The loop calls `AIC_fnc_commanderCycle` every
 | 9 | Garrisons | `garrisonCycle` (`garrisonStatus`, `canLeaveGarrison`) | Homes for groups and garrison refills from bases and surplus towns (if `manageGarrisons`) |
 | 10 | Transport | `transportCycle` (`findTransport`, `orderTransport`) | Dismounted cargo gets its final order, and empty transports return home |
 | 11 | Follow-up | `monitorOrders` | Finished tasks go back to IDLE, and stuck groups get their orders again |
+| 11b | Cleanup | `cleanupCycle` | Old bodies and wrecks of the side, queued by the Killed handlers, are deleted (if `manageCleanup`) |
 | 12 | Parking | `dynSimCycle` (`setGroupSim`) | Settled groups are parked with dynamic simulation, and needed or threatened ones are woken (if `manageDynSim`) |
 | 13 | Support | `supportCycle` (`fireMission`, `tasksAir`) | Artillery on the strongest in-range threat and CAS from an idle armed aircraft, each with a cooldown |
 | 14 | Present | `updateDebugMarkers`, `report` | Debug map markers and throttled side-chat reports |

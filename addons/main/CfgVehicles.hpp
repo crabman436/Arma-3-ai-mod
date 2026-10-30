@@ -131,6 +131,14 @@ class CfgVehicles
                 typeName = "BOOL";
                 defaultValue = "true";
             };
+            class ManageCleanup: Checkbox
+            {
+                property = "AIC_ModuleCommander_ManageCleanup";
+                displayName = "Manage cleanup";
+                tooltip = "Delete empty groups, and bodies and wrecks of this side once they have been dead for 300 s with no player within 500 m (max 20 per cycle). Objects and groups with variable AIC_keep = true are never deleted.";
+                typeName = "BOOL";
+                defaultValue = "true";
+            };
             class ModuleDescription: ModuleDescription {};
         };
 

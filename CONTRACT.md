@@ -43,6 +43,8 @@ Created by `AIC_fnc_createCommander`. Keys (all strings):
 | `"groups"` | array of groups under command | groups |
 | `"groupData"` | HashMap: `hashValue _group` (string) -> group record. Groups/objects are NOT valid HashMap keys in SQF, always key by `hashValue`. | groups / orders |
 | `"objectives"` | array of objective records | intel |
+| `"objectiveIndex"` | HashMap: objective id -> the same record as in `"objectives"`. Maintained by `AIC_fnc_addObjective`; read with `AIC_fnc_getObjective`. | intel |
+| `"deadQueue"` | array of dead units / destroyed vehicles of the side in kill order, appended by the event handlers of `AIC_fnc_attachGroupEHs`, consumed by `AIC_fnc_cleanupCycle` | groups / logistics |
 | `"knownEnemies"` | array of enemy contact records | intel |
 | `"threats"` | array of threat cluster records | intel |
 | `"stance"` | `"OFFENSIVE"` / `"BALANCED"` / `"DEFENSIVE"` | strategy |
@@ -281,7 +283,7 @@ New objective sources:
     - an enemy unit is within `dynSimWakeRange` of the leader. For parked groups, check with `nearEntities [["CAManBase","LandVehicle","Air","Ship"], range]` plus a hostility check. This matters because parked groups are blind and wouldn't otherwise see the enemy coming.
   - **Park** if all of these hold:
     - the task is IDLE, DEFEND or PATROL
-    - the group has arrived (no waypoint left, or within 100 m of `taskPos`, or in the task for more than 120 s **and** within 1.5 × the objective radius (min 100 m) of `taskPos`; without a `taskPos`: not moved for 120 s). A group still marching to a distant objective is never parked.
+    - the group has arrived: within 100 m of `taskPos`, or within 1.5 × the objective radius (min 100 m) of `taskPos` with no waypoint left or in the task for more than 120 s. Without a `taskPos`: no waypoint left, or in the task for more than 120 s and not moved for 120 s. A group still marching to a distant objective is never parked.
     - no wake condition applies
 - `AIC_fnc_garrisonStatus` — `[commander] call` → HashMap: objective id → HashMap `{"desired","present","surplus","groups"}`, for objectives owned by own side plus `BASE_HQ`.
   - `desired` = `garrison` if > 0, otherwise `priority * garrisonPerPriority` (`garrisonPerPriority` alone for bases). Add 50 % of the power of threat clusters within 1500 m.
@@ -335,7 +337,7 @@ New objective sources:
   - Adds the `BASE_HQ` objective after the HQ is computed.
 - `AIC_fnc_removeCommander`: wakes every commanded group with `group enableDynamicSimulation false` and deletes the `"lz"` / `"pickupLz"` helipads of every record.
 - `AIC_fnc_registerGroups`: before dropping the record of a group that left command, wakes it (`setGroupSim false`) if it is parked and deletes its `"lz"` / `"pickupLz"` helipads.
-- `AIC_fnc_commanderCycle` order: … allocateForces + issue plan → `garrisonCycle` → `transportCycle` → `monitorOrders` → `dynSimCycle` → `supportCycle` → UI.
+- `AIC_fnc_commanderCycle` order: … allocateForces + issue plan → `garrisonCycle` → `transportCycle` → `monitorOrders` → `cleanupCycle` → `dynSimCycle` → `supportCycle` → UI.
 - UI:
   - Debug markers show parked groups (alpha 0.4 or a "Z" suffix), transports (a line from cargo to drop) and garrison deficits (objective text `G present/desired`).
   - `report` announces transport dispatches ("Sending reinforcements to X by helicopter") and garrison moves, throttled as before.
@@ -362,3 +364,63 @@ New objective sources:
 - Groups with the variable `"AIC_noDynSim"` set to true are never parked or
   woken by AIC, and `removeCommander` doesn't wake them either, so a mission
   maker's own setting stays as it is.
+
+---
+
+# Performance / hygiene extension: event handlers, objective index, cleanup
+
+## New settings (in `AIC_fnc_defaultSettings`)
+
+| Key | Default | Meaning |
+|---|---|---|
+| `"manageCleanup"` | true | delete empty commanded groups, and bodies / wrecks of the side (see `cleanupCycle`) |
+| `"cleanupDelay"` | 300 | seconds a body / wreck must have been dead before it is deleted |
+| `"cleanupPlayerDistance"` | 500 | nothing is deleted while an alive player is within this many metres |
+| `"cleanupMaxPerCycle"` | 20 | max bodies / wrecks deleted per commander cycle |
+
+`AIC_ModuleCommander` gets a checkbox `ManageCleanup` (default true), read by
+`AIC_fnc_moduleCommander` into `"manageCleanup"`.
+
+## New commander keys
+
+- `"objectiveIndex"`: HashMap id -> objective record (the same HashMap that
+  is in `"objectives"`). `AIC_fnc_addObjective` creates it if missing,
+  rebuilds it if its size differs from `"objectives"`, uses it for its own
+  dedup lookups and adds every new record to it. Code that pushes or deletes
+  objective records itself must update the index too (`createCommander`'s
+  BASE_HQ fallback does). Never look objectives up by id with `findIf`; use
+  `AIC_fnc_getObjective`.
+- `"deadQueue"`: see the table above. Only the event handlers append, only
+  `cleanupCycle` removes.
+
+## New record / variable keys
+
+- Group record `"lastEngaged"`: `time` the group last met the enemy
+  (EnemyDetected, Hit, FiredNear, UnitKilled). `AIC_fnc_dynSimCycle` treats
+  `time - lastEngaged < 120` as a wake condition (so a group woken by a
+  handler is not parked again by the next cycle).
+- Group variables (server-local): `"AIC_ehAttached"` (handlers attached),
+  `"AIC_engagedAt"` (handler throttle). Unit / vehicle variables:
+  `"AIC_ehAttached"`, `"AIC_killedAt"` (time of death), `"AIC_side"`
+  (vehicles: side of the commander whose group used it).
+- `"AIC_keep"` (object or group variable, set by mission makers): never
+  deleted by AIC.
+
+## New functions
+
+- `AIC_fnc_attachGroupEHs` (groups) — `[commander, group, object(optional)] call` → bool. Called by `registerGroups` for every commanded group; guarded by group variable `"AIC_ehAttached"`. Adds:
+  - group EHs (2.10+): `"EnemyDetected"` → `groupEngaged`; `"UnitKilled"` → stamp `"AIC_killedAt"` on the unit, queue it in `"deadQueue"` (if `manageCleanup`, not players), `groupEngaged`; `"Empty"` → if the group still has a record: delete its `"lz"`/`"pickupLz"` helipads, `deleteAt` its record, set `"groups"` to a **new** array without it (never in-place, a suspended cycle may be iterating the old one), then unless `"AIC_keep"` or `manageCleanup` off: `deleteGroup` if local, else `remoteExecCall ["deleteGroup", groupOwner _group]`; `"UnitJoined"` / `"VehicleAdded"` → call itself with the object as 3rd param.
+  - unit EHs `"Hit"` and `"FiredNear"` (hostile firer only) → `groupEngaged`, throttled to once per 10 s per awake group (always runs for a parked group).
+  - vehicle EHs (vehicles the units sit in or are assigned to): `"Hit"` → `groupEngaged` for the crew's group; `"MPKilled"` (server part) → stamp `"AIC_killedAt"`, queue in `"deadQueue"` of the commander of `"AIC_side"`.
+  - All handler code is unscheduled and tiny; it finds the commander with `[side group] call AIC_fnc_getCommander` and does nothing for groups without a record.
+- `AIC_fnc_groupEngaged` (groups) — `[group] call` → bool. Stamps `"lastEngaged"` (and group var `"AIC_engagedAt"`) and wakes the group via `AIC_fnc_setGroupSim [cmd, group, false]` if it is parked.
+- `AIC_fnc_getObjective` (intel) — `[commander, id] call` → record or empty HashMap. O(1) through `"objectiveIndex"`; rebuilds the index from `"objectives"` first if their sizes differ.
+- `AIC_fnc_cleanupCycle` (logistics) — `[commander] call` → number deleted. Runs only if `manageCleanup` (otherwise empties `"deadQueue"`). Walks `"deadQueue"` in kill order: drops null / alive / `"AIC_keep"` entries; stops at the first entry dead for less than `cleanupDelay`; skips entries with an alive player within `cleanupPlayerDistance` and wrecks with living crew; deletes bodies (`deleteVehicleCrew` if inside a vehicle, else `deleteVehicle`) and wrecks (dead crew first); at most `cleanupMaxPerCycle` per cycle. Fallback: deletes empty groups of the side that carry `"AIC_ehAttached"` and no `"AIC_keep"` (local `deleteGroup`, else remoteExecCall to the owner).
+
+## Changes to existing functions
+
+- `AIC_fnc_registerGroups`: calls `AIC_fnc_attachGroupEHs` for every eligible group without `"AIC_ehAttached"`. Its drop sweep stays as a fallback; dead groups are normally removed by the `"Empty"` handler first.
+- `AIC_fnc_commanderCycle`: `cleanupCycle` right after `monitorOrders`.
+- `AIC_fnc_createCommander`: initial keys `"objectiveIndex"` (empty HashMap) and `"deadQueue"` (`[]`); clamps the cleanup settings to ≥ 0.
+- `AIC_fnc_dynSimCycle`: recent `"lastEngaged"` (< 120 s) is a wake condition. The `nearEntities` check for parked groups stays: a group frozen by dynamic simulation is blind and fires no `EnemyDetected`.
+- Objective lookups by id in `issueOrder`, `monitorOrders`, `allocateForces`, `transportCycle`, `dynSimCycle`, `updateObjectives`, `collectObjectives` and `createCommander` go through `AIC_fnc_getObjective`.

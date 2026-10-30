@@ -6,7 +6,7 @@
         register groups, update groups, gather intel, cluster threats,
         update objectives, determine stance, score objectives, allocate
         forces and issue orders, garrison distribution, transports,
-        monitor orders, dynamic simulation (park / wake), support, debug
+        monitor orders, garbage cleanup, dynamic simulation (park / wake), support, debug
         markers and player reports.
 
     Parameters:
@@ -66,6 +66,9 @@ _cmd set ["lastPlanTime", time];
 
 // 10. follow up on running orders
 [_cmd] call AIC_fnc_monitorOrders;
+
+// 10b. garbage: old bodies / wrecks queued by the Killed handlers
+[_cmd] call AIC_fnc_cleanupCycle;
 
 // 11. park idle garrisons / wake groups that are needed or threatened
 [_cmd] call AIC_fnc_dynSimCycle;

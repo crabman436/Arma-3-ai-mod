@@ -4,7 +4,7 @@
     Description:
         Returns a fresh HashMap with the default commander settings
         (see CONTRACT.md, "Settings HashMap" and the logistics extension:
-        dynamic simulation, garrisons and transport).
+        dynamic simulation, garrisons and transport; garbage management).
 
     Parameters:
         None
@@ -46,5 +46,11 @@ createHashMapFromArray [
     ["useTransport", true],
     ["transportMinDistance", 1200],
     ["heliTransportDistance", 3000],
-    ["transportSearchRadius", 4000]
+    ["transportSearchRadius", 4000],
+
+    // --- garbage management
+    ["manageCleanup", true],
+    ["cleanupDelay", 300],
+    ["cleanupPlayerDistance", 500],
+    ["cleanupMaxPerCycle", 20]
 ]

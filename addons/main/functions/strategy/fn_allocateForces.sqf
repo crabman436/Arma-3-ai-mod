@@ -799,8 +799,8 @@ if (_manageGarrisons) then {
         };
         private _dpos = _hq;
         if (_dest != "") then {
-            private _oi = _objectives findIf {(_x getOrDefault ["id", ""]) isEqualTo _dest};
-            if (_oi >= 0) then {_dpos = (_objectives select _oi) get "pos"};
+            private _destRec = [_cmd, _dest] call AIC_fnc_getObjective;
+            if (count _destRec > 0) then {_dpos = _destRec getOrDefault ["pos", _hq]};
         };
         [_info get "group", "DEFEND", _dpos, _dest] call _fnc_assign;
     } forEach (call _fnc_remaining);

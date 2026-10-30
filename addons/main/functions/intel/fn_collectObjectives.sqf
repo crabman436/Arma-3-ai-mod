@@ -195,7 +195,7 @@ if (([_cmd, "autoObjectives"] call AIC_fnc_getSetting) isEqualTo true) then {
 private _hqPos = _cmd getOrDefault ["hq", []];
 if (
     _hqPos isEqualType [] && { count _hqPos >= 2 } && { (_hqPos select 0) isEqualType 0 } && { (_hqPos select 1) isEqualType 0 }
-    && { ((_cmd getOrDefault ["objectives", []]) findIf { (_x getOrDefault ["id", ""]) isEqualTo "BASE_HQ" }) < 0 }
+    && { count ([_cmd, "BASE_HQ"] call AIC_fnc_getObjective) == 0 }
 ) then {
     // id = "<source>_<name>" = "BASE_HQ"; source BASE -> isBase true, owner = own side
     private _hqObj = [_cmd, _hqPos, "HQ", _defRadius min 300, 1, "BASE", true, 0] call AIC_fnc_addObjective;

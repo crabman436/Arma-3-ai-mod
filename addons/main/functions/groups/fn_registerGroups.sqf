@@ -16,7 +16,11 @@
  *   dropped together with their record; a dropped group AIC had parked is
  *   woken first (AIC_fnc_setGroupSim false) and its transport helipads
  *   ("lz", "pickupLz") are deleted. Existing records keep their
- *   state (task state survives). Server only.
+ *   state (task state survives). Every commanded group gets AIC's engine
+ *   event handlers once (AIC_fnc_attachGroupEHs, guarded by the group
+ *   variable "AIC_ehAttached"); its "Empty" handler drops dead groups at
+ *   once, so the drop sweep here is mostly for groups leaving command for
+ *   other reasons. Server only.
  *
  * Parameters:
  *   0: HASHMAP - commander
@@ -90,10 +94,20 @@ private _newData = createHashMap;
         if !("final" in _record) then {_record set ["final", createHashMap]};
     };
 
+    // engine event handlers (EnemyDetected / UnitKilled / Empty / Hit /
+    // FiredNear ...), once per group
+    if !(_grp getVariable ["AIC_ehAttached", false]) then {
+        [_commander, _grp] call AIC_fnc_attachGroupEHs;
+    };
+
     _newData set [_key, _record];
 } forEach _eligible;
 
 // --- Drop records of groups no longer under command (in place) --------------
+// Groups that die are normally already gone: their "Empty" event handler
+// removes the record (and deletes the group) the moment the last unit dies.
+// This sweep remains for groups that leave command for other reasons
+// (AIC_exclude, a player joined, side change) and as a fallback.
 private _staleKeys = (keys _groupData) select {!(_x in _newData)};
 {
     private _oldRec = _groupData get _x;

@@ -127,9 +127,7 @@ if (!_force && {_curTask in ["TRANSPORT", "TRANSPORTED"]}) exitWith {
 // --- Objective lookup --------------------------------------------------------
 private _objRec = createHashMap;
 if (_objective isNotEqualTo "") then {
-    private _objs = _cmd getOrDefault ["objectives", []];
-    private _idx = _objs findIf { _x isEqualType createHashMap && {(_x getOrDefault ["id", ""]) == _objective} };
-    if (_idx >= 0) then { _objRec = _objs select _idx; };
+    _objRec = [_cmd, _objective] call AIC_fnc_getObjective;
 };
 private _defRadius = [_cmd, "objectiveRadius"] call AIC_fnc_getSetting;
 if (isNil "_defRadius" || {!(_defRadius isEqualType 0)}) then { _defRadius = 300; };
@@ -139,23 +137,24 @@ if !(_radius isEqualType 0) then { _radius = _defRadius; };
 // --- Resolve target position --------------------------------------------------
 private _hq = _cmd getOrDefault ["hq", []];
 if (!(_hq isEqualType []) || {count _hq < 2}) then { _hq = []; };
-private _fnc_validPos = { _this isEqualType [] && {count _this >= 2} && {(_this select 0) isEqualType 0} && {(_this select 1) isEqualType 0} };
+private _fnc_validPos = {
+    params [["_p", []]];
+    _p isEqualType [] && {count _p >= 2} && {(_p select 0) isEqualType 0} && {(_p select 1) isEqualType 0}
+};
 
-if !(_pos call _fnc_validPos) then {
+if !([_pos] call _fnc_validPos) then {
     private _objPos = _objRec getOrDefault ["pos", []];
     private _homePos = [];
     if (_task == "RTB") then {
         private _home = _record getOrDefault ["home", ""];
         if (_home isEqualType "" && {_home isNotEqualTo ""}) then {
-            private _objs = _cmd getOrDefault ["objectives", []];
-            private _hi = _objs findIf { _x isEqualType createHashMap && {(_x getOrDefault ["id", ""]) == _home} };
-            if (_hi >= 0) then { _homePos = (_objs select _hi) getOrDefault ["pos", []]; };
+            _homePos = ([_cmd, _home] call AIC_fnc_getObjective) getOrDefault ["pos", []];
         };
     };
     _pos = switch (true) do {
-        case (_objPos call _fnc_validPos): {_objPos};
-        case (_homePos call _fnc_validPos): {_homePos};
-        case (_task in ["RETREAT", "DEFEND", "RTB"] && {_hq call _fnc_validPos}): {_hq};
+        case ([_objPos] call _fnc_validPos): {_objPos};
+        case ([_homePos] call _fnc_validPos): {_homePos};
+        case (_task in ["RETREAT", "DEFEND", "RTB"] && {[_hq] call _fnc_validPos}): {_hq};
         default {getPosATL (leader _group)};
     };
 };
@@ -178,7 +177,7 @@ if (_task in ["TRANSPORT", "TRANSPORTED"]) exitWith {
             false
         };
         private _fPos = _final getOrDefault ["pos", []];
-        if !(_fPos call _fnc_validPos) then { _fPos = _pos; };
+        if !([_fPos] call _fnc_validPos) then { _fPos = _pos; };
         private _fTask = _final getOrDefault ["task", "DEFEND"];
         if !(_fTask isEqualType "") then { _fTask = "DEFEND"; };
         private _fObj = _final getOrDefault ["objective", ""];
@@ -201,7 +200,7 @@ if (!_force && {_curTask == _task}) then {
         // 400 m - the same tolerance AIC_fnc_allocateForces uses. Fixed
         // points (HQ DEFEND/PATROL/RETREAT, SUPPORT) use 50 m.
         private _tol = if (_task in ["ATTACK", "REINFORCE"]) then {400} else {50};
-        _curObj isEqualTo "" && {_curPos call _fnc_validPos} && {(_curPos distance2D _pos) < _tol}
+        _curObj isEqualTo "" && {[_curPos] call _fnc_validPos} && {(_curPos distance2D _pos) < _tol}
     };
     if (_same) then { _task = "" };
 };
@@ -279,7 +278,7 @@ private _ok = switch (_task) do {
         if (_type in ["HELI", "PLANE"]) then {
             private _r = [_group, _pos, 200, _type] call AIC_fnc_orderAttack;
             if (_r) then {
-                private _home = if (_hq call _fnc_validPos) then {[_hq select 0, _hq select 1, 0]} else {getPosATL (leader _group)};
+                private _home = if ([_hq] call _fnc_validPos) then {[_hq select 0, _hq select 1, 0]} else {getPosATL (leader _group)};
                 private _wpL = _group addWaypoint [_home, 0];
                 _wpL setWaypointType "LOITER";
                 _wpL setWaypointLoiterType "CIRCLE_L";

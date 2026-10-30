@@ -89,7 +89,8 @@ private _donorTypes = ["INF", "MOTOR", "MECH", "ARMOR"];
 
 // radius helper
 private _fnc_radius = {
-    private _r = _this getOrDefault ["radius", 300];
+    params [["_obj", createHashMap, [createHashMap]]];
+    private _r = _obj getOrDefault ["radius", 300];
     if !(_r isEqualType 0) then { _r = 300; };
     _r
 };
@@ -97,7 +98,7 @@ private _fnc_radius = {
 // leader inside radius * 1.5 of an objective record
 private _fnc_atObjective = {
     params ["_grp", "_obj"];
-    ((getPosATL leader _grp) distance2D (_obj get "pos")) <= ((_obj call _fnc_radius) * 1.5)
+    ((getPosATL leader _grp) distance2D (_obj get "pos")) <= (([_obj] call _fnc_radius) * 1.5)
 };
 
 // nearest home within 1000 m of a position, or "" if none

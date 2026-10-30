@@ -28,6 +28,8 @@ class CfgFunctions
             class groupPower {};
             class updateGroups {};
             class availableGroups {};
+            class attachGroupEHs {};
+            class groupEngaged {};
         };
 
         class intel
@@ -37,6 +39,7 @@ class CfgFunctions
             class clusterThreats {};
             class collectObjectives {};
             class addObjective {};
+            class getObjective {};
             class updateObjectives {};
         };
 
@@ -80,6 +83,7 @@ class CfgFunctions
             class findTransport {};
             class orderTransport {};
             class transportCycle {};
+            class cleanupCycle {};
         };
 
         class ui
