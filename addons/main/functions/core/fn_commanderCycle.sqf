@@ -94,6 +94,8 @@ private _fnc_planInf = {
 
 // 12. fire support / CAS
 [_cmd] call AIC_fnc_supportCycle;
+// 12a. planes out of ammunition or fuel land at a held airfield to rearm
+[_cmd] call AIC_fnc_rearmCycle;
 
 // 13. presentation
 if (([_cmd, "debugMarkers"] call AIC_fnc_getSetting) isEqualTo true) then {

@@ -94,6 +94,9 @@ class CfgFunctions
             class fireMission {};
             class tasksAir {};
             class airDefence {};
+            class airfields {};
+            class heldAirfield {};
+            class rearmCycle {};
             class artilleryMagScore {};
         };
 

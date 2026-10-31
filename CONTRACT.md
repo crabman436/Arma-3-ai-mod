@@ -68,6 +68,7 @@ User-tunable values are settings, not constants.
 | `AIC_NEAR_HQ_GROUND` / `_HELI` / `_PLANE` | 250 / 400 / 1500 | allocateForces "at HQ" radius; PLANE also monitorOrders RETREAT/RTB completion |
 | `AIC_THREAT_RADIUS` | 1500 | garrisonStatus threat sum, allocateForces DEFENSIVE counter-attack near HQ |
 | `AIC_CAS_IP_PLANE`, `AIC_CAS_IP_HELI`, `AIC_CAS_DANGER_CLOSE` | 2500, 1200, 200 | tasksAir, supportCycle |
+| `AIC_AIRFIELD_HOLD_RANGE`, `AIC_PLANE_RTB_FUEL`, `AIC_TURNAROUND_TIME`, `AIC_REARM_TIMEOUT` | 500, 0.3, 120, 900 | heldAirfield, rearmCycle |
 | `AIC_ASSAULT_AXIS_LANES` | 3 | orderAssault: groups per approach |
 | `AIC_CROWD_GROUPS`, `AIC_CROWD_RADIUS`, `AIC_CROWD_SPREAD`, `AIC_CROWD_COOLDOWN` | 3, 70, 150, 120 | spreadCycle |
 | `AIC_ASSAULT_STAGE`, `AIC_ASSAULT_FRONT`, `AIC_ASSAULT_READY`, `AIC_ASSAULT_WAIT`, `AIC_ASSAULT_MAX_WAIT`, `AIC_ASSAULT_OVERWATCH` | 600, 140, 0.7, 180, 480, 250 | staged assaults |
@@ -284,6 +285,9 @@ HashMap: `"group"`, `"task"`, `"pos"`, `"objective"` (id or `""`).
 - `AIC_fnc_fireMission` — `[commander, artyGroup, pos, rounds] call` → bool. Uses `doArtilleryFire` with the best-scoring magazine (`artilleryMagScore`) from `getArtilleryAmmo`. Never fire within 150 m of friendly units (danger close check: alive units of a side with `getFriend >= 0.6`, excluding civilians unless the commander's side is civilian, excluding aircraft above 50 m). Reports.
 - `AIC_fnc_tasksAir` — `[commander, group, pos] call` → bool. Raises crew skill to setting `"casSkill"` (unit variable `"AIC_skilled"`), reveals the target's contacts with full knowledge and `doTarget`s the most valuable, then flies MOVE (detour via `flightPath`) → MOVE initial point (`AIC_CAS_IP_PLANE` / `AIC_CAS_IP_HELI` short of the target, run-in side) → SAD → MOVE egress → LOITER (`"AIC_airLoiterWp"`). Task `SUPPORT`, sets `"lastAirTime"`.
 - `AIC_fnc_airDefence` — `[group] call` → 0 (none), 1 (shoulder-fired anti-air launcher aboard), 2 (crews an anti-air vehicle). Launcher classes cached in `AIC_ns` `"aaLauncherClasses"`. `supportCycle` skips clusters at 2 for every aircraft and at 1 for helicopters.
+- `AIC_fnc_airfields` — `[] call` → `[[id, [x,y,0]], ...]` from the world config (`ilsPosition`, `SecondaryAirports`), read once (`AIC_ns` `"airfields"`).
+- `AIC_fnc_heldAirfield` — `[commander, pos] call` → `[id, pos]` of the nearest airfield within an owned objective's radius + `AIC_AIRFIELD_HOLD_RANGE`, else `[]`.
+- `AIC_fnc_rearmCycle` — `[commander] call` → planes sent or turned around. Commander cycle step 12a. Free planes with no ammunition, fuel below `AIC_PLANE_RTB_FUEL` or damage above 0.3 get `assignToAirport` + `landAt` a held airfield (task `RTB`, record `"airfield"`, `"turnaround"`); down and still for `AIC_TURNAROUND_TIME` s they are restocked and set `IDLE`; not down after `AIC_REARM_TIMEOUT` s they are given up on. `supportCycle` skips planes with `"airfield"` set, `monitorOrders` leaves their RTB alone.
 
 ### ui (`functions/ui`)
 - `AIC_fnc_report` — `[commander] call`. If `reportToPlayers` and something changed (stance change, new major threat, objective captured/lost) send a short `sideChat`-style message to players of that side via `remoteExec ["systemChat", side]` (or `[side, "HQ"] sideChat` via remoteExec). Throttled — max one message per 20 s; tracks last state in the commander under key `"lastReport"` (HashMap) — **allowed extra key**.

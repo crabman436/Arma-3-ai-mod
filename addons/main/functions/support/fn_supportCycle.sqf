@@ -192,6 +192,8 @@ if (_useAir) then {
         };
         private _onSortie = _task == "SUPPORT";
         if (!_onSortie && { !_cooldownOver }) then { continue };
+        // on its way to an airfield to rearm (AIC_fnc_rearmCycle)
+        if ((_rec getOrDefault ["airfield", -1]) >= 0) then { continue };
         if ((_rec getOrDefault ["strength", 1]) <= _retreatThreshold) then { continue };
 
         private _veh = objectParent leader _grp;

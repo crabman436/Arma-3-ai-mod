@@ -214,8 +214,9 @@ private _fnc_setIdle = {
             // end RTB so the garrison system can take the crew over
             if (_task == "RTB" && {!isNull _lv} && {!alive _lv || {!canMove _lv}}) then { true } else {
                 switch (_type) do {
-                    // planes end the retreat in a 1200 m LOITER and never stop
-                    case "PLANE": { _dist < AIC_NEAR_HQ_PLANE && {_age > 60} };
+                    // planes end the retreat in a 1200 m LOITER and never stop;
+                    // one landing at an airfield to rearm is AIC_fnc_rearmCycle's
+                    case "PLANE": { (_rec getOrDefault ["airfield", -1]) < 0 && {_dist < AIC_NEAR_HQ_PLANE} && {_age > 60} };
                     // helicopters HOLD/hover above the rally point; a transport
                     // going back to its parking place (RTB) lands there, not
                     // on the nearest helipad 300 m away

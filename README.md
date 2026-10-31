@@ -460,6 +460,13 @@ the target and pointed at the most valuable vehicle there. An aircraft already
 up with ammunition left goes straight on to the next target instead of waiting
 for the cooldown. Crews on CAS are raised to the `casSkill` setting.
 
+A plane that is out of ammunition, below 30 % fuel or damaged lands at an
+**airfield the general holds**: any of the map's airfields within 500 m of an
+owned objective or base. It is assigned to that airfield, lands, spends two
+minutes on the ground being rearmed, refuelled and repaired, and is then
+available again. Without a held airfield it stays up as it is. Helicopters use
+their parks and the ammo trucks instead.
+
 ### Supply trucks
 
 With `useSupplyTrucks` on, the general sends repair, fuel and ammo trucks to

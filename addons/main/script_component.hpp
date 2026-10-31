@@ -133,6 +133,13 @@
 #define AIC_CAS_IP_HELI 1200
 // no strike with own troops this close to the target (m)
 #define AIC_CAS_DANGER_CLOSE 200
+// planes: an airfield counts as held within an owned objective's radius plus
+// this (m); a free plane below this fuel goes to rearm; seconds on the ground
+// for a turnaround; seconds before a plane that never lands is given up on
+#define AIC_AIRFIELD_HOLD_RANGE 500
+#define AIC_PLANE_RTB_FUEL 0.3
+#define AIC_TURNAROUND_TIME 120
+#define AIC_REARM_TIMEOUT 900
 
 // ---------------------------------------------------------------- transport
 // s a transport-only crew stays put before leaving for its base, so squads
