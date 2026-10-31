@@ -61,6 +61,11 @@ private _toWake = (_cmd getOrDefault ["groups", []]) select { _x isEqualType grp
     };
 } forEach (_cmd getOrDefault ["objectives", []]);
 
+// marches end: automatic combat mode and road following back to default
+{
+    if (_x isEqualType grpNull && { !isNull _x }) then { [_x, false] call AIC_fnc_setMarch; };
+} forEach _toWake;
+
 private _woken = 0;
 {
     if (_x isEqualType grpNull && { !isNull _x } && { !(_x getVariable ["AIC_noDynSim", false]) } && { dynamicSimulationEnabled _x }) then {

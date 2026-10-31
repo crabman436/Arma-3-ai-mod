@@ -341,6 +341,22 @@ taken by infantry: the planner picks infantry first, and vehicles stop about
 250 m outside to give fire support. They only go in if the infantry is lost. On
 open ground vehicles go in at a walk too.
 
+Long moves are **marches**. On a march the automatic combat mode is off, so a
+column that spots a distant enemy keeps walking instead of crawling the last
+kilometres, and vehicles stay on the roads in column with their lead vehicle
+held back so the rest keep up. The march ends 400 m from the target, at the
+assembly area, or as soon as the group is engaged or knows of enemies within
+500 m, and everything goes back to normal.
+
+Positions come from the engine's own terrain scoring: landing zones on open
+flat ground, assembly areas in woods and folds, flanking points through cover,
+motor pools on flat open ground. Vehicles on overwatch pick high ground that
+has a line of sight to the town. Helicopters land on their own helipad at the
+landing zone and in the park, rather than on whatever pad is nearest.
+
+Intel comes from one engine target query per group leader, so the general
+knows what its troops have recognised, with the engine's own position errors.
+
 Infantry does not move as one mass. Each group gets its own place: three lanes
 side by side on an approach, then a second approach to one side and a third to
 the other, then rows behind them. Groups from one base take different ways on a

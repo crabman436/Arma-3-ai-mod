@@ -15,8 +15,10 @@
  *                    walk (speed LIMITED), COMBAT, in line. A flanking team
  *                    uses its flanking point as line of departure.
  *     Vehicles     : built-up objective with infantry in the assault: to an
- *                    overwatch position outside the town and hold there,
- *                    firing in support (record "overwatch"). Open ground, or
+ *                    overwatch position outside the town, on high ground
+ *                    with a terrain line of sight to it when there is any
+ *                    within 150 m, and hold there, firing in support
+ *                    (record "overwatch"). Open ground, or
  *                    no infantry: to the line of departure, then seek and
  *                    destroy at a walk, so they do not race ahead.
  *
@@ -144,6 +146,14 @@ private _lanePos = {
 if (!_isInf && {_assault get "urban"} && {_assault get "hasInf"}) exitWith {
     // never into the town: a wet overwatch spot falls back to the assembly area
     private _p = [_radius + AIC_ASSAULT_OVERWATCH, 20, [_stage, _target getPos [_radius + AIC_ASSAULT_OVERWATCH, _assault get "dir"]] select (_stage isEqualTo [])] call _lanePos;
+    // high ground near it that can actually see the town (terrain line of sight, 2 m up)
+    private _eyeTarget = (AGLToASL _target) vectorAdd [0, 0, 2];
+    {
+        _x params ["_spot", "_score"];
+        if (_score <= 0) exitWith {};
+        private _q = [_spot select 0, _spot select 1, 0];
+        if (!surfaceIsWater _q && {!terrainIntersectASL [(AGLToASL _q) vectorAdd [0, 0, 2], _eyeTarget]}) exitWith {_p = _q};
+    } forEach (selectBestPlaces [_p, 150, "hills - forest - trees - houses - 10*sea", 15, 6]);
     private _wp = [_p, "MOVE", "AWARE", "LIMITED", "WEDGE", 40] call _fnc_wp;
     [_p, "HOLD", "AWARE", "LIMITED", "WEDGE", 40] call _fnc_wp;
     _group setCurrentWaypoint _wp;

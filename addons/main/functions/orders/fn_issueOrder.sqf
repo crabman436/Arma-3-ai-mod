@@ -398,6 +398,14 @@ private _ok = switch (_task) do {
 };
 if (isNil "_ok") then { _ok = false; };
 
+// a long move is a march: no automatic combat mode (the crawl), vehicles on
+// roads in column. AIC_fnc_monitorOrders ends it near the target or on contact
+if (_type in ["INF", "MOTOR", "MECH", "ARMOR"]) then {
+    private _march = _ok && {_task in ["ATTACK", "REINFORCE", "DEFEND", "RETREAT", "RTB"]}
+        && {((getPosATL (leader _group)) distance2D _pos) > AIC_MARCH_RANGE};
+    [_group, _march] call AIC_fnc_setMarch;
+};
+
 // Static/arty groups return false from movement orders but still hold the
 // task (they fight in place), so the record is updated regardless.
 _record set ["task", _task];

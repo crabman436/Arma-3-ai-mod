@@ -22,9 +22,10 @@
             cleared (AIC_fnc_clearWaypoints);
           - the transport gets a LOAD waypoint at the pickup point (cargo
             leader position, road-snapped for ground vehicles; for
-            helicopters a flat spot found with BIS_fnc_findSafePos /
-            findEmptyPosition with an invisible "Land_HelipadEmpty_F" so the
-            pilot lands, stored as "pickupLz");
+            helicopters open flat ground by the engine's terrain scoring
+            (AIC_fnc_bestPlace), else BIS_fnc_findSafePos / findEmptyPosition,
+            with an invisible "Land_HelipadEmpty_F" the pilot is told to land
+            on, stored as "pickupLz");
           - the cargo gets a GETIN waypoint attached to the vehicle
             (waypointAttachVehicle) and synchronised with the LOAD;
           - the transport group's own members on foot are ordered back in.
@@ -166,7 +167,9 @@ private _fnc_lzPos = {
         if (surfaceIsWater _p || { (_p distance2D _c) < 1 } || { (_p distance2D _c) > (_rad + 50) }) exitWith { [] };
         _p
     };
-    private _p = [_r, 12, 0.25] call _fnc_try;
+    // open ground by the engine's own terrain scoring first, flat enough to land on
+    private _p = [_c, _r, "meadow - forest - 2*trees - 3*houses - 10*sea - hills", 12] call AIC_fnc_bestPlace;
+    if (_p isEqualTo []) then { _p = [_r, 12, 0.25] call _fnc_try; };
     if (_p isEqualTo []) then { _p = [_r * 2.5, 15, 0.2] call _fnc_try; };
     if (_p isEqualTo []) then {
         private _e = _c findEmptyPosition [0, _r, typeOf _veh];
@@ -245,6 +248,7 @@ private _tBeh = if (_isHeli) then { "CARELESS" } else { "AWARE" };
 _tGroup setBehaviour _tBeh;
 _tGroup setCombatMode "YELLOW";
 _tGroup setSpeedMode "FULL";
+[_tGroup, !_isHeli] call AIC_fnc_setMarch;
 if (_isHeli) then { _veh land "NONE"; };
 
 // own members on foot climb back in

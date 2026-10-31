@@ -17,7 +17,8 @@
  *     "slots"       - lanes handed out so far
  *   The assembly area is objective radius / 2 + 600 m out, on the first
  *   group's side (the HQ's side if that group is already close), or up to 90
- *   degrees around if that spot is wet or has an enemy known within 300 m.
+ *   degrees around if that spot is wet or has an enemy known within 300 m,
+ *   moved to the best cover within 200 m of it (AIC_fnc_bestPlace).
  *   An assault that finds no such spot starts in state "GO".
  *   AIC_fnc_orderAssault gives the groups their orders, AIC_fnc_assaultCycle
  *   starts the assault and ends it.
@@ -81,6 +82,14 @@ private _dir = if (_dist > (_stageDist + 200) || { !(_hq isEqualType []) } || { 
             _dir = _dir + _x;
         };
 } forEach [0, 45, -45, 90, -90];
+// then the best cover near that spot: woods and folds in the ground, not houses
+if (_stage isNotEqualTo []) then {
+    private _better = [_stage, 200, "forest + trees + 0.5*hills - 2*houses - 10*sea"] call AIC_fnc_bestPlace;
+    if (_better isNotEqualTo [] && {([_cmd, _better, 300] call AIC_fnc_nearestThreat) isEqualTo []}) then {
+        _stage = _better;
+        _dir = _pos getDir _stage;
+    };
+};
 
 private _assault = createHashMapFromArray [
     ["id", _objective],

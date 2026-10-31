@@ -76,6 +76,7 @@ private _goHome = [];
 
 private _fnc_setIdle = {
     params ["_rec"];
+    [_rec getOrDefault ["group", grpNull], false] call AIC_fnc_setMarch;
     _rec set ["task", "IDLE"];
     _rec set ["taskPos", []];
     _rec set ["taskTime", time];
@@ -138,6 +139,22 @@ private _fnc_setIdle = {
     };
 
     private _dist = _leaderPos distance2D _taskPos;
+
+    // a march ends short of the target, at the assembly area, or on contact
+    if (_group getVariable ["AIC_marching", false]) then {
+        private _engaged = _rec getOrDefault ["lastEngaged", -1e6];
+        private _atStage = (_rec getOrDefault ["staged", false]) isEqualTo true
+            && {count (_rec getOrDefault ["stagePos", []]) >= 2}
+            && {(_leaderPos distance2D (_rec get "stagePos")) < 150};
+        if (
+            _dist < AIC_MARCH_END || {_atStage}
+            || {_engaged isEqualType 0 && {(time - _engaged) < 30}}
+            || {([_cmd, _leaderPos, 500] call AIC_fnc_nearestThreat) isNotEqualTo []}
+        ) then {
+            [_group, false] call AIC_fnc_setMarch;
+        };
+    };
+
     private _wps = waypoints _group;
     private _wpDone = (count _wps == 0) || {(currentWaypoint _group) >= count _wps};
     private _age = time - _taskTime;
@@ -217,7 +234,11 @@ private _fnc_setIdle = {
             private _veh = objectParent _leader;
             if (!isNull _veh && {alive _veh} && {_veh isKindOf "Helicopter"} && {!isTouchingGround _veh}) then {
                 [_group] call AIC_fnc_clearWaypoints;
-                _veh land "LAND";
+                // its own place in the helicopter park, if it has one
+                private _pad = _rec getOrDefault ["parkPad", objNull];
+                if (!(_pad isEqualType objNull) || {isNull _pad} || {(_veh distance2D _pad) > 300} || {!(_veh landAt [_pad, "LAND"])}) then {
+                    _veh land "LAND";
+                };
             };
         };
         [_rec] call _fnc_setIdle;

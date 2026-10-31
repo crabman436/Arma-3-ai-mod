@@ -5,16 +5,16 @@
         Builds the commander's picture of the enemy from what its own groups
         actually know (no omniscience).
 
-        Algorithm (performance-aware, one pass over enemy groups):
+        Algorithm (one engine target query per observer):
           - collect the leaders of all commanded groups once ([pos, group, leader]);
-          - iterate every hostile group once (side getFriend < 0.6, alive units);
-            for each, consider up to 4 "probe" objects (leader, the leader's
-            vehicle, a few other members/vehicles) and only own leaders within
-            1500 m of the enemy leader; an enemy group is detected when an own
-            group knowsAbout a probe > 1.5;
-          - perceived position = targetKnowledge position from the observer
-            with the smallest position error (z forced to 0, ATL);
-            lastSeen = targetKnowledge last-seen time;
+          - every observer leader lists what it knows within 1500 m
+            (nearTargets: perceived position, perceived side, position
+            error, the object). A target counts once the observer has
+            recognised it as a hostile side, and the group it belongs to
+            (its own group, or its commander's for a vehicle) is a contact;
+          - perceived position = the observer's with the smallest position
+            error (z forced to 0, ATL), lastSeen = that observer's
+            targetKnowledge last-seen time;
           - detected groups get a fresh contact record (type / power via
             AIC_fnc_classifyGroup / AIC_fnc_groupPower);
           - previous contacts not detected this cycle are kept with their old
@@ -44,7 +44,6 @@ if !(_side in [west, east, independent, civilian]) exitWith { [] };
 
 private _now = time;
 private _detectRange = 1500;
-private _knowThreshold = 1.5;
 private _forgetAfter = 300;
 
 // ------------------------------------------------------------ own observers
@@ -63,96 +62,63 @@ private _previous = createHashMap;
 private _contacts = [];
 private _seen = createHashMap; // hashValue -> true for groups detected this cycle
 
-// ------------------------------------------------------------ single pass over hostile groups
+// ------------------------------------------------------------ what the observers know
+// one target query per observer leader: every target it knows about with the
+// perceived position, perceived side and position error, in one engine call
 if (_observers isNotEqualTo []) then {
+    private _best = createHashMap; // hashValue enemy group -> [error, pos, observer leader, probe, group]
     {
-        private _eg = _x;
-        private _eSide = side _eg;
-        if (
-            _eSide in [west, east, independent, civilian]
-            && { _eSide != _side }
-            && { (_side getFriend _eSide) < AIC_HOSTILE_FRIEND }
-        ) then {
-            private _eLeader = leader _eg;
-            private _alive = (units _eg) select { alive _x };
-            if (_alive isNotEqualTo []) then {
-                if (!alive _eLeader) then { _eLeader = _alive select 0; };
-                private _ePos = getPosATL _eLeader;
-
-                // own observers in range of this enemy group
-                private _near = _observers select { ((_x select 0) distance2D _ePos) < _detectRange };
-                if (_near isNotEqualTo []) then {
-                    // closest observers first: the exact fix that ends the probing comes sooner
-                    if (count _near > 1) then {
-                        private _order = [];
-                        { _order pushBack [(_x select 0) distance2D _ePos, _forEachIndex]; } forEach _near;
-                        _order sort true;
-                        _near = _order apply { _near select (_x select 1) };
-                    };
-                    // probe objects: leader, its vehicle, and up to two more members / their vehicles
-                    private _probes = [_eLeader];
-                    private _veh = objectParent _eLeader;
-                    if (!isNull _veh) then { _probes pushBack _veh; };
-                    {
-                        if (count _probes >= 4) exitWith {};
-                        private _v = vehicle _x;
-                        if !(_v in _probes) then { _probes pushBack _v; };
-                    } forEach _alive;
-
-                    private _bestErr = 1e10;
-                    private _bestPos = [];
-                    private _lastSeen = -1;
-                    private _detected = false;
-
-                    {
-                        // an exact fix: nothing more to learn from other observers
-                        if (_bestErr <= 1) exitWith {};
-                        _x params ["", "_ownGroup", "_ownLeader"];
-                        {
-                            if (_bestErr <= 1) exitWith {};
-                            private _probe = _x;
-                            if ((_ownGroup knowsAbout _probe) > _knowThreshold) then {
-                                _detected = true;
-                                // [knownByGroup, knownByUnit, lastSeen, lastThreat, side, errorMargin, position]
-                                private _tk = _ownLeader targetKnowledge _probe;
-                                if (count _tk >= 7) then {
-                                    private _seenAt = _tk select 2;
-                                    if (_seenAt isEqualType 0 && { _seenAt > _lastSeen }) then { _lastSeen = _seenAt; };
-                                    private _err = _tk select 5;
-                                    private _p = _tk select 6;
-                                    if (
-                                        _err isEqualType 0 && { _p isEqualType [] } && { count _p >= 2 }
-                                        && { (_p select 0) != 0 || { (_p select 1) != 0 } }
-                                        && { _err < _bestErr }
-                                    ) then {
-                                        _bestErr = _err;
-                                        _bestPos = [_p select 0, _p select 1, 0];
-                                    };
-                                };
-                            };
-                        } forEach _probes;
-                    } forEach _near;
-
-                    if (_detected) then {
-                        private _key = hashValue _eg;
-                        if (_bestPos isEqualTo []) then { _bestPos = [_ePos select 0, _ePos select 1, 0]; };
-                        // knowsAbout > 1.5 means the contact is current (knowledge decays);
-                        // reported-only targets may have no valid sighting time
-                        if (_lastSeen <= 0) then { _lastSeen = _now; };
-
-                        private _rec = _previous getOrDefault [_key, createHashMap];
-                        _rec set ["group", _eg];
-                        _rec set ["pos", _bestPos];
-                        _rec set ["type", [_eg] call AIC_fnc_classifyGroup];
-                        _rec set ["power", [_eg] call AIC_fnc_groupPower];
-                        _rec set ["lastSeen", _lastSeen max (_rec getOrDefault ["lastSeen", -1])];
-                        _contacts pushBack _rec;
-                        _seen set [_key, true];
-                    };
-                };
+        _x params ["", "", "_ownLeader"];
+        {
+            _x params ["_tPos", "", "_tSide", "", "_obj", "_err"];
+            // side only comes with enough knowledge: that is the detection threshold
+            if (
+                isNull _obj
+                || { !(_tSide in [west, east, independent, civilian]) }
+                || { _tSide == _side }
+                || { (_side getFriend _tSide) >= AIC_HOSTILE_FRIEND }
+            ) then { continue };
+            private _eg = if (_obj isKindOf "CAManBase") then { group _obj } else { group (effectiveCommander _obj) };
+            if (isNull _eg) then { continue };
+            private _key = hashValue _eg;
+            private _cur = _best getOrDefault [_key, []];
+            if (_cur isEqualTo [] || { _err < (_cur select 0) }) then {
+                _best set [_key, [_err, [_tPos select 0, _tPos select 1, 0], _ownLeader, _obj, _eg]];
             };
+        } forEach (_ownLeader nearTargets _detectRange);
+    } forEach _observers;
+
+    {
+        _y params ["_err", "_bestPos", "_ownLeader", "_probe", "_eg"];
+        // a misread side is no contact
+        private _eSide = side _eg;
+        if (!(_eSide in [west, east, independent, civilian]) || { _eSide == _side } || { (_side getFriend _eSide) >= AIC_HOSTILE_FRIEND }) then { continue };
+        private _alive = (units _eg) select { alive _x };
+        if (_alive isEqualTo []) then { continue };
+
+        // [knownByGroup, knownByUnit, lastSeen, lastThreat, side, errorMargin, position]
+        private _lastSeen = -1;
+        private _tk = _ownLeader targetKnowledge _probe;
+        if (count _tk >= 7) then {
+            private _seenAt = _tk select 2;
+            if (_seenAt isEqualType 0) then { _lastSeen = _seenAt; };
         };
-    } forEach allGroups;
+        // reported-only targets may have no valid sighting time
+        if (_lastSeen <= 0) then { _lastSeen = _now; };
+        if ((_bestPos select 0) == 0 && { (_bestPos select 1) == 0 }) then {
+            private _ePos = getPosATL (_alive select 0);
+            _bestPos = [_ePos select 0, _ePos select 1, 0];
+        };
+
+        private _rec = _previous getOrDefault [_x, createHashMap];
+        _rec set ["group", _eg];
+        _rec set ["pos", _bestPos];
+        _rec set ["type", [_eg] call AIC_fnc_classifyGroup];
+        _rec set ["power", [_eg] call AIC_fnc_groupPower];
+        _rec set ["lastSeen", _lastSeen max (_rec getOrDefault ["lastSeen", -1])];
+        _contacts pushBack _rec;
+        _seen set [_x, true];
+    } forEach _best;
 };
 
 // ------------------------------------------------------------ keep recent, not re-detected contacts

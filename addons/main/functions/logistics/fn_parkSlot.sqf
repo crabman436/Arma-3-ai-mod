@@ -3,7 +3,7 @@
  * Description:
  *   A parking place at a base for a vehicle group (server only, setting
  *   "useVehicleParks"). Each base lays out, the first time it is asked, a
- *   motor pool on a flat open spot: up to 20 places in rows for ground
+ *   motor pool on open flat ground (AIC_fnc_bestPlace): up to 20 places in rows for ground
  *   vehicles ("parkSlots") and up to 6 for helicopters ("heliSlots"), each
  *   helicopter place with an invisible helipad so the pilot lands there
  *   (base key "heliPads", deleted by AIC_fnc_removeCommander).
@@ -45,7 +45,11 @@ if !(_key in _obj) then {
     private _cols = [5, 3] select _isHeli;
     private _rows = [4, 2] select _isHeli;
     private _reach = ((_obj getOrDefault ["radius", 300]) min 250) max 60;
-    private _centre = [_c, 30, _reach, 20, 0, 0.15, 0, [], [_c, _c]] call BIS_fnc_findSafePos;
+    // open flat ground by the engine's terrain scoring, else the old safe-spot search
+    private _centre = [_c, _reach, "meadow - forest - 2*trees - 3*houses - 10*sea - 2*hills", _size] call AIC_fnc_bestPlace;
+    if (_centre isEqualTo []) then {
+        _centre = [_c, 30, _reach, 20, 0, 0.15, 0, [], [_c, _c]] call BIS_fnc_findSafePos;
+    };
     private _dir = _c getDir _centre;
     private _slots = [];
     for "_r" from 0 to (_rows - 1) do {
@@ -99,4 +103,8 @@ private _index = if (_own >= 0) then {_own} else {_free};
 if (_index < 0) exitWith {[]};
 
 _claims set [_index, _group];
+// a helicopter is told to land on its own pad (AIC_fnc_monitorOrders, RTB)
+if (_isHeli) then {
+    _rec set ["parkPad", (_obj getOrDefault ["heliPads", []]) param [_index, objNull]];
+};
 +(_slots select _index)

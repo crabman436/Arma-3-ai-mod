@@ -74,6 +74,15 @@
 #define AIC_CROWD_SPREAD 150
 #define AIC_CROWD_COOLDOWN 120
 
+// ---------------------------------------------------------------- marches
+// a move longer than this (m) is a march (no automatic combat mode, vehicles
+// on roads in column); it ends this close to the target (m)
+#define AIC_MARCH_RANGE 600
+#define AIC_MARCH_END 400
+// column spacing (m) and the lead vehicle's speed limit (km/h) of a convoy
+#define AIC_CONVOY_SEPARATION 35
+#define AIC_CONVOY_SPEED 70
+
 // ---------------------------------------------------------------- patrols
 // armed cars also patrol to an owned objective this close (m)
 #define AIC_PATROL_LINK_RANGE 2500

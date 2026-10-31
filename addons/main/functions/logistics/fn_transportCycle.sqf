@@ -181,6 +181,14 @@ private _fnc_teamRiding = {
     }) >= 0}
 };
 
+// land on the ride's own helipad when there is one (exact), else near here
+private _fnc_landAt = {
+    params ["_veh", "_pad", "_mode"];
+    if (!(_pad isEqualType objNull) || { isNull _pad } || { !(_veh landAt [_pad, _mode]) }) then {
+        _veh land _mode;
+    };
+};
+
 // seats for cargo units outside the vehicle: cargo seats first, then FFV
 private _fnc_boardFallback = {
     params ["_units", "_veh"];
@@ -400,7 +408,7 @@ private _fnc_boardFallback = {
             if (_isHeli && { !([_veh] call AIC_fnc_isLanded) } && { (_vPos distance2D _pickupPos) < 300 || { _near } }) then {
                 if ((_rec getOrDefault ["hoverTime", -1]) < 0) then { _rec set ["hoverTime", time]; };
                 if ((time - (_rec get "hoverTime")) > 45 && { (time - (_rec getOrDefault ["landOrderTime", -1e6])) > 60 }) then {
-                    _veh land "GET IN";
+                    [_veh, _tRec getOrDefault ["pickupLz", objNull], "GET IN"] call _fnc_landAt;
                     _rec set ["landOrderTime", time];
                     ["%1: %2 ordered to land for pickup of group %3", [_side, groupId _tGroup, groupId _grp]] call AIC_fnc_log;
                 };
@@ -434,7 +442,10 @@ private _fnc_boardFallback = {
                         _leader doMove _vPos;
                         { if (_x isNotEqualTo _leader) then { _x doFollow _leader; }; } forEach _units;
                         private _tLeader = leader _tGroup;
-                        if (!isNull _tLeader && { alive _tLeader }) then { _tLeader doMove _lpos; };
+                        if (!isNull _tLeader && { alive _tLeader }) then {
+                            [_tGroup, false] call AIC_fnc_setMarch;
+                            _tLeader doMove _lpos;
+                        };
                         _rec set ["approachTime", time];
                         ["%1: pickup of group %2 by %3 stalled %4 m apart, both sent towards each other", [
                             _side, groupId _grp, groupId _tGroup, round _dVeh
@@ -515,7 +526,7 @@ private _fnc_boardFallback = {
                 [_grp, _veh, true, true] call AIC_fnc_dismountCarrier;
             } else {
                 if (_nearAge > 20 && { (time - (_rec getOrDefault ["landOrderTime", -1e6])) > 45 }) then {
-                    _veh land "GET OUT";
+                    [_veh, _tRec getOrDefault ["lz", objNull], "GET OUT"] call _fnc_landAt;
                     _rec set ["landOrderTime", time];
                     ["%1: %2 ordered to land at the LZ for group %3", [_side, groupId _tGroup, groupId _grp]] call AIC_fnc_log;
                 };
@@ -542,7 +553,7 @@ private _fnc_boardFallback = {
     };
     if (_wpsDone && { _isHeli } && { !([_veh] call AIC_fnc_isLanded) }
         && { (time - (_rec getOrDefault ["landOrderTime", -1e6])) > 45 }) then {
-        _veh land "GET OUT";
+        [_veh, _tRec getOrDefault ["lz", objNull], "GET OUT"] call _fnc_landAt;
         _rec set ["landOrderTime", time];
         continue;
     };

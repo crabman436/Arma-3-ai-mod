@@ -80,6 +80,8 @@ class CfgFunctions
             class garrisonBuildings {};
             class monitorGarrison {};
             class orderAssault {};
+            class bestPlace {};
+            class setMarch {};
             class splitForAttack {};
         };
 

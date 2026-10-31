@@ -67,6 +67,10 @@ private _fnc_merge = {
     [_fromGrp] call AIC_fnc_clearWaypoints;
     _units joinSilent _toGrp;
     _units doFollow (leader _toGrp);
+    // the newcomers take the state of the group they join (march or not)
+    private _marching = _toGrp getVariable ["AIC_marching", false];
+    _toGrp setVariable ["AIC_marching", !_marching];
+    [_toGrp, _marching] call AIC_fnc_setMarch;
     _to set ["initialSize", (_to getOrDefault ["initialSize", 1]) + (_from getOrDefault ["initialSize", count _units])];
     _from set ["teamId", 0];
     // positions again, so the newcomers get one as well

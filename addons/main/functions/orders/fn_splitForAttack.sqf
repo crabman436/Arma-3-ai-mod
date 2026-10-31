@@ -59,6 +59,9 @@ private _via = [];
     if (!surfaceIsWater _p) exitWith {_via = [_p select 0, _p select 1, 0]};
 } forEach ([[60, -60], [-60, 60]] select (random 1 < 0.5));
 if (_via isEqualTo []) exitWith {false};
+// cover on the way around, if there is any close by
+private _covered = [_via, 120, "forest + trees - 2*houses - 10*sea"] call AIC_fnc_bestPlace;
+if (_covered isNotEqualTo []) then {_via = _covered};
 
 private _new = [_cmd, _group, 2] call AIC_fnc_splitGroup;
 if (_new isEqualTo []) exitWith {false};

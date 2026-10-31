@@ -70,6 +70,7 @@ User-tunable values are settings, not constants.
 | `AIC_ASSAULT_AXIS_LANES` | 3 | orderAssault: groups per approach |
 | `AIC_CROWD_GROUPS`, `AIC_CROWD_RADIUS`, `AIC_CROWD_SPREAD`, `AIC_CROWD_COOLDOWN` | 3, 70, 150, 120 | spreadCycle |
 | `AIC_ASSAULT_STAGE`, `AIC_ASSAULT_FRONT`, `AIC_ASSAULT_READY`, `AIC_ASSAULT_WAIT`, `AIC_ASSAULT_MAX_WAIT`, `AIC_ASSAULT_OVERWATCH` | 600, 140, 0.7, 180, 480, 250 | staged assaults |
+| `AIC_MARCH_RANGE`, `AIC_MARCH_END`, `AIC_CONVOY_SEPARATION`, `AIC_CONVOY_SPEED` | 600, 400, 35, 70 | setMarch, issueOrder, monitorOrders |
 | `AIC_PATROL_LINK_RANGE` | 2500 | issueOrder: armed cars patrol to an owned objective this close |
 | `AIC_TEAM_MIN_APART`, `AIC_DEPOT_DELAY`, `AIC_TRANSPORT_RANGE_MULT`, `AIC_PICKUP_DANGER_RADIUS`, `AIC_RIDE_MIN_FUEL` | 240, 180, 2, 400, 0.2 | teamCycle, garrisonCycle, findTransport, issueOrder |
 | `AIC_SUPPLY_REACH`, `AIC_SUPPLY_WORK_TIME`, `AIC_SUPPLY_RADIUS`, `AIC_SUPPLY_TIMEOUT`, `AIC_SUPPLY_JOBS_PER_CYCLE`, `AIC_SUPPLY_DANGER_RADIUS` | 30, 20, 3000, 600, 2, 400 | supplyCycle |
@@ -254,6 +255,8 @@ HashMap: `"group"`, `"task"`, `"pos"`, `"objective"` (id or `""`).
 - `AIC_fnc_clearWaypoints` — `[group] call`.
 - `AIC_fnc_orderAttack` — `[group, pos, radius] call`. Combat-ish behaviour, `SAD` at the target with a MOVE approach waypoint; vehicles get speed/formations sensible to type.
 - `AIC_fnc_orderDefend` — `[group, pos, radius, type(optional), threatPos(optional), rear(optional)] call`. MOVE then `HOLD`; statics stay. Infantry take positions once they have arrived, driven by the commander cycle (`monitorOrders` → `monitorGarrison` → `garrisonBuildings`), never by a spawned script. Vehicles hold the threatened side (`threatPos`, else the nearest enemy the leader knows), or the side away from it with `rear` (transport-only crews); the threatened bearing stays in the group variable `"AIC_holdDir"` (-1 if none).
+- `AIC_fnc_bestPlace` — `[center, radius, expression, flatSize(optional, 0)] call` → `[x,y,0]` or `[]`. The engine's terrain scoring (`selectBestPlaces`) behind every position search: landing zones, assembly areas, flanking points and motor pools.
+- `AIC_fnc_setMarch` — `[group, on] call` → bool. Group variable `"AIC_marching"`: no automatic combat mode, vehicles on roads in column (`AIC_CONVOY_SEPARATION`), a convoy's lead vehicle limited to `AIC_CONVOY_SPEED`. `issueOrder` starts a march for moves over `AIC_MARCH_RANGE`, `monitorOrders` ends it within `AIC_MARCH_END` of the target, at the assembly area, or on contact; `orderTransport` puts ground transports on the march.
 - `AIC_fnc_orderAssault` — `[group, pos, radius, type, via, assault, record] call`. One ground group in a staged assault: its lane (`"assaultId"`, `"assaultLane"`), the assembly area (`"staged"`, `"stagePos"`) or the assault itself, vehicles on overwatch outside a built-up objective (`"overwatch"`).
 - `AIC_fnc_assaultFor` (strategy) — `[commander, group, pos, objectiveId] call` → the assault record, created on first use in commander key `"assaults"`, empty without an objective or with `stagedAssaults` off.
 - `AIC_fnc_assaultCycle` (strategy) — `[commander] call` → assaults started. Runs after `monitorOrders`, see the function header for the start rules.
