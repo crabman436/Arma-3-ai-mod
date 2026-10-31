@@ -50,6 +50,12 @@
 
 // a threat cluster this close to an objective's edge makes its garrison stand to
 #define AIC_STANDTO_RANGE 800
+// garrisons: units per building, how far a sentry looks (m), how long an
+// alarm keeps a garrison stood to (s) and the least time between alarms (s)
+#define AIC_GARRISON_PER_BUILDING 2
+#define AIC_SENTRY_RANGE 700
+#define AIC_ALARM_TIME 300
+#define AIC_ALARM_REPEAT 60
 
 // ---------------------------------------------------------------- assaults
 // assembly area: this far from the objective plus half its radius (m)

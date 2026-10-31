@@ -287,11 +287,21 @@ Each cycle the garrison system:
 
 Infantry on DEFEND take real positions once they arrive:
 
+- Each squad gets a **sector** of the town, the slice the other defenders
+  cover least, so several squads spread around the place instead of stacking
+  in its middle. The first squad takes the threatened side.
 - Up to half of the group mans empty, armed static weapons in the area.
   Mortars are left alone.
-- The rest fills the buildings nearest the threatened side of the town, up to
-  four men per building, so they cover each other. High positions and
-  positions near the threat go first, and two groups never take the same spot.
+- A squad of four or more posts one **sentry**, seven or more two, in the
+  highest position of a building at the edge of town on its sector, or on
+  high ground with trees when there is no building. Sentries watch outward,
+  and when one recognises an enemy the town's **alarm** goes: every group of
+  the place wakes and is told about the sighting, the garrison stands to, and
+  the defenders face that side until a threat cluster is known.
+- The rest spreads over the sector's buildings, at most two men per building
+  and never two houses side by side while others are free, so a squad covers
+  a street rather than a single house. High positions and positions near the
+  threat go first, and two groups never take the same spot.
 - Whoever is left, or a whole group on open ground, spreads on a ring around
   the objective next to whatever cover is close, crouched and facing out or
   towards the threat.

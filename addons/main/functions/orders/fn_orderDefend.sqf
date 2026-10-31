@@ -33,6 +33,8 @@
  *   5: BOOL   - (optional) vehicles hold the rear instead, default false
  *   6: ARRAY  - (optional) parking place at a base (AIC_fnc_parkSlot): the
  *               vehicle drives there, holds, relaxed, and stops its engine
+ *   7: NUMBER - (optional) infantry sector: bearing from the centre the
+ *               group's part of the place lies on, -1 for any, default -1
  *
  * Returns:
  *   BOOL - true if the order was applied
@@ -48,7 +50,8 @@ params [
     ["_type", "", [""]],
     ["_threatPos", [], [[]]],
     ["_rear", false, [false]],
-    ["_park", [], [[]]]
+    ["_park", [], [[]]],
+    ["_sector", -1, [0]]
 ];
 
 if (isNull _group || {count _pos < 2}) exitWith {false};
@@ -155,8 +158,9 @@ if (_type in ["MOTOR", "MECH", "ARMOR"]) exitWith {
 };
 
 // --- Infantry: move and hold (buildings: AIC_fnc_monitorGarrison) -----------
-// every group makes for its own part of the place, not for the very middle
-private _spot = _center getPos [(_radius min 200) * (0.15 + random 0.25), random 360];
+// every group makes for its own part of the place, not for the very middle:
+// its sector (AIC_fnc_issueOrder), else any
+private _spot = _center getPos [(_radius min 200) * (0.15 + random 0.25), [random 360, _sector] select (_sector >= 0)];
 _spot = if (surfaceIsWater _spot) then {_center} else {[_spot select 0, _spot select 1, 0]};
 private _wpM = _group addWaypoint [_spot, 0];
 _wpM setWaypointType "MOVE";

@@ -33,6 +33,7 @@
  *   3: NUMBER  - (optional) defended radius, default 150 (clamped to 30..200)
  *   4: ARRAY   - (optional) position of the nearest threat, default [] (none)
  *   5: BOOL    - (optional) man static weapons, default true
+ *   6: NUMBER  - (optional) the group's sector (bearing), -1 none, default -1
  *
  * Returns:
  *   BOOL - true when the garrison is done (all units placed or timed out)
@@ -47,7 +48,8 @@ params [
     ["_center", [], [[]]],
     ["_radius", 150, [0]],
     ["_threatPos", [], [[]]],
-    ["_manStatics", true, [true]]
+    ["_manStatics", true, [true]],
+    ["_sector", -1, [0]]
 ];
 
 if (isNull _group || {count _rec == 0} || {count _center < 2}) exitWith {false};
@@ -65,7 +67,7 @@ if (_valid && {(_rec getOrDefault ["garrisonDone", false]) isEqualTo true}) exit
         if (_old < 0 || {(abs ((_dir - _old + 540) % 360 - 180)) > 45}) then {
             _rec set ["garrisonWatchDir", _dir];
             {
-                if (alive _x && {isNull objectParent _x}) then {_x doWatch _threatPos};
+                if (alive _x && {isNull objectParent _x} && {!(_x getVariable ["AIC_sentry", false])}) then {_x doWatch _threatPos};
             } forEach (units _group);
         };
     };
@@ -77,7 +79,7 @@ if (!_valid) exitWith {
     _radius = (_radius min 200) max 30;
     private _done = false;
     if ((_leader distance2D _center) < ((_radius * 0.5) max 50)) then {
-        private _sent = [_group, _center, _radius, _threatPos, _manStatics] call AIC_fnc_garrisonBuildings;
+        private _sent = [_group, _center, _radius, _threatPos, _manStatics, _sector] call AIC_fnc_garrisonBuildings;
         _done = _sent == 0;
         _rec set ["garrisonToken", _token];
         _rec set ["garrisonTime", time];
@@ -98,7 +100,7 @@ private _timedOut = (time - (_rec getOrDefault ["garrisonTime", time])) > 120;
             if (unitReady _x || {((getPosATL _x) distance _bp) < 2.5}) then {
                 if (_x != _leader) then {doStop _x};
                 _x setUnitPos (_x getVariable ["AIC_garrisonStance", "UP"]);
-                _x doWatch (if (_hasThreat) then {_threatPos} else {_bp getPos [200, _center getDir _bp]});
+                _x doWatch (if (_hasThreat && {!(_x getVariable ["AIC_sentry", false])}) then {_threatPos} else {_bp getPos [200, _center getDir _bp]});
                 _x setVariable ["AIC_garrisonPos", nil];
             } else {
                 if (_timedOut) then {

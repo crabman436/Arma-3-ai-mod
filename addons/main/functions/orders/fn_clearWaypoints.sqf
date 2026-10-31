@@ -44,6 +44,7 @@ if (!isNull _leader && {alive _leader}) then {
         _x setVariable ["AIC_garrisonPos", nil];
         _x setVariable ["AIC_buildingPos", nil];
         _x setVariable ["AIC_garrisonStance", nil];
+        _x setVariable ["AIC_sentry", nil];
         private _gun = _x getVariable ["AIC_gunnerOf", objNull];
         if (!isNull _gun) then {
             _x setVariable ["AIC_gunnerOf", nil];

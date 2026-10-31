@@ -175,11 +175,16 @@ private _fnc_setIdle = {
     // step per cycle; AIC_fnc_dynSimCycle parks the group only when done).
     // Same radius as AIC_fnc_issueOrder gives AIC_fnc_orderDefend.
     if (_task == "DEFEND" && {_type == "INF"}) then {
-        [
+        private _threatPos = [_cmd, _taskPos] call AIC_fnc_nearestThreat;
+        if (_threatPos isEqualTo []) then {_threatPos = [_cmd, _objId] call AIC_fnc_alarmPos};
+        private _inPlace = [
             _group, _rec, _taskPos, (_objRec getOrDefault ["radius", _defRadius]) min 200,
-            [_cmd, _taskPos] call AIC_fnc_nearestThreat,
-            ([_cmd, "garrisonManStatics"] call AIC_fnc_getSetting) isEqualTo true
+            _threatPos,
+            ([_cmd, "garrisonManStatics"] call AIC_fnc_getSetting) isEqualTo true,
+            if ((_rec getOrDefault ["defendSectorObj", ""]) isEqualTo _objId) then {_rec getOrDefault ["defendSector", -1]} else {-1}
         ] call AIC_fnc_monitorGarrison;
+        // the sentries raise the alarm
+        if (_inPlace) then {[_cmd, _group, _rec] call AIC_fnc_sentryWatch};
     };
 
     // --- completion -----------------------------------------------------------

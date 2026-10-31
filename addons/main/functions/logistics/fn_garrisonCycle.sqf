@@ -46,7 +46,8 @@
              second group patrols). A threatened home does not send out new
              patrols.
           5. Stand-to. With a threat cluster within AIC_STANDTO_RANGE of a
-             home's edge its patrols come in and DEFEND (infantry into
+             home's edge, or a sentry's alarm (objective "alarmTime" within
+             AIC_ALARM_TIME), its patrols come in and DEFEND (infantry into
              positions facing the threat, record "standTo"), and armed
              vehicles that are parked or hold the wrong side of the town (more
              than 60 degrees off, at most every 120 s) move to the threatened
@@ -133,6 +134,8 @@ private _fnc_atObjective = {
 private _fnc_alert = {
     params ["_obj", "_entry"];
     (_entry getOrDefault ["threatDist", 1e6]) <= (([_obj] call _fnc_radius) + AIC_STANDTO_RANGE)
+    // or the sentries have raised the alarm (AIC_fnc_sentryWatch)
+    || { (time - (_obj getOrDefault ["alarmTime", -1e6])) < AIC_ALARM_TIME }
 };
 
 // does this group's vehicle carry somebody else's troops?
@@ -443,6 +446,7 @@ private _standTo = 0;
         // armed vehicles move to the side the attack comes from
         private _holdDir = _grp getVariable ["AIC_holdDir", -1];
         private _threatPos = [_cmd, _homePos] call AIC_fnc_nearestThreat;
+        if (_threatPos isEqualTo []) then { _threatPos = [_cmd, _home] call AIC_fnc_alarmPos; };
         if (
             _task isEqualTo "DEFEND"
             && { _type isNotEqualTo "INF" }

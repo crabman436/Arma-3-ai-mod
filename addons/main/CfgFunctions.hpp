@@ -79,6 +79,8 @@ class CfgFunctions
             class waterPos {};
             class garrisonBuildings {};
             class monitorGarrison {};
+            class sentryWatch {};
+            class alarmPos {};
             class orderAssault {};
             class bestPlace {};
             class setMarch {};

@@ -341,13 +341,48 @@ private _ok = switch (_task) do {
         private _antiAir = (_record getOrDefault ["antiAir", false]) isEqualTo true;
         private _rear = _antiAir || {(_record getOrDefault ["transportOnly", false]) isEqualTo true};
         private _threatPos = [_cmd, _pos] call AIC_fnc_nearestThreat;
+        // no cluster known yet: the side the sentries raised the alarm on
+        if (_threatPos isEqualTo [] && {_objective isNotEqualTo ""}) then {_threatPos = [_cmd, _objective] call AIC_fnc_alarmPos};
+        // infantry: a sector of its own, the slice of the place the other
+        // defenders cover least (kept while it defends this objective)
+        private _sector = -1;
+        if (_type == "INF" && {_objective isNotEqualTo ""}) then {
+            _sector = _record getOrDefault ["defendSector", -1];
+            if ((_record getOrDefault ["defendSectorObj", ""]) isNotEqualTo _objective || {_sector < 0}) then {
+                private _others = [];
+                {
+                    if (_y isEqualType createHashMap && {(_y getOrDefault ["group", grpNull]) isNotEqualTo _group}
+                        && {(_y getOrDefault ["task", ""]) isEqualTo "DEFEND"}
+                        && {(_y getOrDefault ["objective", ""]) isEqualTo _objective}
+                        && {(_y getOrDefault ["defendSectorObj", ""]) isEqualTo _objective}
+                        && {(_y getOrDefault ["defendSector", -1]) >= 0}) then {
+                        _others pushBack (_y get "defendSector");
+                    };
+                } forEach _groupData;
+                _sector = if (_others isEqualTo []) then {
+                    // the first defender takes the threatened side, else any
+                    if (_threatPos isNotEqualTo []) then {_pos getDir _threatPos} else {random 360}
+                } else {
+                    private _best = 0;
+                    private _bestGap = -1;
+                    for "_a" from 0 to 330 step 30 do {
+                        private _gap = 360;
+                        {_gap = _gap min (abs ((_a - _x + 540) % 360 - 180))} forEach _others;
+                        if (_gap > _bestGap) then {_bestGap = _gap; _best = _a};
+                    };
+                    _best + (random 20) - 10
+                };
+                _record set ["defendSector", _sector];
+                _record set ["defendSectorObj", _objective];
+            };
+        };
         // at a quiet base vehicles wait in the motor pool
         private _park = if (!_antiAir && {_threatPos isEqualTo []} && {_type in ["MOTOR", "MECH", "ARMOR"]}) then {
             [_cmd, _group, _objRec] call AIC_fnc_parkSlot
         } else {
             []
         };
-        [_group, _pos, [_radius min 200, 60] select _rear, _type, _threatPos, _rear, _park] call AIC_fnc_orderDefend
+        [_group, _pos, [_radius min 200, 60] select _rear, _type, _threatPos, _rear, _park, _sector] call AIC_fnc_orderDefend
     };
     case "PATROL": {
         // armed cars also drive to the next owned objective
