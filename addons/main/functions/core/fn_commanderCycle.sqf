@@ -6,8 +6,8 @@
         register groups, update groups, gather intel, cluster threats,
         update objectives, determine stance, score objectives, garrison
         homes (AIC_fnc_garrisonCycle homes only), allocate forces and issue
-        orders, garrison distribution, transports,
-        monitor orders, garbage cleanup, dynamic simulation (park / wake), support, debug
+        orders, garrison distribution, transports, supply trucks,
+        monitor orders, squad merges, garbage cleanup, dynamic simulation (park / wake), support, debug
         markers and player reports.
 
     Parameters:
@@ -66,9 +66,13 @@ _cmd set ["lastPlanTime", time];
 // 9. logistics: garrisons between owned objectives / bases, then transports
 [_cmd] call AIC_fnc_garrisonCycle;
 [_cmd] call AIC_fnc_transportCycle;
+[_cmd] call AIC_fnc_supplyCycle;
 
 // 10. follow up on running orders
 [_cmd] call AIC_fnc_monitorOrders;
+
+// 10a. split squads back together, remnants into groups with room
+[_cmd] call AIC_fnc_teamCycle;
 
 // 10b. garbage: old bodies / wrecks queued by the Killed handlers
 [_cmd] call AIC_fnc_cleanupCycle;

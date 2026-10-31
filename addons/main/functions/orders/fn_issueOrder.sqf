@@ -52,7 +52,9 @@
  *       function returns true without dispatching: the record now holds
  *       task "TRANSPORTED" (taskPos = target, objective = objective id,
  *       "final" = this order), so the same plan entry next cycle is
- *       skipped as externally managed.
+ *       skipped as externally managed. A group no single vehicle fits is
+ *       split into teams first, if each team gets its own vehicle
+ *       (AIC_fnc_splitForRide).
  *
  * Parameters:
  *   0: HASHMAP - commander
@@ -283,6 +285,10 @@ if (_type == "INF" && {_task in ["ATTACK", "REINFORCE", "DEFEND"]} && {_curTask 
     if (_alive isNotEqualTo [] && {(_mounted * 2) <= count _alive}
         && {((getPosATL (leader _group)) distance2D _pos) > _minDist}) then {
         private _tGrp = [_cmd, _group, _pos] call AIC_fnc_findTransport;
+        // too big for any one vehicle: teams, if each gets a vehicle of its own
+        if (isNull _tGrp && {[_cmd, _group, _pos, _task, _objective] call AIC_fnc_splitForRide}) then {
+            _tGrp = [_cmd, _group, _pos] call AIC_fnc_findTransport;
+        };
         if (!isNil "_tGrp" && {_tGrp isEqualType grpNull} && {!isNull _tGrp}) then {
             private _r = [_cmd, _tGrp, _group, _pos, _task, _pos, _objective] call AIC_fnc_orderTransport;
             if (!isNil "_r" && {_r isEqualTo true}) then { _task = "TRANSPORTED"; };
@@ -299,7 +305,12 @@ if (_task isEqualTo "TRANSPORTED") exitWith {
 
 // --- Dispatch ----------------------------------------------------------------
 private _ok = switch (_task) do {
-    case "ATTACK":    { [_group, _pos, _radius, _type] call AIC_fnc_orderAttack };
+    case "ATTACK": {
+        // a flanking team goes through its point (AIC_fnc_splitForAttack), once
+        private _via = _group getVariable ["AIC_attackVia", []];
+        _group setVariable ["AIC_attackVia", nil];
+        [_group, _pos, _radius, _type, _via] call AIC_fnc_orderAttack
+    };
     case "DEFEND": {
         // trucks wait behind the town instead of on the threatened side
         private _rear = (_record getOrDefault ["transportOnly", false]) isEqualTo true;

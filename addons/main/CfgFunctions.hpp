@@ -28,6 +28,8 @@ class CfgFunctions
             class classifyGroup {};
             class newGroupRecord {};
             class splitPassengers {};
+            class splitGroup {};
+            class teamCycle {};
             class groupPower {};
             class updateGroups {};
             class availableGroups {};
@@ -73,6 +75,7 @@ class CfgFunctions
             class waterPos {};
             class garrisonBuildings {};
             class monitorGarrison {};
+            class splitForAttack {};
         };
 
         class support
@@ -93,6 +96,10 @@ class CfgFunctions
             class canLeaveGarrison {};
             class garrisonCycle {};
             class dismountCarrier {};
+            class nearestBase {};
+            class supplyRoles {};
+            class supplyCycle {};
+            class splitForRide {};
             class flightPath {};
             class isLanded {};
             class freeSeats {};

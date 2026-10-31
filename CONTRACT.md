@@ -67,6 +67,12 @@ User-tunable values are settings, not constants.
 | `AIC_REISSUE_TOL_FIXED` | 50 | issueOrder same-job tolerance for fixed points; allocateForces "already DEFENDing HQ" |
 | `AIC_NEAR_HQ_GROUND` / `_HELI` / `_PLANE` | 250 / 400 / 1500 | allocateForces "at HQ" radius; PLANE also monitorOrders RETREAT/RTB completion |
 | `AIC_THREAT_RADIUS` | 1500 | garrisonStatus threat sum, allocateForces DEFENSIVE counter-attack near HQ |
+| `AIC_SUPPLY_REACH`, `AIC_SUPPLY_WORK_TIME`, `AIC_SUPPLY_RADIUS`, `AIC_SUPPLY_TIMEOUT`, `AIC_SUPPLY_JOBS_PER_CYCLE`, `AIC_SUPPLY_DANGER_RADIUS` | 30, 20, 3000, 600, 2, 400 | supplyCycle |
+| `AIC_TEAM_MIN_SIZE`, `AIC_TEAM_MAX`, `AIC_MAX_SIDE_GROUPS` | 3, 3, 240 | splitGroup, splitForRide limits |
+| `AIC_ATTACK_SPLIT_SIZE`, `AIC_ATTACK_SPLIT_RANGE`, `AIC_ATTACK_SPLIT_COOLDOWN` | 8, 600, 900 | monitorOrders: when a squad splits for an attack |
+| `AIC_TEAM_RALLY_WAIT` | 120 | transportCycle: s a team waits at the drop |
+| `AIC_TEAM_MERGE_RADIUS`, `AIC_TEAM_LIFETIME` | 150, 900 | teamCycle: merging teams |
+| `AIC_REMNANT_SIZE`, `AIC_REMNANT_JOIN_RADIUS`, `AIC_SQUAD_MAX_SIZE` | 2, 250, 12 | teamCycle: remnants |
 | `AIC_HOT_LZ_RADIUS` | 300 | transportCycle: a helicopter more than 600 m out moves an LZ with a threat this close |
 | `AIC_AIR_AVOID_RADIUS` | 700 | flightPath: distance transport helicopters keep from known hostile spots |
 | `AIC_STANDTO_RANGE` | 800 | garrisonCycle: a threat cluster this close to an objective's edge makes its garrison stand to |
@@ -149,6 +155,7 @@ HashMap with keys:
 - `"garrisonToken"`, `"garrisonTime"`, `"garrisonDone"` (orders): building occupation of an INF DEFEND group, written by `AIC_fnc_monitorGarrison`, reset by `AIC_fnc_issueOrder` (-1 / false). Valid only while `"garrisonToken"` equals the group variable `"AIC_orderToken"`. `"garrisonDone"`: all units placed or given up (120 s after `"garrisonTime"`).
 - `"garrisonWatchDir"` (orders): bearing the garrison of an INF DEFEND group watches (-1 = none), written by `AIC_fnc_monitorGarrison`.
 - `"standTo"`, `"standToTime"` (logistics): set by `AIC_fnc_garrisonCycle`. `"standTo"`: a patrol called in by an approaching threat, sent back on patrol once it has gone. `"standToTime"`: last time a garrison vehicle was moved to the threatened side.
+- `"teamId"`, `"teamTime"`, `"lastSplit"` (groups): set by `AIC_fnc_splitGroup`. `"teamId"`: shared by the teams of one split squad, 0 = not a team. `"teamTime"`: split, or end of the last ride. `"lastSplit"`: `time` of the last split, kept after merging.
 - `"removed"` (groups): set to true by the `"Empty"` handler; the record is dropped by the next `AIC_fnc_registerGroups` sweep.
 
 Orders notes: the order functions (`orderAttack/Defend/Patrol` take an optional 4th param, `orderRetreat/Reinforce` an optional 3rd param) accept the group type string; `""` means classify on the fly. No order function spawns a script. `AIC_fnc_clearWaypoints` increments group variable `"AIC_orderToken"` (local, not broadcast), which only invalidates the record's garrison state (`"garrisonToken"`), clears the unit variables `"AIC_garrisonPos"` and the group variable `"AIC_airLoiterWp"`, and calls `doFollow` on all units. `AIC_fnc_issueOrder` updates the record even for STATIC/ARTY groups (they fight in place without waypoints), creates a minimal record if the group is not registered yet, and returns true when the record was updated. Task `"SUPPORT"` for HELI/PLANE = SAD over pos + LOITER at HQ (it does not call `AIC_fnc_tasksAir`, so `tasksAir` may freely call `issueOrder`); like `tasksAir` it stores the LOITER waypoint index in the group variable `"AIC_airLoiterWp"`, which `supportCycle` uses to see when the aircraft is free again.
@@ -329,6 +336,8 @@ is parked again.
 | `"garrisonPerPriority"` | 5 | desired garrison power per point of objective priority |
 | `"garrisonMovesPerCycle"` | 2 | max garrison transfers ordered per cycle |
 | `"garrisonManStatics"` | true | infantry garrisons man empty static weapons in their area, at most half of a group |
+| `"dynamicSquads"` | true | squads split into teams to fit vehicles and to flank attacks, teams and remnants merge again |
+| `"useSupplyTrucks"` | true | repair, fuel and ammo trucks are sent to vehicles that need them |
 | `"useTransport"` | true | infantry going far get a vehicle ride |
 | `"splitPassengers"` | true | passengers sharing a group with a transport crew get a group of their own (`AIC_fnc_splitPassengers`) |
 | `"transportMinDistance"` | 1200 | an infantry order farther than this tries to get a transport |
@@ -387,6 +396,13 @@ New objective sources:
   - `[commander, true] call` (homes only): step 1 without any order, then step 2, returns 0. `commanderCycle` calls it right before `allocateForces`, so even on the first cycle every group already has a home.
 - `AIC_fnc_freeSeats` — `[vehicle, transportGroup, cargoGroup(optional)] call` → free passenger seats: empty cargo seats plus empty FFV seats from one `fullCrew [veh, "", true]` enumeration (seats held by the cargo group's own members count as free), minus the transport group's own members on foot. The one seat rule used by `findTransport` and `orderTransport`.
 - `AIC_fnc_dismountCarrier` — `[group, vehicle, land(optional, false)] call` → bool. Gets a group out of another group's vehicle: only from a stopped vehicle or landed helicopter; with `land` a flying helicopter is told to land instead. Used by `issueOrder`, repeated by `monitorOrders` until the squad is out.
+- `AIC_fnc_nearestBase` — `[commander, pos] call` → objective id of the nearest owned base or `BASE_HQ`, `""` if none. Home of transport-only crews (`garrisonCycle`) and of helicopters coming back from a ride (`transportCycle`).
+- `AIC_fnc_supplyRoles` — `[vehicle] call` → any of `"repair"`, `"fuel"`, `"ammo"`, from the config values `transportRepair`, `transportFuel`, `transportAmmo`. Such vehicles never carry troops.
+- `AIC_fnc_supplyCycle` — `[commander] call` → vehicles serviced. Runs after `transportCycle` (setting `useSupplyTrucks`). Task `"SUPPLY"`, record keys `"supplyTarget"`, `"supplyWp"`, `"supplyArrive"`, rules in the function header. Only transport-only groups are used.
+- `AIC_fnc_splitForRide` — `[commander, group, pos, task, objective] call` → bool. Called by `issueOrder` when no single vehicle fits. Tries 2 to `AIC_TEAM_MAX` teams through `findTransport` probes (4th and 5th parameter: seats, transports to leave out) and splits only if every team has its own vehicle, then orders the new teams.
+- `AIC_fnc_splitGroup` (groups) — `[commander, group, teams(optional, 2)] call` → array of new groups. Infantry on foot only, no players, not `AIC_exclude` / `AIC_noSplit`, not already teams, at least `AIC_TEAM_MIN_SIZE` per team, at most `AIC_MAX_SIDE_GROUPS` groups on the side. Clears the waypoints of the original group, creates complete records at once, shares out `"initialSize"` and `"power"`, stamps `"teamId"`, `"teamTime"`, `"lastSplit"`. The caller orders the teams.
+- `AIC_fnc_splitForAttack` (orders) — `[commander, group, record, target, objective] call` → bool. Called by `monitorOrders` for INF ATTACK groups of at least `AIC_ATTACK_SPLIT_SIZE` units within `AIC_ATTACK_SPLIT_RANGE` and more than 200 m of the target, once per `AIC_ATTACK_SPLIT_COOLDOWN`. Not in a fight, and known threat power within 500 m of the target at most 75 % of the squad's. The new team attacks through a flanking point (group variable `"AIC_attackVia"`, 5th parameter of `orderAttack`).
+- `AIC_fnc_teamCycle` (groups) — `[commander] call` → merges. Commander cycle step 10a. Merges teams of one squad and remnants of at most `AIC_REMNANT_SIZE` men, see the function header.
 - `AIC_fnc_isLanded` — `[vehicle] call` → bool. Helicopter: touching the ground, or below 3.5 m and slower than 15 km/h (`land "GET IN"` / `"GET OUT"` only hover low). Other vehicles: stopped. Used by `transportCycle`, `dismountCarrier` and `issueOrder`.
 - `AIC_fnc_flightPath` — `[commander, from, to] call` → detour position or `[]`. The first threat cluster, contact or enemy-held objective within `AIC_AIR_AVOID_RADIUS` of the line, ignoring the ends, is passed on the side with more room. `orderTransport` puts it as a MOVE waypoint between LOAD and TR UNLOAD.
 - `AIC_fnc_findTransport` — `[commander, cargoGroup, destPos] call` → group or grpNull.

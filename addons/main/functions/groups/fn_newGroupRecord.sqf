@@ -37,5 +37,6 @@ createHashMapFromArray [
     ["parked", false],
     ["home", ""],
     ["transport", grpNull],
-    ["final", createHashMap]
+    ["final", createHashMap],
+    ["teamId", 0]
 ]

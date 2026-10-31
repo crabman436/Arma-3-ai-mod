@@ -8,7 +8,7 @@
 
         A group is WOKEN if any of these holds:
           - its task is ATTACK, REINFORCE, RETREAT, SUPPORT, TRANSPORT,
-            TRANSPORTED or RTB;
+            TRANSPORTED, RTB or SUPPLY;
           - a known enemy contact or threat cluster is within
             "dynSimWakeRange" of its leader;
           - the group was engaged in the last 120 s (record key
@@ -78,7 +78,7 @@ private _range = [_cmd, "dynSimWakeRange"] call AIC_fnc_getSetting;
 // non-positive range: use the default (an empty commander reads the defaults)
 if (_range <= 0) then { _range = [createHashMap, "dynSimWakeRange"] call AIC_fnc_getSetting; };
 
-private _wakeTasks = ["ATTACK", "REINFORCE", "RETREAT", "SUPPORT", "TRANSPORT", "TRANSPORTED", "RTB"];
+private _wakeTasks = ["ATTACK", "REINFORCE", "RETREAT", "SUPPORT", "TRANSPORT", "TRANSPORTED", "RTB", "SUPPLY"];
 private _parkTasks = ["IDLE", "DEFEND", "PATROL"];
 private _defRadius = [_cmd, "objectiveRadius"] call AIC_fnc_getSetting;
 private _GARRISON_WAIT = 1100; // s: an INF DEFEND group whose garrison never finished is parked anyway

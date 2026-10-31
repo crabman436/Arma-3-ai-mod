@@ -46,6 +46,8 @@ createHashMapFromArray [
     // --- logistics: transport
     ["useTransport", true],
     ["splitPassengers", true],
+    ["dynamicSquads", true],
+    ["useSupplyTrucks", true],
     ["transportMinDistance", 1200],
     ["heliTransportDistance", 3000],
     ["transportSearchRadius", 4000],

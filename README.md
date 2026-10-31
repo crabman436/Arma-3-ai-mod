@@ -347,9 +347,32 @@ move the LZ if it turns hot before they get there. Only what the general knows
 about can be avoided. If a ride ends early, the log says why, where, and how
 many were aboard.
 
+With `dynamicSquads` on, a squad too big for any one vehicle splits into two or
+three teams, but only if every team gets a vehicle of its own: it never leaves
+half the squad on foot. A team that lands first waits at the drop for up to two
+minutes for the others, unless it comes under fire, and the vehicle leaves
+straight away. Squads of eight or more also split into two fireteams about
+600 m from an attack target, when they are not in a fight and are clearly
+stronger than what is known there: one team goes straight in, the other swings
+around a flank. Teams merge again when they meet, and a group shot down to two
+men joins a nearby group with room. Set `AIC_noSplit` on a group, as above, to
+keep it out of all this.
+
+### Supply trucks
+
+With `useSupplyTrucks` on, the general sends repair, fuel and ammo trucks to
+vehicles that need them: damage above 30 % or unable to move, fuel below 25 %,
+or most magazines empty. Trucks use their cargo, a quarter per job, and fill up
+again at their base. They stay away from vehicles with enemies known within
+400 m, go back to base when done, and never carry troops. A crew that bailed
+out of a repaired vehicle gets back in.
+
+### Transport crews
+
 Crews of unarmed vehicles (trucks, transport helicopters without guns) are
-transport-only: the general never sends them to attack, defend or patrol,
-they wait at home for the next ride. Helicopters armed only with door guns
+transport-only: the general never sends them to attack, garrison a town or
+patrol. Trucks move to the nearest base and wait there for the next ride, and
+helicopters fly to the nearest base after each ride. Helicopters armed only with door guns
 are kept for rides too and are not used as close air support while
 `useTransport` is on; gunships and planes do the strikes.
 
@@ -392,6 +415,8 @@ attack. The rest of the army stays parked and costs nothing.
 | `garrisonPerPriority` | 5 | Desired garrison power per point of objective priority (a base's guard size) |
 | `garrisonMovesPerCycle` | 2 | Maximum garrison transfers ordered per cycle |
 | `garrisonManStatics` | true | Infantry garrisons man empty static weapons in their area |
+| `dynamicSquads` | true | Squads split into teams to fit vehicles and to flank attacks, then merge again |
+| `useSupplyTrucks` | true | Repair, fuel and ammo trucks are sent to vehicles that need them |
 | `useTransport` | true | Infantry ordered far away get a vehicle ride |
 | `splitPassengers` | true | Passengers placed in the same group as a helicopter or truck crew get a squad of their own (group variable `AIC_noSplit` opts a group out) |
 | `transportMinDistance` | 1200 | Infantry orders farther than this (m) look for a transport |

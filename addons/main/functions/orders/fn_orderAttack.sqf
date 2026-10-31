@@ -32,7 +32,8 @@ params [
     ["_group", grpNull, [grpNull]],
     ["_pos", [], [[]]],
     ["_radius", 150, [0]],
-    ["_type", "", [""]]
+    ["_type", "", [""]],
+    ["_via", [], [[]]]
 ];
 
 if (isNull _group || {count _pos < 2}) exitWith {false};
@@ -94,8 +95,8 @@ private _dist = _leaderPos distance2D _target;
 private _first = [];
 
 // Approach waypoint
-if (_approachDist > 0 && {_dist > (_approachDist + _radius + 100)}) then {
-    private _app = _target getPos [_approachDist + (_radius * 0.5), _target getDir _leaderPos];
+if (count _via >= 2 || {_approachDist > 0 && {_dist > (_approachDist + _radius + 100)}}) then {
+    private _app = if (count _via >= 2) then {_via} else {_target getPos [_approachDist + (_radius * 0.5), _target getDir _leaderPos]};
     _app = [_app select 0, _app select 1, 0];
     if (_isGroundVeh) then { _app = [_app, 200] call AIC_fnc_roadPos; };
     if (surfaceIsWater _app && {!_isAir}) then {

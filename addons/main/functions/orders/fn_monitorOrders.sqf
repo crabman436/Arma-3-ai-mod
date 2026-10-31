@@ -69,6 +69,7 @@ private _defRadius = [_cmd, "objectiveRadius"] call AIC_fnc_getSetting;
 
 private _changes = 0;
 private _reissue = [];
+private _attackSplits = [];
 
 private _fnc_setIdle = {
     params ["_rec"];
@@ -214,6 +215,15 @@ private _fnc_setIdle = {
         continue;
     };
 
+    // --- a big squad nearing its target splits into fireteams (after this
+    // loop: AIC_fnc_splitForAttack adds records to groupData)
+    if (_task == "ATTACK" && {_type == "INF"}
+        && {_dist < AIC_ATTACK_SPLIT_RANGE} && {_dist > 200}
+        && {(time - (_rec getOrDefault ["lastSplit", -1e6])) > AIC_ATTACK_SPLIT_COOLDOWN}
+        && {({alive _x} count (units _group)) >= AIC_ATTACK_SPLIT_SIZE}) then {
+        _attackSplits pushBack [_group, _rec, +_taskPos, _objId];
+    };
+
     // --- re-sweep: ATTACK sitting on an uncaptured objective with its SAD
     // finished for a while -> refresh the order (new SAD) with force.
     if (_task == "ATTACK" && {count _objRec > 0} && {_wpDone} && {_age > 600}
@@ -257,6 +267,13 @@ private _fnc_setIdle = {
 
     _reissue pushBack [_group, _task, +_taskPos, _objId, _rec];
 } forEach _groupData;
+
+{
+    _x params ["_group", "_rec", "_taskPos", "_objId"];
+    if ([_cmd, _group, _rec, _taskPos, _objId] call AIC_fnc_splitForAttack) then {
+        _changes = _changes + 1;
+    };
+} forEach _attackSplits;
 
 // Re-issue outside the iteration (issueOrder may touch groupData)
 {

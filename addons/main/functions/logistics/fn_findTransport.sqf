@@ -17,7 +17,8 @@
             once each from a single fullCrew enumeration, minus
             the seats the transport group's own dismounted members need to
             get back in. The transport's own crew is never counted as cargo;
-          - the vehicle is within "transportSearchRadius" of the cargo leader;
+          - the vehicle is within "transportSearchRadius" of the cargo leader
+            and is no repair, fuel or ammo truck (AIC_fnc_supplyRoles);
           - HELI only if setting "useAir" is true; ground vehicles only if
             they are not farther from the cargo than the cargo's own trip
             (otherwise walking is faster).
@@ -36,6 +37,11 @@
         0: HASHMAP - commander
         1: GROUP   - cargo (infantry) group
         2: ARRAY   - destination position
+        3: NUMBER  - (optional) seats needed, for a team of the group
+                     (AIC_fnc_splitForRide). Such a probe only answers: it
+                     logs nothing and remembers no vehicle. Default: all
+                     alive units of the group
+        4: ARRAY   - (optional) transport groups to leave out, default []
 
     Returns:
         GROUP - the transport group, or grpNull if none fits
@@ -48,7 +54,9 @@
 params [
     ["_cmd", createHashMap, [createHashMap]],
     ["_cargo", grpNull, [grpNull]],
-    ["_dest", [], [[]]]
+    ["_dest", [], [[]]],
+    ["_seats", -1, [0]],
+    ["_exclude", [], [[]]]
 ];
 
 if (!isServer) exitWith { grpNull };
@@ -56,7 +64,8 @@ if (count _cmd == 0 || { isNull _cargo } || { count _dest < 2 }) exitWith { grpN
 
 private _cargoUnits = (units _cargo) select { alive _x };
 if (_cargoUnits isEqualTo []) exitWith { grpNull };
-private _cargoCount = count _cargoUnits;
+private _probe = _seats > 0;
+private _cargoCount = if (_probe) then { _seats } else { count _cargoUnits };
 private _cargoLeader = leader _cargo;
 if (isNull _cargoLeader || { !alive _cargoLeader }) then { _cargoLeader = _cargoUnits select 0; };
 private _cargoPos = getPosATL _cargoLeader;
@@ -83,7 +92,7 @@ private _bestKey = 1e12;
     private _rec = _y;
     if !(_rec isEqualType createHashMap) then { continue };
     private _grp = _rec getOrDefault ["group", grpNull];
-    if (!(_grp isEqualType grpNull) || { isNull _grp } || { _grp isEqualTo _cargo }) then { continue };
+    if (!(_grp isEqualType grpNull) || { isNull _grp } || { _grp isEqualTo _cargo } || { _grp in _exclude }) then { continue };
 
     private _type = _rec getOrDefault ["type", ""];
     if !(_type in ["MOTOR", "MECH", "HELI"]) then { continue };
@@ -120,6 +129,8 @@ private _bestKey = 1e12;
         private _veh = _x;
         if (!alive _veh || { !canMove _veh } || { fuel _veh < 0.05 } || { (locked _veh) == 2 }) then { continue };
         if (_veh isKindOf "Ship" || { _veh isKindOf "Plane" }) then { continue };
+        // repair, fuel and ammo trucks have their own job
+        if (([_veh] call AIC_fnc_supplyRoles) isNotEqualTo []) then { continue };
         private _seats = [_veh, _grp, _cargo] call AIC_fnc_freeSeats;
         if (_seats < _cargoCount) then { continue };
         if (_veh isEqualTo _leaderVeh) then { _seats = _seats + 1000; };
@@ -146,13 +157,15 @@ private _bestKey = 1e12;
 } forEach _groupData;
 
 if (isNull _best) exitWith {
-    if (!isNil "AIC_ns" && { AIC_ns getOrDefault ["debug", false] isEqualTo true }) then {
+    if (!_probe && { !isNil "AIC_ns" } && { AIC_ns getOrDefault ["debug", false] isEqualTo true }) then {
         ["%1: no transport for group %2 (%3 units, trip %4 m)", [
             _cmd getOrDefault ["side", sideUnknown], groupId _cargo, _cargoCount, round _trip
         ]] call AIC_fnc_log;
     };
     grpNull
 };
+
+if (_probe) exitWith { _best };
 
 _best setVariable ["AIC_transportVehicle", _bestVeh];
 

@@ -21,7 +21,9 @@
                - an IDLE INF / MOTOR / MECH / ARMOR group that (still) is
                  not at its home is sent there (DEFEND), so it never idles
                  next to a town while the town's garrison counts it as
-                 "incoming".
+                 "incoming";
+               - transport-only crews always have the nearest base as home
+                 and are sent there, whatever their settled task.
           2. AIC_fnc_garrisonStatus is recomputed.
           3. Transfers. Objectives whose deficit (desired - present -
              incoming) is more than 2 power are served first by
@@ -173,6 +175,8 @@ private _sentHome = 0;
         private _home = _rec getOrDefault ["home", ""];
         if !(_home isEqualType "") then { _home = ""; };
         private _leaderPos = getPosATL leader _grp;
+        // trucks and other transport-only crews live at a base, never in a town
+        private _depot = (_rec getOrDefault ["transportOnly", false]) isEqualTo true;
 
         // lost to another side or removed -> homeless (contested keeps it)
         if (_home isNotEqualTo "" && { !(_home in _homeIds) }) then {
@@ -184,19 +188,26 @@ private _sentHome = 0;
 
         // DEFENDing an owned objective (allocateForces, transport drop) -> it is now home
         private _curObj = _rec getOrDefault ["objective", ""];
-        if (_task isEqualTo "DEFEND" && { _curObj isEqualType "" } && { _curObj in _homeIds } && { _curObj isNotEqualTo _home }) then {
+        if (!_depot && { _task isEqualTo "DEFEND" } && { _curObj isEqualType "" } && { _curObj in _homeIds } && { _curObj isNotEqualTo _home }) then {
             if (_home isNotEqualTo "") then { _rec set ["homeTime", time]; };
             _home = _curObj;
         };
 
-        if (_home isEqualTo "") then {
-            _home = [_leaderPos] call _fnc_nearestHome;
-            if (_home isEqualTo "") then { _home = _hqId; };
+        if (_depot) then {
+            if !((((_objById getOrDefault [_home, createHashMap]) getOrDefault ["isBase", false]) isEqualTo true) && { _home in _homeIds }) then {
+                _home = [_cmd, _leaderPos] call AIC_fnc_nearestBase;
+                if (_home isEqualTo "") then { _home = _hqId; };
+            };
         } else {
-            // idle away from home: join a local garrison
-            if (_task isEqualTo "IDLE" && { _home in _homeIds } && { !([_grp, _objById get _home] call _fnc_atObjective) }) then {
-                private _local = [_leaderPos] call _fnc_nearestHome;
-                if (_local isNotEqualTo "") then { _home = _local; };
+            if (_home isEqualTo "") then {
+                _home = [_leaderPos] call _fnc_nearestHome;
+                if (_home isEqualTo "") then { _home = _hqId; };
+            } else {
+                // idle away from home: join a local garrison
+                if (_task isEqualTo "IDLE" && { _home in _homeIds } && { !([_grp, _objById get _home] call _fnc_atObjective) }) then {
+                    private _local = [_leaderPos] call _fnc_nearestHome;
+                    if (_local isNotEqualTo "") then { _home = _local; };
+                };
             };
         };
 
@@ -205,7 +216,7 @@ private _sentHome = 0;
         // as "incoming" for good, masking the home's deficit.
         if (
             !_homesOnly
-            && { _task isEqualTo "IDLE" }
+            && { _task isEqualTo "IDLE" || _depot }
             // groups that can walk (static weapons / artillery stay put)
             && { (_rec getOrDefault ["type", ""]) in _donorTypes }
             && { _home in _homeIds }

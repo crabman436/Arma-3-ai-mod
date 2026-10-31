@@ -51,6 +51,38 @@
 // a threat cluster this close to an objective's edge makes its garrison stand to
 #define AIC_STANDTO_RANGE 800
 
+// ---------------------------------------------------------------- dynamic squads
+// the smallest team a squad is split into, and the most teams per squad
+#define AIC_TEAM_MIN_SIZE 3
+#define AIC_TEAM_MAX 3
+// no splitting past this many groups on a side (the engine limit is 288)
+#define AIC_MAX_SIDE_GROUPS 240
+// a squad this big splits this far from its attack target, at most once in
+// the cooldown (s)
+#define AIC_ATTACK_SPLIT_SIZE 8
+#define AIC_ATTACK_SPLIT_RANGE 600
+#define AIC_ATTACK_SPLIT_COOLDOWN 900
+// s a team waits at the drop for the teams still riding
+#define AIC_TEAM_RALLY_WAIT 120
+// teams merge when their leaders are this close; after this many seconds
+// without meeting they go on as ordinary groups
+#define AIC_TEAM_MERGE_RADIUS 150
+#define AIC_TEAM_LIFETIME 900
+// a group shot down to this size joins a group with room within the radius
+#define AIC_REMNANT_SIZE 2
+#define AIC_REMNANT_JOIN_RADIUS 250
+#define AIC_SQUAD_MAX_SIZE 12
+
+// ---------------------------------------------------------------- supply trucks
+// reach (m) and work time (s) of a truck at a vehicle, search radius (m), give
+// up after (s), jobs started per cycle; no job with an enemy this close (m)
+#define AIC_SUPPLY_REACH 30
+#define AIC_SUPPLY_WORK_TIME 20
+#define AIC_SUPPLY_RADIUS 3000
+#define AIC_SUPPLY_TIMEOUT 600
+#define AIC_SUPPLY_JOBS_PER_CYCLE 2
+#define AIC_SUPPLY_DANGER_RADIUS 400
+
 // ---------------------------------------------------------------- transport
 // a ride is aborted after at least this many seconds
 #define AIC_RIDE_TIMEOUT 900

@@ -53,9 +53,15 @@
               issued with force (AIC_fnc_issueOrder), "transport" cleared.
               This covers the normal drop (within 500 m of the drop or
               final pos) and cargo that bailed out on the way.
+            - No cargo unit in a vehicle and another team of the same squad
+              ("teamId") still riding -> phase "RALLY": "transport" is cleared
+              so the vehicle leaves, and the team holds at the drop.
             - Vehicle has not moved 20 m for 180 s away from the drop, or
               the ride is older than record "rideLimit" (>= 900 s) ->
               aborted.
+          RALLY - a team waiting at the drop. The "final" order is issued
+            when no other team is riding any more, after
+            AIC_TEAM_RALLY_WAIT s, or at once if it comes under fire.
           Transport gone (group dead, vehicle dead / immobile / without
           driver, transport task no longer "TRANSPORT" or paired with
           another group) -> aborted.
@@ -68,7 +74,8 @@
         For each "TRANSPORT" group whose cargo is out (cargo dead, or the
         cargo record no longer "TRANSPORTED" with this transport) and no
         cargo unit is left in the vehicle: the helipads ("lz",
-        "pickupLz") are deleted and the group returns to its home objective
+        "pickupLz") are deleted and the group returns to its home objective,
+        the nearest base for helicopters and transport-only crews
         ("BASE_HQ" position / commander "hq" if none) with task "RTB" via
         AIC_fnc_issueOrder (force). If its vehicle is gone or cannot move
         (or the order fails) it is set "IDLE" instead, so the garrison
@@ -176,6 +183,20 @@ private _fnc_relocateLz = {
     true
 };
 
+// is another team of this group's squad still on its way in?
+private _fnc_teamRiding = {
+    params ["_rec"];
+    private _id = _rec getOrDefault ["teamId", 0];
+    private _self = _rec get "group";
+    _id > 0 && {(_records findIf {
+        (_x getOrDefault ["teamId", 0]) isEqualTo _id
+        && {(_x getOrDefault ["group", grpNull]) isNotEqualTo _self}
+        && {(_x getOrDefault ["task", ""]) isEqualTo "TRANSPORTED"}
+        && {(_x getOrDefault ["transportPhase", ""]) isNotEqualTo "RALLY"}
+        && {({alive _x} count (units (_x getOrDefault ["group", grpNull]))) > 0}
+    }) >= 0}
+};
+
 // seats for cargo units outside the vehicle: cargo seats first, then FFV
 private _fnc_boardFallback = {
     params ["_units", "_veh"];
@@ -260,6 +281,18 @@ private _fnc_boardFallback = {
     if (!([_lastPos] call _fnc_validPos) || { (_lpos distance2D _lastPos) > AIC_MOVE_THRESHOLD }) then {
         _rec set ["lastPos", _lpos];
         _rec set ["lastMoveTime", time];
+    };
+
+    // -------------------------------------------------- waiting at the drop
+    // the vehicle has left: only the other teams and the clock matter now
+    if (_phase isEqualTo "RALLY") then {
+        private _engaged = _rec getOrDefault ["lastEngaged", -1e6];
+        if (_phaseAge > AIC_TEAM_RALLY_WAIT
+            || { _engaged isEqualType 0 && { (time - _engaged) < 30 } }
+            || { !([_rec] call _fnc_teamRiding) }) then {
+            _finals pushBack [_grp, _rec, "rallied at the drop", false];
+        };
+        continue;
     };
 
     // -------------------------------------------------- transport still there?
@@ -426,7 +459,15 @@ private _fnc_boardFallback = {
     // ================================================== RIDE
     if (_inAnyVeh == 0) then {
         private _atDrop = (_lpos distance2D _dropPos) < 500 || { (_lpos distance2D _finalPos) < 500 };
-        _finals pushBack [_grp, _rec, if (_atDrop) then { "dropped off" } else { "dismounted en route" }, false];
+        // a team waits for the rest of its squad; releasing "transport" sends the vehicle home
+        if (_atDrop && { [_rec] call _fnc_teamRiding }) then {
+            _rec set ["transportPhase", "RALLY"];
+            _rec set ["phaseTime", time];
+            _rec set ["transport", grpNull];
+            ["%1: team %2 is down, waits for the rest of its squad", [_side, groupId _grp]] call AIC_fnc_log;
+        } else {
+            _finals pushBack [_grp, _rec, if (_atDrop) then { "dropped off" } else { "dismounted en route" }, false];
+        };
         continue;
     };
 
@@ -598,8 +639,14 @@ private _fnc_objPos = {
         { moveOut _x; } forEach _inside;
     };
 
-    // home: own garrison objective, else BASE_HQ, else commander hq
-    private _homePos = [_rec getOrDefault ["home", ""]] call _fnc_objPos;
+    // home: own garrison objective, else BASE_HQ, else commander hq.
+    // Transport-only crews and helicopters wait at the nearest base
+    private _homeId = _rec getOrDefault ["home", ""];
+    if ((_rec getOrDefault ["transportOnly", false]) isEqualTo true || { (_rec getOrDefault ["type", ""]) isEqualTo "HELI" }) then {
+        private _base = [_cmd, getPosATL (leader _grp)] call AIC_fnc_nearestBase;
+        if (_base isNotEqualTo "") then { _homeId = _base; };
+    };
+    private _homePos = [_homeId] call _fnc_objPos;
     if (_homePos isEqualTo []) then { _homePos = [AIC_BASE_ID] call _fnc_objPos; };
     if (_homePos isEqualTo []) then {
         private _hq = _cmd getOrDefault ["hq", []];
