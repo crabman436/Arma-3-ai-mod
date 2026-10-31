@@ -29,17 +29,28 @@ params [["_veh", objNull, [objNull]]];
 
 if (isNull _veh) exitWith {"MOTOR"};
 
+// the type comes from the class: looked up once per class (AIC_ns "vehicleTypeClasses")
+if (isNil "AIC_ns") then {call AIC_fnc_preInit};
+private _cache = AIC_ns getOrDefault ["vehicleTypeClasses", createHashMap];
+AIC_ns set ["vehicleTypeClasses", _cache];
+private _class = typeOf _veh;
+if (_class in _cache) exitWith {_cache get _class};
+
 private _cfg = configOf _veh;
-if (_veh isKindOf "Plane") exitWith {"PLANE"};
-if (_veh isKindOf "Helicopter" || {_veh isKindOf "Air"}) exitWith {"HELI"};
-if (_veh isKindOf "Ship") exitWith {"NAVAL"};
-if (getNumber (_cfg >> "artilleryScanner") == 1) exitWith {"ARTY"};
-if (_veh isKindOf "StaticWeapon") exitWith {"STATIC"};
-if (_veh isKindOf "Wheeled_APC_F" || {_veh isKindOf "Tracked_APC"}) exitWith {"MECH"};
-if (_veh isKindOf "Tank") exitWith {
-    if (
-        getText (_cfg >> "editorSubcategory") == "EdSubcat_APCs"
-        || {getNumber (_cfg >> "transportSoldier") >= 6}
-    ) then {"MECH"} else {"ARMOR"}
+private _type = call {
+    if (_veh isKindOf "Plane") exitWith {"PLANE"};
+    if (_veh isKindOf "Helicopter" || {_veh isKindOf "Air"}) exitWith {"HELI"};
+    if (_veh isKindOf "Ship") exitWith {"NAVAL"};
+    if (getNumber (_cfg >> "artilleryScanner") == 1) exitWith {"ARTY"};
+    if (_veh isKindOf "StaticWeapon") exitWith {"STATIC"};
+    if (_veh isKindOf "Wheeled_APC_F" || {_veh isKindOf "Tracked_APC"}) exitWith {"MECH"};
+    if (_veh isKindOf "Tank") exitWith {
+        ["ARMOR", "MECH"] select (
+            getText (_cfg >> "editorSubcategory") == "EdSubcat_APCs"
+            || {getNumber (_cfg >> "transportSoldier") >= 6}
+        )
+    };
+    "MOTOR"
 };
-"MOTOR"
+_cache set [_class, _type];
+_type

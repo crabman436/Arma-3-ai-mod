@@ -82,6 +82,13 @@ if (_observers isNotEqualTo []) then {
                 // own observers in range of this enemy group
                 private _near = _observers select { ((_x select 0) distance2D _ePos) < _detectRange };
                 if (_near isNotEqualTo []) then {
+                    // closest observers first: the exact fix that ends the probing comes sooner
+                    if (count _near > 1) then {
+                        private _order = [];
+                        { _order pushBack [(_x select 0) distance2D _ePos, _forEachIndex]; } forEach _near;
+                        _order sort true;
+                        _near = _order apply { _near select (_x select 1) };
+                    };
                     // probe objects: leader, its vehicle, and up to two more members / their vehicles
                     private _probes = [_eLeader];
                     private _veh = objectParent _eLeader;
