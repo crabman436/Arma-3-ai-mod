@@ -93,6 +93,7 @@ class CfgFunctions
             class supportCycle {};
             class fireMission {};
             class tasksAir {};
+            class airDefence {};
             class artilleryMagScore {};
         };
 

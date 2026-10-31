@@ -31,6 +31,7 @@ createHashMapFromArray [
     ["reportToPlayers", true],
     ["artyCooldown", 120],
     ["airCooldown", 180],
+    ["casSkill", 0.8],
 
     // --- logistics: dynamic simulation
     ["manageDynSim", true],

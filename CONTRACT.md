@@ -67,6 +67,7 @@ User-tunable values are settings, not constants.
 | `AIC_REISSUE_TOL_FIXED` | 50 | issueOrder same-job tolerance for fixed points; allocateForces "already DEFENDing HQ" |
 | `AIC_NEAR_HQ_GROUND` / `_HELI` / `_PLANE` | 250 / 400 / 1500 | allocateForces "at HQ" radius; PLANE also monitorOrders RETREAT/RTB completion |
 | `AIC_THREAT_RADIUS` | 1500 | garrisonStatus threat sum, allocateForces DEFENSIVE counter-attack near HQ |
+| `AIC_CAS_IP_PLANE`, `AIC_CAS_IP_HELI`, `AIC_CAS_DANGER_CLOSE` | 2500, 1200, 200 | tasksAir, supportCycle |
 | `AIC_ASSAULT_AXIS_LANES` | 3 | orderAssault: groups per approach |
 | `AIC_CROWD_GROUPS`, `AIC_CROWD_RADIUS`, `AIC_CROWD_SPREAD`, `AIC_CROWD_COOLDOWN` | 3, 70, 150, 120 | spreadCycle |
 | `AIC_ASSAULT_STAGE`, `AIC_ASSAULT_FRONT`, `AIC_ASSAULT_READY`, `AIC_ASSAULT_WAIT`, `AIC_ASSAULT_MAX_WAIT`, `AIC_ASSAULT_OVERWATCH` | 600, 140, 0.7, 180, 480, 250 | staged assaults |
@@ -137,6 +138,7 @@ Created by `AIC_fnc_createCommander`. Keys (all strings):
 | `"reportToPlayers"` | true | side-chat reports to players on the side |
 | `"artyCooldown"` | 120 | seconds between fire missions |
 | `"airCooldown"` | 180 | seconds between CAS taskings |
+| `"casSkill"` | 0.8 | air crews on CAS are raised to this skill where lower; -1 leaves them |
 
 `AIC_fnc_getSetting` returns the default if a key is missing **or its value
 has a different type than the default** (settings can be edited live), using
@@ -280,7 +282,8 @@ HashMap: `"group"`, `"task"`, `"pos"`, `"objective"` (id or `""`).
 - `AIC_fnc_supportCycle` — `[commander] call`. If cooldowns allow: picks the biggest threat cluster within range of an available artillery group (ARTY type, uses `getArtilleryETA`/`inRangeOfArtillery`), and calls `AIC_fnc_fireMission`; picks a threat for an idle air group and calls `AIC_fnc_tasksAir`.
 - `AIC_fnc_artilleryMagScore` — `[magazine] call` → number (-1 = never use: smoke, flare, illumination, mines, laser-guided / guided). The one magazine rule shared by `supportCycle` (battery selection) and `fireMission` (magazine choice).
 - `AIC_fnc_fireMission` — `[commander, artyGroup, pos, rounds] call` → bool. Uses `doArtilleryFire` with the best-scoring magazine (`artilleryMagScore`) from `getArtilleryAmmo`. Never fire within 150 m of friendly units (danger close check: alive units of a side with `getFriend >= 0.6`, excluding civilians unless the commander's side is civilian, excluding aircraft above 50 m). Reports.
-- `AIC_fnc_tasksAir` — `[commander, airGroup, pos] call`. Helis/planes: SAD waypoint over target, then return to a loiter/LOITER waypoint near HQ.
+- `AIC_fnc_tasksAir` — `[commander, group, pos] call` → bool. Raises crew skill to setting `"casSkill"` (unit variable `"AIC_skilled"`), reveals the target's contacts with full knowledge and `doTarget`s the most valuable, then flies MOVE (detour via `flightPath`) → MOVE initial point (`AIC_CAS_IP_PLANE` / `AIC_CAS_IP_HELI` short of the target, run-in side) → SAD → MOVE egress → LOITER (`"AIC_airLoiterWp"`). Task `SUPPORT`, sets `"lastAirTime"`.
+- `AIC_fnc_airDefence` — `[group] call` → 0 (none), 1 (shoulder-fired anti-air launcher aboard), 2 (crews an anti-air vehicle). Launcher classes cached in `AIC_ns` `"aaLauncherClasses"`. `supportCycle` skips clusters at 2 for every aircraft and at 1 for helicopters.
 
 ### ui (`functions/ui`)
 - `AIC_fnc_report` — `[commander] call`. If `reportToPlayers` and something changed (stance change, new major threat, objective captured/lost) send a short `sideChat`-style message to players of that side via `remoteExec ["systemChat", side]` (or `[side, "HQ"] sideChat` via remoteExec). Throttled — max one message per 20 s; tracks last state in the commander under key `"lastReport"` (HashMap) — **allowed extra key**.

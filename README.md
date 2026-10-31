@@ -171,7 +171,8 @@ change them live through `(_cmd get "settings") set [key, value]`.
 | `debugMarkers` | false | Draw the commander's view on the map |
 | `reportToPlayers` | true | Send HQ side-chat reports to players on the side |
 | `artyCooldown` | 120 | Seconds between fire missions |
-| `airCooldown` | 180 | Seconds between CAS taskings |
+| `airCooldown` | 180 | Seconds between new CAS sorties (an aircraft already up goes straight on) |
+| `casSkill` | 0.8 | Air crews on CAS are raised to this skill where lower (-1 leaves them) |
 
 The Eden module sets Side, Aggression, LoopInterval, UseArtillery, UseAir,
 AutoObjectives, DebugMarkers, ReportToPlayers, ManageDynSim, ManageGarrisons,
@@ -444,6 +445,20 @@ Transport helicopters land outside every objective, about 450 m short, and the
 troops walk in. CAS helicopters drop any old landing order when tasked, fly back
 to a base after three minutes with nothing to do, and land in the helicopter
 park.
+
+### Close air support
+
+CAS picks its targets like a pilot would: planes go for armour, gunships for
+infantry and light vehicles, and nothing flies into a cluster with an anti-air
+vehicle in it. Helicopters also stay away from clusters where a shoulder-fired
+launcher was seen. No strike goes in with your own troops within 200 m of the
+target. The aircraft flies an attack run: an initial point 2.5 km (planes) or
+1.2 km (helicopters) short of the target on the side it comes from, around
+known enemies on the way, straight through the target and out the far side,
+then back to its loiter. The crew is told everything the general knows about
+the target and pointed at the most valuable vehicle there. An aircraft already
+up with ammunition left goes straight on to the next target instead of waiting
+for the cooldown. Crews on CAS are raised to the `casSkill` setting.
 
 ### Supply trucks
 

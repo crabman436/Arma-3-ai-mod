@@ -127,6 +127,13 @@
 #define AIC_SUPPLY_JOBS_PER_CYCLE 2
 #define AIC_SUPPLY_DANGER_RADIUS 400
 
+// ---------------------------------------------------------------- close air support
+// initial point of an attack run short of the target (m), per aircraft type
+#define AIC_CAS_IP_PLANE 2500
+#define AIC_CAS_IP_HELI 1200
+// no strike with own troops this close to the target (m)
+#define AIC_CAS_DANGER_CLOSE 200
+
 // ---------------------------------------------------------------- transport
 // s a transport-only crew stays put before leaving for its base, so squads
 // next to it can ask for a ride first

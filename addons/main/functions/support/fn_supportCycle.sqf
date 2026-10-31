@@ -13,7 +13,12 @@
         the next cluster / group is tried. Rounds per gun scale with cluster
         power (2..6).
 
-        Air (if "useAir" and "airCooldown" elapsed since "lastAirTime"):
+        Air (if "useAir"; a new sortie waits for "airCooldown" since
+        "lastAirTime", an aircraft already up on a sortie with ammunition
+        left goes straight on; no strike with own troops within
+        AIC_CAS_DANGER_CLOSE of the target, none on a cluster with an
+        anti-air vehicle, no helicopter where a shoulder launcher was seen;
+        planes are sent at armour, gunships at infantry; AIC_fnc_airDefence):
         walks the threat clusters strongest first and tasks the nearest
         available armed HELI/PLANE group within reach (helis 6 km, planes
         15 km) with AIC_fnc_tasksAir. An air group is available when its
@@ -38,6 +43,8 @@
     Example:
         [_cmd] call AIC_fnc_supportCycle;
 */
+
+#include "\z\aic\addons\main\script_component.hpp"
 
 params [["_cmd", createHashMap, [createHashMap]]];
 
@@ -144,7 +151,7 @@ private _airTasked = false;
 private _useAir = ([_cmd, "useAir"] call AIC_fnc_getSetting) isEqualTo true;
 private _airCooldown = [_cmd, "airCooldown"] call AIC_fnc_getSetting;
 
-if (_useAir && { (_now - (_cmd getOrDefault ["lastAirTime", -1e6])) >= _airCooldown }) then {
+if (_useAir) then {
     private _airGroups = [["HELI", "PLANE"]] call _fnc_groupsOfType;
     if (_airGroups isEqualTo []) exitWith {};
     // with transport on, helicopters armed only with machine guns (door
@@ -155,7 +162,11 @@ if (_useAir && { (_now - (_cmd getOrDefault ["lastAirTime", -1e6])) >= _airCoold
     private _airTargets = _threats select { ([_x] call _fnc_freshness) <= 120 };
     if (_airTargets isEqualTo []) exitWith {};
 
-    private _available = [];   // [group, vehicle, maxRange]
+    // a new sortie waits for the cooldown; an aircraft already up on a sortie
+    // with ammunition left goes straight on to the next target
+    private _cooldownOver = (_now - (_cmd getOrDefault ["lastAirTime", -1e6])) >= _airCooldown;
+
+    private _available = [];   // [group, vehicle, maxRange, isPlane, onSortie]
     private _busyTargets = []; // positions currently being struck
     {
         private _grp = _x;
@@ -179,6 +190,8 @@ if (_useAir && { (_now - (_cmd getOrDefault ["lastAirTime", -1e6])) >= _airCoold
             if (_task == "SUPPORT" && { _taskPos isEqualType [] } && { count _taskPos >= 2 }) then { _busyTargets pushBack _taskPos; };
             continue;
         };
+        private _onSortie = _task == "SUPPORT";
+        if (!_onSortie && { !_cooldownOver }) then { continue };
         if ((_rec getOrDefault ["strength", 1]) <= _retreatThreshold) then { continue };
 
         private _veh = objectParent leader _grp;
@@ -189,23 +202,46 @@ if (_useAir && { (_now - (_cmd getOrDefault ["lastAirTime", -1e6])) >= _airCoold
         if (!_armed || { !someAmmo _veh }) then { continue };
         if (_keepTransports && { _veh isKindOf "Helicopter" } && { ([_veh] call AIC_fnc_vehicleArmament) < 2 }) then { continue };
 
-        _available pushBack [_grp, _veh, [6000, 15000] select (_veh isKindOf "Plane")];
+        _available pushBack [_grp, _veh, [6000, 15000] select (_veh isKindOf "Plane"), _veh isKindOf "Plane", _onSortie];
     } forEach _airGroups;
 
     if (_available isEqualTo []) exitWith {};
+
+    // own troops: no strike on top of them
+    private _ownPositions = ((_cmd getOrDefault ["groups", []]) select { !isNull _x && { alive leader _x } }) apply { getPosATL leader _x };
 
     {
         private _cluster = _x;
         private _cPos = _cluster get "pos";
         if (_busyTargets findIf { (_x distance2D _cPos) < 300 } >= 0) then { continue };
+        if (_ownPositions findIf { (_x distance2D _cPos) < AIC_CAS_DANGER_CLOSE } >= 0) then { continue };
 
-        private _best = [];
-        private _bestDist = 1e9;
+        // what is down there: its air defence, and how much of it is armour
+        private _contacts = (_cluster getOrDefault ["contacts", []]) select { _x isEqualType createHashMap };
+        private _airDefence = 0;
+        private _armour = 0;
         {
-            _x params ["_grp", "_veh", "_range"];
+            _airDefence = _airDefence max ([_x getOrDefault ["group", grpNull]] call AIC_fnc_airDefence);
+            if ((_x getOrDefault ["type", ""]) in ["ARMOR", "MECH"]) then { _armour = _armour + 1; };
+        } forEach _contacts;
+        // nobody flies into an anti-air vehicle
+        if (_airDefence >= 2) then { continue };
+        private _armourShare = if (_contacts isEqualTo []) then { 0 } else { _armour / (count _contacts) };
+
+        // the aircraft that fits the target best: planes for armour, gunships
+        // for infantry, nearer is better, one already up is cheaper to use;
+        // a helicopter never goes where a shoulder launcher was seen
+        private _best = [];
+        private _bestKey = 1e9;
+        {
+            _x params ["_grp", "_veh", "_range", "_isPlane", "_onSortie"];
+            if (!_isPlane && { _airDefence >= 1 }) then { continue };
             private _d = _veh distance2D _cPos;
-            if (_d <= _range && { _d < _bestDist }) then {
-                _bestDist = _d;
+            if (_d > _range) then { continue };
+            private _suit = if (_isPlane) then { 0.8 + _armourShare } else { 1.2 - 0.4 * _armourShare };
+            private _key = (_d / _suit) * ([1, 0.7] select _onSortie);
+            if (_key < _bestKey) then {
+                _bestKey = _key;
                 _best = _x;
             };
         } forEach _available;
