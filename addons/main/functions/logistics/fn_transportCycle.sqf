@@ -13,7 +13,10 @@
               cancelled and the transport is pushed on to its TR UNLOAD
               waypoint (in case the LOAD / GETIN synchronisation hangs).
             - Helicopter hovering within 300 m of the pickup point for
-              more than 45 s -> land "GET IN" (repeated every 60 s).
+              more than 45 s -> land "GET IN" (repeated every 60 s). Still
+              airborne after 165 s -> the pickup LZ is moved once to a
+              flatter spot up to 400 m away (helipad and LOAD waypoint
+              follow; record "pickupLzMoved").
             - Every 60 s a status line is logged (phase, vehicle distance to
               the cargo and to the pickup / drop, landed / airborne or speed,
               waypoint index, units aboard), and the driver / pilot is made
@@ -35,7 +38,10 @@
               helicopter on the ground or ground vehicle stopped (> 10 s
               near) -> cargo ordered out (unassignVehicle, doGetOut,
               leaveVehicle). Helicopter still airborne 20 s after arriving
-              -> land "GET OUT" (repeated every 45 s).
+              -> land "GET OUT" (repeated every 45 s). Still airborne
+              120 s after arriving -> the drop LZ is moved once to a
+              flatter spot up to 400 m away (helipad and TR UNLOAD
+              waypoint follow; record "dropLzMoved").
             - Transport waypoints finished and the vehicle stopped on the
               ground anywhere -> cargo ordered out.
             - No cargo unit in a vehicle any more -> the "final" order is
@@ -115,6 +121,43 @@ private _fnc_unload = {
 };
 
 // seats for cargo units outside the vehicle: cargo seats first, then FFV
+// a helicopter that cannot land at its LZ (town, cluttered base, slope):
+// once per leg find a flatter spot farther out, move the helipad and the
+// transport's waypoint there. Returns true if the LZ was moved.
+private _fnc_relocateLz = {
+    params ["_rec", "_tRec", "_tGroup", "_veh", "_leg"]; // _leg "pickup" / "drop"
+    private _isPickup = _leg isEqualTo "pickup";
+    private _flag = ["dropLzMoved", "pickupLzMoved"] select _isPickup;
+    if (_rec getOrDefault [_flag, false]) exitWith { false };
+    _rec set [_flag, true];
+    private _posKey = ["dropPos", "pickupPos"] select _isPickup;
+    private _padKey = ["lz", "pickupLz"] select _isPickup;
+    private _wpKey = ["wpUnload", "wpLoad"] select _isPickup;
+
+    private _old = _rec getOrDefault [_posKey, getPosATL _veh];
+    private _c = [_old select 0, _old select 1, 0];
+    private _p = [_c, 20, 400, 15, 0, 0.2, 0, [], [_c, _c]] call BIS_fnc_findSafePos;
+    if (!(_p isEqualType []) || { count _p < 2 }) exitWith { false };
+    _p = [_p select 0, _p select 1, 0];
+    if (surfaceIsWater _p || { (_p distance2D _c) < 20 }) exitWith { false };
+
+    private _pad = _tRec getOrDefault [_padKey, objNull];
+    if (_pad isEqualType objNull && { !isNull _pad }) then { deleteVehicle _pad; };
+    _pad = createVehicle ["Land_HelipadEmpty_F", _p, [], 0, "CAN_COLLIDE"];
+    _tRec set [_padKey, _pad];
+    _rec set [_padKey, _pad];
+    _rec set [_posKey, +_p];
+    _tRec set [_posKey, +_p];
+    if (!_isPickup) then { _tRec set ["taskPos", +_p]; };
+
+    private _i = _tRec getOrDefault [_wpKey, -1];
+    if (_i isEqualType 0 && { _i >= 0 } && { _i < count (waypoints _tGroup) }) then {
+        [_tGroup, _i] setWaypointPosition [_p, 0];
+    };
+    _veh land "NONE";
+    true
+};
+
 private _fnc_boardFallback = {
     params ["_units", "_veh"];
     // one fullCrew enumeration: every empty seat is listed exactly once
@@ -293,6 +336,14 @@ private _fnc_boardFallback = {
                     _rec set ["landOrderTime", time];
                     ["%1: %2 ordered to land for pickup of group %3", [_side, groupId _tGroup, groupId _grp]] call AIC_fnc_log;
                 };
+                // still airborne long after the landing order: the LZ is unusable, move it
+                if ((time - (_rec get "hoverTime")) > 165 && { [_rec, _tRec, _tGroup, _veh, "pickup"] call _fnc_relocateLz }) then {
+                    _rec set ["hoverTime", time];
+                    _rec set ["landOrderTime", -1e6];
+                    ["%1: %2 cannot land at the pickup for group %3, LZ moved to %4", [
+                        _side, groupId _tGroup, groupId _grp, (_rec get "pickupPos") apply { round _x }
+                    ]] call AIC_fnc_log;
+                };
             } else {
                 _rec set ["hoverTime", -1];
             };
@@ -374,6 +425,14 @@ private _fnc_boardFallback = {
                     _veh land "GET OUT";
                     _rec set ["landOrderTime", time];
                     ["%1: %2 ordered to land at the LZ for group %3", [_side, groupId _tGroup, groupId _grp]] call AIC_fnc_log;
+                };
+                // still airborne long after the landing order: the LZ is unusable, move it
+                if (_nearAge > 120 && { [_rec, _tRec, _tGroup, _veh, "drop"] call _fnc_relocateLz }) then {
+                    _rec set ["nearDropTime", -1];
+                    _rec set ["landOrderTime", -1e6];
+                    ["%1: %2 cannot land at the LZ for group %3, LZ moved to %4", [
+                        _side, groupId _tGroup, groupId _grp, (_rec get "dropPos") apply { round _x }
+                    ]] call AIC_fnc_log;
                 };
             };
         } else {

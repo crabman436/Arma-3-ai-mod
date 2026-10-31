@@ -19,8 +19,10 @@
         15 km) with AIC_fnc_tasksAir. An air group is available when its
         task is "IDLE", or "SUPPORT" and it has reached its loiter waypoint
         (or the sortie is older than 600 s), it can move, has fuel > 25 %
-        and real weapons (not only countermeasures). Clusters already being
-        struck by another air group (within 300 m) are skipped.
+        and real weapons (not only countermeasures). With "useTransport" on,
+        helicopters armed only with machine guns (AIC_fnc_vehicleArmament
+        < 2, i.e. door gunners) are left to the transport system. Clusters
+        already being struck by another air group (within 300 m) are skipped.
 
         Groups owned by the transport system (task "TRANSPORT",
         "TRANSPORTED" or "RTB") are never used for fire support or CAS:
@@ -145,6 +147,9 @@ private _airCooldown = [_cmd, "airCooldown"] call AIC_fnc_getSetting;
 if (_useAir && { (_now - (_cmd getOrDefault ["lastAirTime", -1e6])) >= _airCooldown }) then {
     private _airGroups = [["HELI", "PLANE"]] call _fnc_groupsOfType;
     if (_airGroups isEqualTo []) exitWith {};
+    // with transport on, helicopters armed only with machine guns (door
+    // gunners) are kept for rides; CAS is for gunships and planes
+    private _keepTransports = ([_cmd, "useTransport"] call AIC_fnc_getSetting) isEqualTo true;
 
     // only clusters seen recently; checked before any aircraft is inspected
     private _airTargets = _threats select { ([_x] call _fnc_freshness) <= 120 };
@@ -182,6 +187,7 @@ if (_useAir && { (_now - (_cmd getOrDefault ["lastAirTime", -1e6])) >= _airCoold
         // armed? every turret incl. driver/pilot turret [-1]
         private _armed = ([_veh, false] call AIC_fnc_vehicleWeapons) isNotEqualTo [];
         if (!_armed || { !someAmmo _veh }) then { continue };
+        if (_keepTransports && { _veh isKindOf "Helicopter" } && { ([_veh] call AIC_fnc_vehicleArmament) < 2 }) then { continue };
 
         _available pushBack [_grp, _veh, [6000, 15000] select (_veh isKindOf "Plane")];
     } forEach _airGroups;

@@ -33,6 +33,7 @@ createHashMapFromArray [
     ["taskPos", []],
     ["taskTime", time],
     ["objective", ""],
+    ["transportOnly", false],
     ["parked", false],
     ["home", ""],
     ["transport", grpNull],

@@ -75,17 +75,6 @@ if !(_garrisons isEqualType createHashMap) then { _garrisons = createHashMap; };
 private _trip = _cargoPos distance2D _dest;
 private _preferHeli = _useAir && { _trip > _heliDist };
 
-// 0 unarmed, 1 machine guns, 2 cannon / rockets / missiles / tracked
-private _fnc_armament = {
-    params ["_veh"];
-    private _level = if (_veh isKindOf "Tank") then { 2 } else { 0 };
-    {
-        private _sound = toLowerANSI getText (configFile >> "CfgWeapons" >> _x >> "nameSound");
-        _level = _level max (if (_sound in ["cannon", "rockets", "missiles"]) then { 2 } else { 1 });
-    } forEach ([_veh, false] call AIC_fnc_vehicleWeapons);
-    _level
-};
-
 private _best = grpNull;
 private _bestVeh = objNull;
 private _bestKey = 1e12;
@@ -144,7 +133,7 @@ private _bestKey = 1e12;
     // a ground ride from farther away than the walk itself is pointless
     if (!_isHeli && { _d > _trip }) then { continue };
 
-    private _arm = [_gVeh] call _fnc_armament;
+    private _arm = [_gVeh] call AIC_fnc_vehicleArmament;
     private _tier = if (_isHeli isEqualTo _preferHeli) then { 0 } else { 1 };
     // prefer base vehicles over the ones of a town garrison
     private _atBase = ([_cmd, _home] call AIC_fnc_getObjective) getOrDefault ["isBase", false];

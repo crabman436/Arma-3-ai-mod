@@ -8,6 +8,10 @@
  *                  while they still crew such weapons
  *     - "strength" = (alive units / initialSize) * average health of the
  *                    vehicles the group crews, clamped to 0..1
+ *     - "transportOnly" = true when every alive unit crews an unarmed
+ *                    vehicle (AIC_fnc_vehicleArmament 0): a truck or
+ *                    transport helicopter crew, which carries others and
+ *                    never fights
  *   Records whose group is null or dead are skipped (they are removed by
  *   AIC_fnc_registerGroups). Missing records for groups in "groups" are
  *   created with AIC_fnc_newGroupRecord.
@@ -87,6 +91,15 @@ private _totalPower = 0;
                     _vehicles pushBackUnique _veh;
                 };
             } forEach _alive;
+
+            // --- Transport-only ---
+            // everyone crews an unarmed vehicle (truck, transport helicopter),
+            // nobody on foot or in cargo: the group carries others and is
+            // never sent to fight (AIC_fnc_availableGroups) or to patrol
+            private _transportOnly = _vehicles isNotEqualTo []
+                && { (_alive findIf { isNull objectParent _x || { ((objectParent _x) getCargoIndex _x) >= 0 } }) < 0 }
+                && { (_vehicles findIf { ([_x] call AIC_fnc_vehicleArmament) > 0 }) < 0 };
+            _record set ["transportOnly", _transportOnly];
 
             private _vehHealth = 1;
             if (_vehicles isNotEqualTo []) then {

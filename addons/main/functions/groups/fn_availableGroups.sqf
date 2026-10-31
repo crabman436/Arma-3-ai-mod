@@ -6,6 +6,8 @@
  *     - record task is not "RETREAT", "TRANSPORT", "TRANSPORTED" or "RTB"
  *       (retreating groups and groups owned by the transport system)
  *     - record strength is above setting "retreatThreshold"
+ *     - record "transportOnly" is not true (unarmed vehicle crews are left
+ *       to the transport system)
  *     - type filter: if a non-empty types array is given, only groups whose
  *       record type is in it; otherwise every type except "STATIC" and "ARTY".
  *   Groups without a record are ignored.
@@ -56,7 +58,9 @@ private _result = [];
                 !(_type in ["STATIC", "ARTY"])
             };
 
-            if (_typeOk && {!(_task in _excludedTasks)} && {_strength > _threshold}) then {
+            // transport-only crews (trucks, transport helicopters) carry others, they never attack or defend
+            private _transportOnly = (_record getOrDefault ["transportOnly", false]) isEqualTo true;
+            if (_typeOk && {!_transportOnly} && {!(_task in _excludedTasks)} && {_strength > _threshold}) then {
                 _result pushBack [_record getOrDefault ["power", 0], _forEachIndex];
             };
         };

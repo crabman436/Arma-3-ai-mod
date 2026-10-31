@@ -146,14 +146,25 @@ if ((leader _tGroup) isNotEqualTo _drv && { !((objectParent (leader _tGroup)) is
 };
 
 // ---------------------------------------------------------------- helpers
-// flat, open spot for a helicopter near _c (max _r m), or _c itself
+// flat, open spot for a helicopter near _c: within _r m first, then a wider
+// search (2.5 x _r, stricter gradient) for towns and cluttered bases, else
+// findEmptyPosition, else _c itself (AIC_fnc_transportCycle moves an LZ the
+// helicopter cannot land at)
 private _fnc_lzPos = {
     params ["_c", "_r"];
     _c = [_c select 0, _c select 1, 0];
-    private _p = [_c, 0, _r, 12, 0, 0.25, 0, [], [_c, _c]] call BIS_fnc_findSafePos;
-    if (!(_p isEqualType []) || { count _p < 2 }) then { _p = _c; };
-    _p = [_p select 0, _p select 1, 0];
-    if (surfaceIsWater _p || { (_p distance2D _c) > (_r + 50) }) then {
+    private _fnc_try = {
+        params ["_rad", "_objDist", "_grad"];
+        private _p = [_c, 0, _rad, _objDist, 0, _grad, 0, [], [_c, _c]] call BIS_fnc_findSafePos;
+        if (!(_p isEqualType []) || { count _p < 2 }) exitWith { [] };
+        _p = [_p select 0, _p select 1, 0];
+        // the default position comes back when nothing was found
+        if (surfaceIsWater _p || { (_p distance2D _c) < 1 } || { (_p distance2D _c) > (_rad + 50) }) exitWith { [] };
+        _p
+    };
+    private _p = [_r, 12, 0.25] call _fnc_try;
+    if (_p isEqualTo []) then { _p = [_r * 2.5, 15, 0.2] call _fnc_try; };
+    if (_p isEqualTo []) then {
         private _e = _c findEmptyPosition [0, _r, typeOf _veh];
         _p = if (_e isEqualType [] && { count _e >= 2 }) then { [_e select 0, _e select 1, 0] } else { _c };
     };

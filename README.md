@@ -318,6 +318,12 @@ in that very vehicle, and dismounts for near orders. Put
 `(group this) setVariable ["AIC_noSplit", true]` in a leader's init to keep
 such a group together.
 
+Crews of unarmed vehicles (trucks, transport helicopters without guns) are
+transport-only: the general never sends them to attack, defend or patrol,
+they wait at home for the next ride. Helicopters armed only with door guns
+are kept for rides too and are not used as close air support while
+`useTransport` is on; gunships and planes do the strikes.
+
 The vehicle drives or flies to the infantry, and the infantry boards it. The
 driver or pilot is made leader of the vehicle's group for the ride if the
 leader is not aboard (waypoints are followed by the leader, so a crew chief
@@ -327,7 +333,9 @@ ride writes a status line to the RPT (distance to the troops, landed or
 airborne, units aboard), so a ride that does not progress can be read off
 the log. Trucks and APCs stop 200 to 400 m
 short of the destination. Helicopters land at an LZ 300 to 600 m short of it,
-or right at the objective if no enemy is near it. After the drop the
+or right at the objective if no enemy is near it. A helicopter that cannot
+land at its pickup or drop LZ (a town, a cluttered base) gets the LZ moved
+once to a flatter spot up to 400 m away. After the drop the
 infantry carry out their real order, and the vehicle returns home (task `RTB`)
 and is parked there again (a vehicle that can no longer move is released as
 IDLE instead). If the vehicle is destroyed or the ride takes more than 15

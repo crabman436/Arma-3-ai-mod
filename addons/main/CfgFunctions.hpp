@@ -35,6 +35,7 @@ class CfgFunctions
             class groupEngaged {};
             class vehicleType {};
             class vehicleWeapons {};
+            class vehicleArmament {};
         };
 
         class intel

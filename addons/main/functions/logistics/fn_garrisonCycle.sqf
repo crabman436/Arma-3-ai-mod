@@ -342,7 +342,9 @@ private _mix = createHashMap;
     ) then {
         private _homeObj = _objById get _home;
         private _m = _mix getOrDefault [_home, [0, 0]];
-        private _task = if ((_m select 0) > (_m select 1)) then { "PATROL" } else { "DEFEND" };
+        // transport-only crews (trucks) wait at home for rides instead of patrolling
+        private _patrol = (_m select 0) > (_m select 1) && { !((_rec getOrDefault ["transportOnly", false]) isEqualTo true) };
+        private _task = if (_patrol) then { "PATROL" } else { "DEFEND" };
         if ([_cmd, _grp, _task, _homeObj get "pos", _home] call AIC_fnc_issueOrder) then {
             if (_task isEqualTo "DEFEND") then { _m set [0, (_m select 0) + 1]; } else { _m set [1, (_m select 1) + 1]; };
             _mix set [_home, _m];
