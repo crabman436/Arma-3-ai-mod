@@ -84,6 +84,16 @@ private _fnc_groupsOfType = {
     }
 };
 
+// an assault just started (AIC_fnc_assaultCycle, "prepTarget"): the clusters
+// on its objective come first for AIC_PREP_FIRE_TIME seconds
+private _prep = _cmd getOrDefault ["prepTarget", []];
+private _fnc_prepFirst = {
+    params ["_list"];
+    if (count _prep < 2 || { (_now - (_prep select 1)) > AIC_PREP_FIRE_TIME }) exitWith { _list };
+    private _pPos = _prep select 0;
+    (_list select { ((_x get "pos") distance2D _pPos) < 600 }) + (_list select { ((_x get "pos") distance2D _pPos) >= 600 })
+};
+
 // ======================================================================= ARTILLERY
 private _artyFired = false;
 private _useArty = ([_cmd, "useArtillery"] call AIC_fnc_getSetting) isEqualTo true;
@@ -95,9 +105,9 @@ if (_useArty && { (_now - (_cmd getOrDefault ["lastArtyTime", -1e6])) >= _artyCo
 
     // only clusters worth a mission (strong enough, seen recently); checked
     // before any gun's magazines are scanned
-    private _artyTargets = _threats select {
+    private _artyTargets = [_threats select {
         (_x getOrDefault ["power", 0]) >= 2 && { ([_x] call _fnc_freshness) <= 120 }
-    };
+    }] call _fnc_prepFirst;
     if (_artyTargets isEqualTo []) exitWith {};
 
     // pre-compute usable guns + candidate magazines per group
@@ -159,7 +169,7 @@ if (_useAir) then {
     private _keepTransports = ([_cmd, "useTransport"] call AIC_fnc_getSetting) isEqualTo true;
 
     // only clusters seen recently; checked before any aircraft is inspected
-    private _airTargets = _threats select { ([_x] call _fnc_freshness) <= 120 };
+    private _airTargets = [_threats select { ([_x] call _fnc_freshness) <= 120 }] call _fnc_prepFirst;
     if (_airTargets isEqualTo []) exitWith {};
 
     // a new sortie waits for the cooldown; an aircraft already up on a sortie

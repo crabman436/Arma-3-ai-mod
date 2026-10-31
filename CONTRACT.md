@@ -71,6 +71,8 @@ User-tunable values are settings, not constants.
 | `AIC_AIRFIELD_HOLD_RANGE`, `AIC_PLANE_RTB_FUEL`, `AIC_TURNAROUND_TIME`, `AIC_REARM_TIMEOUT` | 500, 0.3, 120, 900 | heldAirfield, rearmCycle |
 | `AIC_ASSAULT_AXIS_LANES` | 3 | orderAssault: groups per approach |
 | `AIC_CROWD_GROUPS`, `AIC_CROWD_RADIUS`, `AIC_CROWD_SPREAD`, `AIC_CROWD_COOLDOWN` | 3, 70, 150, 120 | spreadCycle |
+| `AIC_ATTACKS_OFFENSIVE`, `AIC_ATTACKS_BALANCED`, `AIC_ATTACK_RATIO`, `AIC_ATTACK_MIN_FORCE` | 3, 2, 2, 8 | allocateForces: attacks at once, attack sizing |
+| `AIC_ASSAULT_PUSH`, `AIC_PREP_FIRE_TIME` | 300, 120 | assaultCycle: overwatch push, preparatory fire (`supportCycle`, commander key `"prepTarget"`) |
 | `AIC_ASSAULT_STAGE`, `AIC_ASSAULT_FRONT`, `AIC_ASSAULT_READY`, `AIC_ASSAULT_WAIT`, `AIC_ASSAULT_MAX_WAIT`, `AIC_ASSAULT_OVERWATCH` | 600, 140, 0.7, 180, 480, 250 | staged assaults |
 | `AIC_MARCH_RANGE`, `AIC_MARCH_END`, `AIC_CONVOY_SEPARATION`, `AIC_CONVOY_SPEED` | 600, 400, 35, 70 | setMarch, issueOrder, monitorOrders |
 | `AIC_PATROL_LINK_RANGE` | 2500 | issueOrder: armed cars patrol to an owned objective this close |

@@ -338,6 +338,17 @@ Groups sent to reinforce a threatened town count as incoming for it, so the
 garrison system doesn't send extra donors to the same threat. Damaged groups
 still retreat to HQ, and join its garrison there.
 
+### Attacks
+
+The general concentrates: at most three attacks on objectives at once in the
+OFFENSIVE posture, two in BALANCED, each brought up to twice the known threat
+and at least a squad's worth of power, more on high-priority towns. An attack
+that is already being fought keeps its place in the plan and goes on while
+three quarters of what it needs can still be reached, however long it has
+lasted. When an assault starts, the artillery and aircraft take the defenders
+of that objective first for two minutes. If the infantry sweeps the place
+without taking it, the vehicles on overwatch go in after five minutes.
+
 ### Assaults
 
 With `stagedAssaults` on, ground groups attacking an objective do not run at it

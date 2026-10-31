@@ -38,8 +38,13 @@
  *      infantry for towns, infantry best for defence; vehicles travel
  *      faster). A target is only staffed if the whole remaining pool could
  *      reach its required power - lone weak groups are never thrown at
- *      strong clusters. Stable groups on an ATTACK target that can no longer
- *      be supported (< 75% of required reachable) are released.
+ *      strong clusters. An attack that is already being fought for (stable
+ *      members, or any candidate on the target whatever the age of its
+ *      order) keeps its slot and only needs 75% of required reachable;
+ *      below that it is released. At most AIC_ATTACKS_OFFENSIVE /
+ *      AIC_ATTACKS_BALANCED objective attacks run at once, each sized at
+ *      AIC_ATTACK_RATIO times the known threat and at least
+ *      AIC_ATTACK_MIN_FORCE power.
  *      Members of objective-less targets that are already on the job
  *      (same task, taskPos within 400 m) are emitted with their current
  *      taskPos so drifting cluster centres do not cause re-issues.
@@ -431,7 +436,7 @@ if (_hqThreat > 0) then {
         private _isHostile = !_isUnknown && {(_side getFriend _owner) < AIC_HOSTILE_FRIEND};
         // objectives held by a friendly third side are left alone
         if ((_isUnknown || _isHostile) && {_stance != "DEFENSIVE"}) then {
-            private _floor = if (_isHostile) then {3 + 2 * (_priority min 3)} else {3};
+            private _floor = AIC_ATTACK_MIN_FORCE + (if (_isHostile) then {2 * (_priority min 3)} else {0});
             // terrain never changes: the urban test is cached on the objective
             private _urban = _obj getOrDefault ["urban", -1];
             if !(_urban isEqualType true) then {
@@ -439,7 +444,7 @@ if (_hqThreat > 0) then {
                 _obj set ["urban", _urban];
             };
             _targets pushBack ([
-                _id, _name, _opos, _radius, "ATTACK", (_threat * 1.5) max _floor,
+                _id, _name, _opos, _radius, "ATTACK", (_threat * AIC_ATTACK_RATIO) max _floor,
                 _score, "OBJ", _threat, _urban
             ] call _fnc_newTarget);
         };
@@ -626,10 +631,11 @@ if (_formReserve) then {
 // ---------------------------------------------------------------------------
 // 7. Greedy staffing
 // ---------------------------------------------------------------------------
+// few attacks, each heavy: the pool is concentrated on the best targets
 private _attackCap = switch (_stance) do {
-    case "OFFENSIVE": {1 max (ceil ((count _pool) / 2))};
-    case "BALANCED": {1 max (floor ((count _pool) / 3))};
-    default {1 max (floor ((count _pool) / 3))};
+    case "OFFENSIVE": {AIC_ATTACKS_OFFENSIVE};
+    case "BALANCED": {AIC_ATTACKS_BALANCED};
+    default {1};
 };
 private _attacksStaffed = 0;
 private _staffedAttackTargets = [];
@@ -642,11 +648,15 @@ private _staffedAttackTargets = [];
     private _members = _target get "members";
     private _isObjAttack = _task == "ATTACK" && {(_target get "kind") == "OBJ"};
 
-    // attack cap (targets that already have stable members do not consume new slots
-    // beyond the one they already hold)
-    if (_isObjAttack && {_attacksStaffed >= _attackCap} && {_members isEqualTo []}) then {continue};
-
     private _cands = (call _fnc_remaining) select {[_x, _target] call _fnc_mayLeave};
+    // groups already fighting for this target, whatever the age of their order:
+    // the attack keeps its slot and its hysteresis for the whole fight
+    private _holding = _members isNotEqualTo [] || {
+        (_cands findIf {[_x get "task", _task] call _fnc_taskFits && {[_x, _target] call _fnc_onTarget}}) >= 0
+    };
+
+    // attack cap (targets that are already being fought for keep their slot)
+    if (_isObjAttack && {_attacksStaffed >= _attackCap} && {!_holding}) then {continue};
     private _availEff = 0;
     {
         _availEff = _availEff + (_x get "power") * ([_x get "type", _task, _target get "urban"] call _fnc_suit);
@@ -656,11 +666,11 @@ private _staffedAttackTargets = [];
     private _feasible = true;
     if (_committed < _required) then {
         if (_task == "ATTACK") then {
-            if (_members isEqualTo []) then {
-                _feasible = (_committed + _availEff) >= _required;
-            } else {
+            if (_holding) then {
                 // hysteresis for groups already attacking
                 _feasible = (_committed + _availEff) >= (_required * 0.75);
+            } else {
+                _feasible = (_committed + _availEff) >= _required;
             };
         } else {
             // defending: HQ / reserve site always, others only if it can be held

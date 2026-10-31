@@ -57,6 +57,20 @@
 #define AIC_ALARM_TIME 300
 #define AIC_ALARM_REPEAT 60
 
+// ---------------------------------------------------------------- attacks
+// attacks on objectives at once, by stance (concentration of force)
+#define AIC_ATTACKS_OFFENSIVE 3
+#define AIC_ATTACKS_BALANCED 2
+// an attack brings this many times the known threat, and at least a squad's
+// worth of power (plus 2 per priority point on a hostile objective)
+#define AIC_ATTACK_RATIO 2
+#define AIC_ATTACK_MIN_FORCE 8
+// an assault whose infantry has swept without a capture sends its overwatch
+// vehicles in after this many seconds, in any case after twice as long
+#define AIC_ASSAULT_PUSH 300
+// preparatory fire on the objective is asked for this long after GO (s)
+#define AIC_PREP_FIRE_TIME 120
+
 // ---------------------------------------------------------------- assaults
 // assembly area: this far from the objective plus half its radius (m)
 #define AIC_ASSAULT_STAGE 600
