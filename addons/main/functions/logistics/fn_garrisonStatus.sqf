@@ -11,11 +11,14 @@
             clusters within 1500 m of the objective.
           - "present": summed power of groups whose record "home" is this
             objective, whose task is DEFEND / PATROL / IDLE and whose leader
-            is within radius * 1.5 of the objective.
+            is within radius * 1.5 of the objective. Transport-only crews
+            (record "transportOnly") have no power here: a truck is no
+            defender.
           - "surplus": present - desired.
           - "groups": the groups counted in "present".
         Extra keys (used by the garrison system):
           - "threat": summed power of threat clusters within 1500 m.
+          - "threatDist": distance of the nearest of them (1e6 without one).
           - "incoming": power of groups whose home is this objective but are
             still on their way (DEFEND / PATROL / IDLE outside the radius,
             TRANSPORTED with a ride ending at this objective) or away on a
@@ -91,8 +94,11 @@ private _objById = createHashMap; // id -> objective record (only the garrisoned
             };
 
             private _threat = 0;
+            private _threatDist = 1e6;
             {
-                if (((_x getOrDefault ["pos", [0, 0, 0]]) distance2D _pos) <= AIC_THREAT_RADIUS) then {
+                private _d = (_x getOrDefault ["pos", [0, 0, 0]]) distance2D _pos;
+                if (_d <= AIC_THREAT_RADIUS) then {
+                    _threatDist = _threatDist min _d;
                     private _p = _x getOrDefault ["power", 0];
                     if (_p isEqualType 0) then { _threat = _threat + _p; };
                 };
@@ -105,6 +111,7 @@ private _objById = createHashMap; // id -> objective record (only the garrisoned
                 ["surplus", 0],
                 ["groups", []],
                 ["threat", _threat],
+                ["threatDist", _threatDist],
                 ["incoming", 0],
                 ["released", createHashMap]
             ]];
@@ -129,7 +136,7 @@ private _objById = createHashMap; // id -> objective record (only the garrisoned
             private _obj = _objById get _home;
             private _task = _rec getOrDefault ["task", "IDLE"];
             private _power = _rec getOrDefault ["power", 0];
-            if !(_power isEqualType 0) then { _power = 0; };
+            if (!(_power isEqualType 0) || { (_rec getOrDefault ["transportOnly", false]) isEqualTo true }) then { _power = 0; };
             private _radius = _obj getOrDefault ["radius", 300];
             if !(_radius isEqualType 0) then { _radius = 300; };
             private _near = ((getPosATL leader _grp) distance2D (_obj get "pos")) <= (_radius * 1.5);

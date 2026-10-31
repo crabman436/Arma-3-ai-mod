@@ -42,8 +42,8 @@
  *       commanded group (a squad placed in a helicopter, split off by
  *       AIC_fnc_splitPassengers): a far ATTACK / REINFORCE / DEFEND order
  *       becomes a ride with that very vehicle (AIC_fnc_orderTransport, the
- *       ride starts in the vehicle), any other order first dismounts the
- *       group when the vehicle is landed / stopped.
+ *       ride starts in the vehicle), any other order dismounts the group
+ *       (AIC_fnc_dismountCarrier, repeated by AIC_fnc_monitorOrders).
  *     - INF groups ordered to ATTACK / REINFORCE / DEFEND farther than
  *       "transportMinDistance" (setting "useTransport" on, group not
  *       already TRANSPORTED, at least half of it on foot, no ride aborted
@@ -208,7 +208,9 @@ if (_task isEqualTo "") exitWith {false};
 // --- A forced order ends a transport pairing ----------------------------------
 if (_curTask isEqualTo "TRANSPORTED") then {
     private _veh = _record getOrDefault ["transportVeh", objNull];
-    if (_veh isEqualType objNull && {!isNull _veh}) then {
+    // (a flying helicopter lands first, AIC_fnc_transportCycle then gets them out)
+    if (_veh isEqualType objNull && {!isNull _veh}
+        && {!(_veh isKindOf "Air") || {isTouchingGround _veh} || {!alive (driver _veh)}}) then {
         {
             if (alive _x && {objectParent _x isEqualTo _veh}) then {
                 unassignVehicle _x;
@@ -262,21 +264,8 @@ if (_curTask isNotEqualTo "TRANSPORTED") then {
                 if (!isNil "_r" && {_r isEqualTo true}) then { _task = "TRANSPORTED"; };
             };
             if (_task isNotEqualTo "TRANSPORTED") then {
-                // no ride: get out, but only from a landed / stopped vehicle
-                private _still = if (_carrier isKindOf "Air") then { isTouchingGround _carrier } else { (speed _carrier) < 2 };
-                if (_still) then {
-                    {
-                        if (objectParent _x isEqualTo _carrier) then {
-                            unassignVehicle _x;
-                            [_x] orderGetIn false;
-                            doGetOut _x;
-                        };
-                    } forEach _alive;
-                    _group leaveVehicle _carrier;
-                    ["%1: group %2 dismounts %3 of group %4 for %5", [
-                        _cmd getOrDefault ["side", sideUnknown], groupId _group, typeOf _carrier, groupId _cGrp, _task
-                    ]] call AIC_fnc_log;
-                };
+                // no ride: get out (AIC_fnc_monitorOrders repeats this until they are out)
+                [_group, _carrier, (_cRec getOrDefault ["task", ""]) isNotEqualTo "TRANSPORT"] call AIC_fnc_dismountCarrier;
             };
         };
     };
@@ -311,7 +300,12 @@ if (_task isEqualTo "TRANSPORTED") exitWith {
 // --- Dispatch ----------------------------------------------------------------
 private _ok = switch (_task) do {
     case "ATTACK":    { [_group, _pos, _radius, _type] call AIC_fnc_orderAttack };
-    case "DEFEND":    { [_group, _pos, _radius min 200, _type] call AIC_fnc_orderDefend };
+    case "DEFEND": {
+        // trucks wait behind the town instead of on the threatened side
+        private _rear = (_record getOrDefault ["transportOnly", false]) isEqualTo true;
+        private _threatPos = [_cmd, _pos] call AIC_fnc_nearestThreat;
+        [_group, _pos, [_radius min 200, 60] select _rear, _type, _threatPos, _rear] call AIC_fnc_orderDefend
+    };
     case "PATROL":    { [_group, _pos, _radius, _type] call AIC_fnc_orderPatrol };
     case "RETREAT":   { [_group, _pos, _type] call AIC_fnc_orderRetreat };
     case "RTB":       { [_group, _pos, _type] call AIC_fnc_orderRetreat };

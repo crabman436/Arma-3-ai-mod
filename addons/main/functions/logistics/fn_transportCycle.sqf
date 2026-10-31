@@ -31,7 +31,8 @@
               orderGetIn true. If the vehicle is farther away, the cargo
               leader and the transport leader are sent towards each other
               (doMove, every 60 s). Not everybody aboard 180 s after the
-              fallback -> the ride is aborted.
+              fallback -> with at least half aboard the stragglers become a
+              new group and the ride goes on, otherwise it is aborted.
             - Order older than 900 s -> aborted.
           RIDE - cargo aboard.
             - Vehicle near the drop point (250 m helicopter, 200 m ground):
@@ -54,7 +55,8 @@
           Transport gone (group dead, vehicle dead / immobile / without
           driver, transport task no longer "TRANSPORT" or paired with
           another group) -> aborted.
-          Abort = cargo dismounts (doGetOut / leaveVehicle), the cargo
+          Abort = cargo dismounts (doGetOut / leaveVehicle; a flying
+          helicopter with a pilot lands first, land "GET OUT"), the cargo
           record gets "rideAbortTime" = time (AIC_fnc_issueOrder starts no
           new ride for it for 600 s) and the "final" order is issued on
           foot with force.
@@ -67,7 +69,8 @@
         AIC_fnc_issueOrder (force). If its vehicle is gone or cannot move
         (or the order fails) it is set "IDLE" instead, so the garrison
         system can take the crew over. Cargo units still sitting inside are
-        ordered out first; after 60 s they are moved out (moveOut).
+        ordered out first; after 60 s they are moved out (moveOut), unless
+        the vehicle is a helicopter in the air: that one lands first.
 
     Parameters:
         0: HASHMAP - commander
@@ -107,9 +110,18 @@ private _fnc_validPos = {
     _p isEqualType [] && { count _p >= 2 } && { (_p select 0) isEqualType 0 }
 };
 
-// cargo units out of their vehicle (cargo only, never the transport crew)
+// cargo units out of their vehicle (cargo only, never the transport crew).
+// Nobody jumps from a flying helicopter that still has a pilot: it lands
+// first, and the next call (or the transport section below) gets them out
 private _fnc_unload = {
     params ["_units", "_veh", "_grp"];
+    if (!isNull _veh && { _veh isKindOf "Air" } && { !isTouchingGround _veh }
+        && { alive _veh } && { canMove _veh } && { alive (driver _veh) }) exitWith {
+        if ((time - (_veh getVariable ["AIC_landOrderTime", -1e6])) > 45) then {
+            _veh setVariable ["AIC_landOrderTime", time];
+            _veh land "GET OUT";
+        };
+    };
     {
         if (alive _x && { !isNull objectParent _x }) then {
             unassignVehicle _x;
@@ -120,7 +132,6 @@ private _fnc_unload = {
     if (!isNull _veh) then { _grp leaveVehicle _veh; };
 };
 
-// seats for cargo units outside the vehicle: cargo seats first, then FFV
 // a helicopter that cannot land at its LZ (town, cluttered base, slope):
 // once per leg find a flatter spot farther out, move the helipad and the
 // transport's waypoint there. Returns true if the LZ was moved.
@@ -153,19 +164,23 @@ private _fnc_relocateLz = {
     private _i = _tRec getOrDefault [_wpKey, -1];
     if (_i isEqualType 0 && { _i >= 0 } && { _i < count (waypoints _tGroup) }) then {
         [_tGroup, _i] setWaypointPosition [_p, 0];
+        // also re-arms a TR UNLOAD the helicopter had already completed
+        _tGroup setCurrentWaypoint [_tGroup, _i];
     };
     _veh land "NONE";
     true
 };
 
+// seats for cargo units outside the vehicle: cargo seats first, then FFV
 private _fnc_boardFallback = {
     params ["_units", "_veh"];
     // one fullCrew enumeration: every empty seat is listed exactly once
     private _cargoIdx = []; // empty cargo seats (cargo index)
     private _ffv = [];      // empty FFV seats (turret path)
     {
-        _x params ["_unit", "_role", "_cIdx", "_path", ["_isFFV", false]];
-        if (isNull _unit) then {
+        _x params ["_unit", "_role", "_cIdx", "_path", ["_isFFV", false], ["_assigned", objNull]];
+        // a seat somebody is already walking to is not free
+        if (isNull _unit && { !alive _assigned }) then {
             if (_isFFV isEqualTo true) then {
                 _ffv pushBack _path;
             } else {
@@ -376,8 +391,20 @@ private _fnc_boardFallback = {
             } else {
                 private _fbAge = time - (_rec getOrDefault ["getInFallbackTime", time]);
                 if (_fbAge > 180) exitWith {
-                    [_units, _veh, _grp] call _fnc_unload;
-                    _finals pushBack [_grp, _rec, format ["only %1/%2 boarded", _aboard, count _units], true];
+                    if ((_aboard * 2) >= count _units) then {
+                        // most are aboard: go without the stragglers, they
+                        // become a group of their own and get new orders
+                        private _left = _units select { objectParent _x isNotEqualTo _veh };
+                        { unassignVehicle _x; } forEach _left;
+                        _left orderGetIn false;
+                        _left joinSilent (createGroup [_side, true]);
+                        ["%1: %2 leaves without %3 of group %4 (%5 aboard)", [
+                            _side, groupId _tGroup, count _left, groupId _grp, _aboard
+                        ]] call AIC_fnc_log;
+                    } else {
+                        [_units, _veh, _grp] call _fnc_unload;
+                        _finals pushBack [_grp, _rec, format ["only %1/%2 boarded", _aboard, count _units], true];
+                    };
                 };
                 // keep pushing stragglers in
                 if (_near) then { [_units, _veh] call _fnc_boardFallback; };
@@ -540,7 +567,8 @@ private _fnc_objPos = {
             [_inside, _veh, _cargo] call _fnc_unload;
             continue;
         };
-        if ((time - _outTime) <= 60) then {
+        // a flying helicopter is waited for: moveOut would drop them to their death
+        if ((time - _outTime) <= 60 || { _veh isKindOf "Air" && { !isTouchingGround _veh } }) then {
             [_inside, _veh, _cargo] call _fnc_unload;
             continue;
         };

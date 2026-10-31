@@ -32,13 +32,22 @@
              within 1500 m), never the target itself as home, and
              AIC_fnc_canLeaveGarrison true (its home's surplus covers its
              power). Bases are stripped first, then the largest surplus, then
-             the shortest distance. Each donor is sent with
+             the shortest distance. Transport-only crews never are donors.
+             Each donor is sent with
              AIC_fnc_issueOrder (DEFEND, objective pos, objective id; the
              order may become a transport ride) and its home is set to the
              target. At most "garrisonMovesPerCycle" transfers per cycle.
           4. Groups at their home with task IDLE get DEFEND there, or PATROL
              when the home already has more defenders than patrols (so every
-             second group patrols).
+             second group patrols). A threatened home does not send out new
+             patrols.
+          5. Stand-to. With a threat cluster within AIC_STANDTO_RANGE of a
+             home's edge its patrols come in and DEFEND (infantry into
+             positions facing the threat, record "standTo"), and armed
+             vehicles holding the wrong side of the town (more than 60
+             degrees off, at most every 120 s) move to the threatened side.
+             Once the threat is gone and the group has not been engaged for
+             120 s, a stood-to group goes back on patrol.
 
         With the optional homes-only flag only step 1 (without orders) and
         step 2 run: AIC_fnc_commanderCycle uses it right before
@@ -113,6 +122,12 @@ private _fnc_radius = {
 private _fnc_atObjective = {
     params ["_grp", "_obj"];
     ((getPosATL leader _grp) distance2D (_obj get "pos")) <= (([_obj] call _fnc_radius) * 1.5)
+};
+
+// is a threat cluster close enough for this garrison to stand to?
+private _fnc_alert = {
+    params ["_obj", "_entry"];
+    (_entry getOrDefault ["threatDist", 1e6]) <= (([_obj] call _fnc_radius) + AIC_STANDTO_RANGE)
 };
 
 // nearest home within 1000 m of a position, or "" if none
@@ -236,6 +251,7 @@ if (_maxMoves > 0 && { _deficits isNotEqualTo [] }) then {
         private _home = _rec getOrDefault ["home", ""];
         private _homeEntry = _status getOrDefault [_home, createHashMap];
         (_rec getOrDefault ["type", ""]) in _donorTypes
+        && { !((_rec getOrDefault ["transportOnly", false]) isEqualTo true) }
         && { (_rec getOrDefault ["task", "IDLE"]) in _settleTasks }
         && { (_rec getOrDefault ["strength", 1]) > _threshold }
         // transfer cooldown: a group that changed home recently stays put
@@ -324,7 +340,12 @@ private _mix = createHashMap;
     _x params ["_grp", "_rec"];
     private _home = _rec getOrDefault ["home", ""];
     private _task = _rec getOrDefault ["task", "IDLE"];
-    if (_home in _objById && { _task in ["DEFEND", "PATROL"] } && { (_rec getOrDefault ["objective", ""]) isEqualTo _home }) then {
+    if (
+        _home in _objById
+        && { _task in ["DEFEND", "PATROL"] }
+        && { (_rec getOrDefault ["objective", ""]) isEqualTo _home }
+        && { !((_rec getOrDefault ["transportOnly", false]) isEqualTo true) }
+    ) then {
         private _m = _mix getOrDefault [_home, [0, 0]];
         if (_task isEqualTo "DEFEND") then { _m set [0, (_m select 0) + 1]; } else { _m set [1, (_m select 1) + 1]; };
         _mix set [_home, _m];
@@ -342,8 +363,11 @@ private _mix = createHashMap;
     ) then {
         private _homeObj = _objById get _home;
         private _m = _mix getOrDefault [_home, [0, 0]];
-        // transport-only crews (trucks) wait at home for rides instead of patrolling
-        private _patrol = (_m select 0) > (_m select 1) && { !((_rec getOrDefault ["transportOnly", false]) isEqualTo true) };
+        // transport-only crews (trucks) wait at home for rides instead of
+        // patrolling, and nobody starts a patrol into a coming attack
+        private _patrol = (_m select 0) > (_m select 1)
+            && { !((_rec getOrDefault ["transportOnly", false]) isEqualTo true) }
+            && { !([_homeObj, _status getOrDefault [_home, createHashMap]] call _fnc_alert) };
         private _task = if (_patrol) then { "PATROL" } else { "DEFEND" };
         if ([_cmd, _grp, _task, _homeObj get "pos", _home] call AIC_fnc_issueOrder) then {
             if (_task isEqualTo "DEFEND") then { _m set [0, (_m select 0) + 1]; } else { _m set [1, (_m select 1) + 1]; };
@@ -351,6 +375,66 @@ private _mix = createHashMap;
         };
     };
 } forEach _entries;
+
+// ------------------------------------------------------------ 5. stand-to
+private _standTo = 0;
+{
+    _x params ["_grp", "_rec"];
+    private _home = _rec getOrDefault ["home", ""];
+    private _task = _rec getOrDefault ["task", "IDLE"];
+    private _type = _rec getOrDefault ["type", ""];
+    private _stood = (_rec getOrDefault ["standTo", false]) isEqualTo true;
+    private _entry = _status getOrDefault [_home, createHashMap];
+    if (
+        count _entry == 0
+        || { !(_home in _objById) }
+        || { !(_type in _donorTypes) }
+        || { (_rec getOrDefault ["transportOnly", false]) isEqualTo true }
+        || { (_rec getOrDefault ["objective", ""]) isNotEqualTo _home }
+    ) then { continue };
+
+    private _homeObj = _objById get _home;
+    private _homePos = _homeObj get "pos";
+    if ([_homeObj, _entry] call _fnc_alert) then {
+        if (_task isEqualTo "PATROL") then {
+            if ([_cmd, _grp, "DEFEND", _homePos, _home] call AIC_fnc_issueOrder) then {
+                _rec set ["standTo", true];
+                _standTo = _standTo + 1;
+            };
+            continue;
+        };
+        // armed vehicles move to the side the attack comes from
+        private _holdDir = _grp getVariable ["AIC_holdDir", -1];
+        private _threatPos = [_cmd, _homePos] call AIC_fnc_nearestThreat;
+        if (
+            _task isEqualTo "DEFEND"
+            && { _type isNotEqualTo "INF" }
+            && { _holdDir >= 0 }
+            && { _threatPos isNotEqualTo [] }
+            && { (time - (_rec getOrDefault ["standToTime", -1e6])) > 120 }
+            && { (abs (((_homePos getDir _threatPos) - _holdDir + 540) % 360 - 180)) > 60 }
+        ) then {
+            _rec set ["standToTime", time];
+            if ([_cmd, _grp, "DEFEND", _homePos, _home, true] call AIC_fnc_issueOrder) then {
+                _standTo = _standTo + 1;
+            };
+        };
+    } else {
+        if (_stood) then {
+            private _engaged = _rec getOrDefault ["lastEngaged", -1e6];
+            if (!(_engaged isEqualType 0) || { (time - _engaged) > 120 }) then {
+                _rec set ["standTo", false];
+                if (_task isEqualTo "DEFEND") then {
+                    [_cmd, _grp, "PATROL", _homePos, _home] call AIC_fnc_issueOrder;
+                };
+            };
+        };
+    };
+} forEach _entries;
+
+if (_standTo > 0) then {
+    ["garrisonCycle: %1 stands to, %2 groups take up defensive positions", [_side, _standTo]] call AIC_fnc_log;
+};
 
 if (_moves > 0 || { _sentHome > 0 }) then {
     ["garrisonCycle: %1 ordered %2 garrison transfers, %3 groups sent home", [_side, _moves, _sentHome]] call AIC_fnc_log;

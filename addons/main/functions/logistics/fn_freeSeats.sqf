@@ -3,8 +3,8 @@
 
     Description:
         Number of seats a vehicle has free for passengers of another group:
-        empty cargo seats plus empty FFV (person turret) seats, each counted
-        once from a single fullCrew enumeration, minus the seats the
+        empty unlocked cargo seats plus empty FFV (person turret) seats, each
+        counted once from a single fullCrew enumeration, minus the seats the
         vehicle's own group needs for its members on foot that will climb
         back in. Seats already taken by members of the cargo group (a squad
         that sits in the vehicle before the ride is ordered) count as free.
@@ -37,7 +37,7 @@ if (isNull _veh) exitWith { 0 };
 private _free = {
     _x params ["_unit", "_role", "_cargoIdx", "_path", ["_isFFV", false]];
     (isNull _unit || { !isNull _cargo && { (group _unit) isEqualTo _cargo } })
-    && { (_role == "cargo") || { _isFFV isEqualTo true } }
+    && { (_role == "cargo" && { _cargoIdx < 0 || { !(_veh lockedCargo _cargoIdx) } }) || { _isFFV isEqualTo true } }
 } count (fullCrew [_veh, "", true]);
 
 // own members on foot that will climb back into this vehicle

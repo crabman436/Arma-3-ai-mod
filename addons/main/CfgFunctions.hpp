@@ -46,6 +46,7 @@ class CfgFunctions
             class collectObjectives {};
             class addObjective {};
             class getObjective {};
+            class nearestThreat {};
             class updateObjectives {};
         };
 
@@ -91,6 +92,7 @@ class CfgFunctions
             class garrisonStatus {};
             class canLeaveGarrison {};
             class garrisonCycle {};
+            class dismountCarrier {};
             class freeSeats {};
             class findTransport {};
             class orderTransport {};

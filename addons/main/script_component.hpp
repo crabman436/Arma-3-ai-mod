@@ -48,6 +48,9 @@
 // a threat cluster within this distance threatens an objective or the HQ
 #define AIC_THREAT_RADIUS 1500
 
+// a threat cluster this close to an objective's edge makes its garrison stand to
+#define AIC_STANDTO_RANGE 800
+
 // ---------------------------------------------------------------- transport
 // a ride is aborted after at least this many seconds
 #define AIC_RIDE_TIMEOUT 900

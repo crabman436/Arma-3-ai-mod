@@ -5,15 +5,18 @@
  *     INF          : MOVE to the position, then HOLD. Once the leader
  *                    has arrived, the commander cycle (AIC_fnc_monitorOrders
  *                    -> AIC_fnc_monitorGarrison -> AIC_fnc_garrisonBuildings)
- *                    sends every unit on foot (except the leader) into
- *                    building positions of nearby buildings and stops them
- *                    there. No script waits here: everything stays
- *                    unscheduled. Units without a free building position
- *                    stay with the leader at the HOLD waypoint.
+ *                    hands every unit on foot a position (static weapons,
+ *                    buildings, perimeter) and settles it there. No script
+ *                    waits here: everything stays unscheduled.
  *     MOTOR/MECH/
  *     ARMOR        : MOVE to a road-friendly position near the edge of the
- *                    area facing the closest direction of approach, then
- *                    HOLD, AWARE / YELLOW.
+ *                    area on the threatened side (threat position, else the
+ *                    nearest enemy the leader knows, else the side it comes
+ *                    from; spread a little so several vehicles do not share
+ *                    one spot), then HOLD, AWARE / YELLOW. With "rear" the
+ *                    side away from the threat. The threatened bearing is
+ *                    kept in the group variable "AIC_holdDir" (-1 if none)
+ *                    so AIC_fnc_garrisonCycle can turn the group around.
  *     HELI / PLANE : never garrisoned - LOITER waypoint circling the
  *                    position (radius 500 heli / 1200 plane).
  *     NAVAL        : MOVE + HOLD on water near the position, otherwise
@@ -26,6 +29,8 @@
  *   2: NUMBER - (optional) defended area radius, default 150 (garrison
  *               search radius is capped at 200 m)
  *   3: STRING - (optional) group type from AIC_fnc_classifyGroup; "" = classify now
+ *   4: ARRAY   - (optional) position of the nearest threat, default [] (none)
+ *   5: BOOL   - (optional) vehicles hold the rear instead, default false
  *
  * Returns:
  *   BOOL - true if the order was applied
@@ -38,7 +43,9 @@ params [
     ["_group", grpNull, [grpNull]],
     ["_pos", [], [[]]],
     ["_radius", 150, [0]],
-    ["_type", "", [""]]
+    ["_type", "", [""]],
+    ["_threatPos", [], [[]]],
+    ["_rear", false, [false]]
 ];
 
 if (isNull _group || {count _pos < 2}) exitWith {false};
@@ -96,8 +103,15 @@ if (_type == "NAVAL") exitWith {
 if (_type in ["MOTOR", "MECH", "ARMOR"]) exitWith {
     private _dir = _center getDir _leader;
     private _enemy = _leader findNearestEnemy _center;
-    if (!isNull _enemy) then { _dir = _center getDir _enemy; };
-    private _hold = _center getPos [(_radius * 0.5) min 150, _dir];
+    private _known = true;
+    switch (true) do {
+        case (count _threatPos >= 2): { _dir = _center getDir _threatPos; };
+        case (!isNull _enemy): { _dir = _center getDir _enemy; };
+        default { _known = false; };
+    };
+    _group setVariable ["AIC_holdDir", if (_known && {!_rear}) then {_dir} else {-1}];
+    private _holdDir = if (_rear) then {_dir + 180} else {_dir + (random 70) - 35};
+    private _hold = _center getPos [(_radius * 0.5) min 150, _holdDir];
     _hold = [[_hold select 0, _hold select 1, 0], 120] call AIC_fnc_roadPos;
     if (surfaceIsWater _hold) then { _hold = _center; };
 

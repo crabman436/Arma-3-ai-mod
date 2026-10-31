@@ -3,9 +3,11 @@
  * Description:
  *   Removes every waypoint of a group, increments the group variable
  *   "AIC_orderToken" (which invalidates the garrison state of the group
- *   record, see AIC_fnc_monitorGarrison), clears the units' garrison
- *   targets ("AIC_garrisonPos") and makes all units rejoin formation
- *   (doFollow), undoing doStop/doMove from garrisons.
+ *   record, see AIC_fnc_monitorGarrison), clears the units' garrison state
+ *   ("AIC_garrisonPos", "AIC_buildingPos", "AIC_garrisonStance"), gets
+ *   garrison gunners off their static weapons ("AIC_gunnerOf") and makes all
+ *   units rejoin formation (doFollow), undoing doStop / doMove / doWatch
+ *   from garrisons.
  *   With no waypoints left the group holds where it is. Order functions
  *   add their own waypoints afterwards and select the first one they
  *   created via setCurrentWaypoint (waypoint 0 may survive deletion).
@@ -40,8 +42,19 @@ private _leader = leader _group;
 if (!isNull _leader && {alive _leader}) then {
     {
         _x setVariable ["AIC_garrisonPos", nil];
-        if (alive _x && {_x != _leader}) then {
+        _x setVariable ["AIC_buildingPos", nil];
+        _x setVariable ["AIC_garrisonStance", nil];
+        private _gun = _x getVariable ["AIC_gunnerOf", objNull];
+        if (!isNull _gun) then {
+            _x setVariable ["AIC_gunnerOf", nil];
+            _gun setVariable ["AIC_gunner", nil];
+            unassignVehicle _x;
+            [_x] orderGetIn false;
+            if ((objectParent _x) isEqualTo _gun) then {doGetOut _x};
+        };
+        if (alive _x) then {
             _x doFollow _leader;
+            _x doWatch objNull;
             _x setUnitPos "AUTO";
         };
     } forEach (units _group);

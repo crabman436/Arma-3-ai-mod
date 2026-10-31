@@ -116,6 +116,17 @@ private _fnc_setIdle = {
     // transport rides are followed by AIC_fnc_transportCycle
     if (_task in ["TRANSPORT", "TRANSPORTED"]) then { continue };
 
+    // a squad on orders that still sits in another group's vehicle (the
+    // vehicle was moving when the order came) keeps trying to get out
+    private _carrier = objectParent _leader;
+    if (_type == "INF" && {!isNull _carrier} && {!(_carrier isKindOf "StaticWeapon")}) then {
+        private _drv = driver _carrier;
+        if (alive _drv && {!isPlayer _drv} && {(group _drv) isNotEqualTo _group}) then {
+            private _cRec = _groupData getOrDefault [hashValue (group _drv), createHashMap];
+            [_group, _carrier, (_cRec getOrDefault ["task", ""]) isNotEqualTo "TRANSPORT"] call AIC_fnc_dismountCarrier;
+        };
+    };
+
     private _dist = _leaderPos distance2D _taskPos;
     private _wps = waypoints _group;
     private _wpDone = (count _wps == 0) || {(currentWaypoint _group) >= count _wps};
@@ -137,7 +148,11 @@ private _fnc_setIdle = {
     // step per cycle; AIC_fnc_dynSimCycle parks the group only when done).
     // Same radius as AIC_fnc_issueOrder gives AIC_fnc_orderDefend.
     if (_task == "DEFEND" && {_type == "INF"}) then {
-        [_group, _rec, _taskPos, (_objRec getOrDefault ["radius", _defRadius]) min 200] call AIC_fnc_monitorGarrison;
+        [
+            _group, _rec, _taskPos, (_objRec getOrDefault ["radius", _defRadius]) min 200,
+            [_cmd, _taskPos] call AIC_fnc_nearestThreat,
+            ([_cmd, "garrisonManStatics"] call AIC_fnc_getSetting) isEqualTo true
+        ] call AIC_fnc_monitorGarrison;
     };
 
     // --- completion -----------------------------------------------------------

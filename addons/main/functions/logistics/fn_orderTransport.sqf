@@ -324,6 +324,8 @@ _cRec set ["nearDropTime", -1];
 _cRec set ["hoverTime", -1];
 _cRec set ["landOrderTime", -1];
 _cRec set ["approachTime", -1];
+_cRec set ["pickupLzMoved", false];
+_cRec set ["dropLzMoved", false];
 _cRec set ["lastPos", _cPos];
 _cRec set ["lastMoveTime", time];
 

@@ -283,6 +283,28 @@ Each cycle the garrison system:
    transport ride still count for their home, so lending a truck doesn't
    trigger a refill.
 
+Infantry on DEFEND take real positions once they arrive:
+
+- Up to half of the group mans empty, armed static weapons in the area.
+  Mortars are left alone.
+- The rest fills the buildings nearest the threatened side of the town, up to
+  four men per building, so they cover each other. High positions and
+  positions near the threat go first, and two groups never take the same spot.
+- Whoever is left, or a whole group on open ground, spreads on a ring around
+  the objective next to whatever cover is close, crouched and facing out or
+  towards the threat.
+- Units watch the threat, and turn when it moves to another side of the town.
+
+Vehicles hold the threatened side of the town, spread out a little. Trucks and
+other transport-only crews wait behind the town instead, do not count as
+defenders and are never sent to fill another garrison.
+
+When a threat cluster comes within 800 m of a garrisoned objective's edge, the
+garrison **stands to**. Its patrols come in and take positions facing the
+threat, no new patrols start, and armed vehicles on the wrong side of the town
+move across. Once the threat has gone and the group has not been engaged for
+two minutes, the patrols go back out.
+
 The attack planner follows the same rules. A group settled in a garrison is
 only sent to attack or reinforce if its home can spare it. Groups that have no
 job in the plan stay where they are instead of being sent on patrol, and the
@@ -362,6 +384,7 @@ attack. The rest of the army stays parked and costs nothing.
 | `manageGarrisons` | true | Distribute groups between owned objectives and bases |
 | `garrisonPerPriority` | 5 | Desired garrison power per point of objective priority (a base's guard size) |
 | `garrisonMovesPerCycle` | 2 | Maximum garrison transfers ordered per cycle |
+| `garrisonManStatics` | true | Infantry garrisons man empty static weapons in their area |
 | `useTransport` | true | Infantry ordered far away get a vehicle ride |
 | `splitPassengers` | true | Passengers placed in the same group as a helicopter or truck crew get a squad of their own (group variable `AIC_noSplit` opts a group out) |
 | `transportMinDistance` | 1200 | Infantry orders farther than this (m) look for a transport |

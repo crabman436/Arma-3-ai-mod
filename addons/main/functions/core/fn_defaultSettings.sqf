@@ -41,6 +41,7 @@ createHashMapFromArray [
     ["manageGarrisons", true],
     ["garrisonPerPriority", 5],
     ["garrisonMovesPerCycle", 2],
+    ["garrisonManStatics", true],
 
     // --- logistics: transport
     ["useTransport", true],

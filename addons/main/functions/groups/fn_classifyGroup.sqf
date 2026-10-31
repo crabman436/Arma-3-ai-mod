@@ -61,7 +61,8 @@ private _vehicles = [];
 {
     private _unit = _x;
     private _veh = objectParent _unit;
-    if (isNull _veh) then {
+    // a garrison gunner (AIC_fnc_garrisonBuildings) stays infantry
+    if (isNull _veh || {!isNull (_unit getVariable ["AIC_gunnerOf", objNull])}) then {
         _scores set ["INF", (_scores get "INF") + 1];
     } else {
         _vehicles pushBackUnique _veh;
