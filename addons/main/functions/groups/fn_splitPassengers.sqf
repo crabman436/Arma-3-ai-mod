@@ -22,6 +22,9 @@
  *   that sits in another group's vehicle a ride with that vehicle or lets
  *   it dismount. The new group is picked up by the same
  *   AIC_fnc_registerGroups sweep, so it is commanded at once.
+ *   A group that drives several transport vehicles is split into one group
+ *   per vehicle (door guns allowed on helicopters), so each can carry a
+ *   squad of its own instead of following empty.
  *
  * Parameters:
  *   0: HASHMAP - commander
@@ -88,6 +91,39 @@ private _created = [];
     ["splitPassengers: %1 moved %2 passengers of group %3 (%4) into new group %5", [
         _side, count _passengers, groupId _grp, typeOf (_vehicles select 0), groupId _new
     ]] call AIC_fnc_log;
+} forEach (groups _side);
+
+// a transport group with several vehicles could only ever carry one squad
+{
+    private _grp = _x;
+    if (isNull _grp || {!local _grp}) then {continue};
+    if (_grp getVariable ["AIC_exclude", false] || {_grp getVariable ["AIC_noSplit", false]}) then {continue};
+    private _alive = (units _grp) select {alive _x};
+    if ((_alive findIf {isPlayer _x}) >= 0) then {continue};
+
+    private _driven = [];
+    {
+        private _v = objectParent _x;
+        if (!isNull _v && {(group (driver _v)) isEqualTo _grp}) then {_driven pushBackUnique _v};
+    } forEach _alive;
+    if (count _driven < 2) then {continue};
+    private _fighting = _driven findIf {
+        private _arm = [_x] call AIC_fnc_vehicleArmament;
+        if (_x isKindOf "Air") then {_arm > 1} else {_arm > 0}
+    };
+    if (_fighting >= 0) then {continue};
+
+    {
+        if (_forEachIndex > 0) then {
+            private _veh = _x;
+            private _new = createGroup [_side, true];
+            if (!isNull _new) then {
+                (_alive select {(objectParent _x) isEqualTo _veh}) joinSilent _new;
+                _created pushBack _new;
+            };
+        };
+    } forEach _driven;
+    ["splitPassengers: %1 group %2 split into %3 single-vehicle transport groups", [_side, groupId _grp, count _driven]] call AIC_fnc_log;
 } forEach (groups _side);
 
 _created

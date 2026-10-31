@@ -47,7 +47,8 @@
  *     - INF groups ordered to ATTACK / REINFORCE / DEFEND farther than
  *       "transportMinDistance" (setting "useTransport" on, group not
  *       already TRANSPORTED, at least half of it on foot, no ride aborted
- *       for it in the last 600 s - record "rideAbortTime") look for a ride
+ *       for it in the last 600 s - record "rideAbortTime" - not engaged in
+ *       the last 60 s, no enemy within AIC_PICKUP_DANGER_RADIUS) look for a ride
  *       with AIC_fnc_findTransport. If AIC_fnc_orderTransport succeeds the
  *       function returns true without dispatching: the record now holds
  *       task "TRANSPORTED" (taskPos = target, objective = objective id,
@@ -211,16 +212,8 @@ if (_task isEqualTo "") exitWith {false};
 if (_curTask isEqualTo "TRANSPORTED") then {
     private _veh = _record getOrDefault ["transportVeh", objNull];
     // (a flying helicopter lands first, AIC_fnc_transportCycle then gets them out)
-    if (_veh isEqualType objNull && {!isNull _veh}
-        && {!(_veh isKindOf "Air") || {[_veh] call AIC_fnc_isLanded} || {!alive (driver _veh)}}) then {
-        {
-            if (alive _x && {objectParent _x isEqualTo _veh}) then {
-                unassignVehicle _x;
-                [_x] orderGetIn false;
-                doGetOut _x;
-            };
-        } forEach (units _group);
-        _group leaveVehicle _veh;
+    if (_veh isEqualType objNull) then {
+        [_group, _veh, false, true] call AIC_fnc_dismountCarrier;
     };
     _record set ["transport", grpNull];
     _record set ["final", createHashMap];
@@ -282,8 +275,12 @@ if (_type == "INF" && {_task in ["ATTACK", "REINFORCE", "DEFEND"]} && {_curTask 
     private _minDist = [_cmd, "transportMinDistance"] call AIC_fnc_getSetting;
     private _alive = (units _group) select {alive _x};
     private _mounted = {!isNull objectParent _x} count _alive;
+    // nobody calls a vehicle into a firefight
+    private _engaged = _record getOrDefault ["lastEngaged", -1e6];
     if (_alive isNotEqualTo [] && {(_mounted * 2) <= count _alive}
-        && {((getPosATL (leader _group)) distance2D _pos) > _minDist}) then {
+        && {((getPosATL (leader _group)) distance2D _pos) > _minDist}
+        && {!(_engaged isEqualType 0) || {(time - _engaged) > 60}}
+        && {([_cmd, getPosATL (leader _group), AIC_PICKUP_DANGER_RADIUS] call AIC_fnc_nearestThreat) isEqualTo []}) then {
         private _tGrp = [_cmd, _group, _pos] call AIC_fnc_findTransport;
         // too big for any one vehicle: teams, if each gets a vehicle of its own
         if (isNull _tGrp && {[_cmd, _group, _pos, _task, _objective] call AIC_fnc_splitForRide}) then {

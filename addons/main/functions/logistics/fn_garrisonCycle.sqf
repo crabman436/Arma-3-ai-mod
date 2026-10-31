@@ -22,8 +22,10 @@
                  not at its home is sent there (DEFEND), so it never idles
                  next to a town while the town's garrison counts it as
                  "incoming";
-               - transport-only crews always have the nearest base as home
-                 and are sent there, whatever their settled task.
+               - transport-only crews always have a base as home: the one
+                 the planner sent them to, else the nearest. They are sent
+                 there, whatever their settled task, after AIC_DEPOT_DELAY s
+                 and never with another group's troops aboard.
           2. AIC_fnc_garrisonStatus is recomputed.
           3. Transfers. Objectives whose deficit (desired - present -
              incoming) is more than 2 power are served first by
@@ -132,6 +134,13 @@ private _fnc_alert = {
     (_entry getOrDefault ["threatDist", 1e6]) <= (([_obj] call _fnc_radius) + AIC_STANDTO_RANGE)
 };
 
+// does this group's vehicle carry somebody else's troops?
+private _fnc_carrying = {
+    params ["_grp"];
+    private _v = objectParent (leader _grp);
+    !isNull _v && { ((crew _v) findIf { alive _x && { (group _x) isNotEqualTo _grp } }) >= 0 }
+};
+
 // nearest home within 1000 m of a position, or "" if none
 private _fnc_nearestHome = {
     params ["_pos"];
@@ -194,6 +203,10 @@ private _sentHome = 0;
         };
 
         if (_depot) then {
+            // sent to a base by the planner (a damaged truck retreating to HQ): that base is home
+            if (_task isEqualTo "DEFEND" && { _curObj in _homeIds } && { ((_objById getOrDefault [_curObj, createHashMap]) getOrDefault ["isBase", false]) isEqualTo true }) then {
+                _home = _curObj;
+            };
             if !((((_objById getOrDefault [_home, createHashMap]) getOrDefault ["isBase", false]) isEqualTo true) && { _home in _homeIds }) then {
                 _home = [_cmd, _leaderPos] call AIC_fnc_nearestBase;
                 if (_home isEqualTo "") then { _home = _hqId; };
@@ -216,7 +229,13 @@ private _sentHome = 0;
         // as "incoming" for good, masking the home's deficit.
         if (
             !_homesOnly
-            && { _task isEqualTo "IDLE" || _depot }
+            // a truck first gives squads near it the chance to ask for a ride,
+            // and never leaves with somebody else's troops aboard
+            && { if (_depot) then {
+                (time - (_rec getOrDefault ["taskTime", 0])) > AIC_DEPOT_DELAY && { !([_grp] call _fnc_carrying) }
+            } else {
+                _task isEqualTo "IDLE"
+            } }
             // groups that can walk (static weapons / artillery stay put)
             && { (_rec getOrDefault ["type", ""]) in _donorTypes }
             && { _home in _homeIds }

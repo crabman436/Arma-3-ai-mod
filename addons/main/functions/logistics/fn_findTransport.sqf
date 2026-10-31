@@ -7,17 +7,20 @@
         Candidates are own groups (records in "groupData") of type MOTOR,
         MECH or HELI where:
           - the task is IDLE, DEFEND or PATROL;
-          - its home garrison is not threatened (no threat cluster near it,
-            "threat" of its "garrisons" entry is 0), so a town under attack
-            never lends out its vehicles;
+          - not engaged in the last 60 s, and for anything but a transport-only
+            crew: its home garrison is not threatened (no threat cluster near
+            it, "threat" of its "garrisons" entry is 0), so a town under attack
+            never lends out its vehicles, and its surplus covers it;
           - the group crews a vehicle (driver / pilot is an alive member of
-            the group) that is alive, canMove, has fuel and is not locked;
+            the group) that is alive, canMove, has AIC_RIDE_MIN_FUEL and is
+            not locked;
           - that vehicle has enough free seats for every alive cargo unit:
             empty cargo seats plus empty FFV (person turret) seats, counted
             once each from a single fullCrew enumeration, minus
             the seats the transport group's own dismounted members need to
             get back in. The transport's own crew is never counted as cargo;
           - the vehicle is within "transportSearchRadius" of the cargo leader
+            (AIC_TRANSPORT_RANGE_MULT times that for transport-only crews)
             and is no repair, fuel or ammo truck (AIC_fnc_supplyRoles);
           - HELI only if setting "useAir" is true; ground vehicles only if
             they are not farther from the cargo than the cargo's own trip
@@ -50,6 +53,8 @@
         private _tGroup = [_cmd, _grp, _objPos] call AIC_fnc_findTransport;
         if (!isNull _tGroup) then { ... };
 */
+
+#include "\z\aic\addons\main\script_component.hpp"
 
 params [
     ["_cmd", createHashMap, [createHashMap]],
@@ -103,7 +108,16 @@ private _bestKey = 1e12;
     private _home = _rec getOrDefault ["home", ""];
     if !(_home isEqualType "") then { _home = ""; };
     private _homeEntry = _garrisons getOrDefault [_home, createHashMap];
-    if (((_homeEntry getOrDefault ["threat", 0]) max 0) > 0) then { continue };
+    // (trucks and other transport-only crews defend nothing, they stay available)
+    private _transportOnly = (_rec getOrDefault ["transportOnly", false]) isEqualTo true;
+    if (!_transportOnly) then {
+        if (((_homeEntry getOrDefault ["threat", 0]) max 0) > 0) then { continue };
+        // a fighting vehicle only leaves if its garrison can spare it
+        if (count _homeEntry > 0 && { (_homeEntry getOrDefault ["surplus", 0]) < (_rec getOrDefault ["power", 0]) }) then { continue };
+    };
+    // a vehicle in a fight stays in it
+    private _engaged = _rec getOrDefault ["lastEngaged", -1e6];
+    if (_engaged isEqualType 0 && { (time - _engaged) < 60 }) then { continue };
 
     private _units = (units _grp) select { alive _x };
     if (_units isEqualTo []) then { continue };
@@ -127,7 +141,7 @@ private _bestKey = 1e12;
     private _gSeats = -1;
     {
         private _veh = _x;
-        if (!alive _veh || { !canMove _veh } || { fuel _veh < 0.05 } || { (locked _veh) == 2 }) then { continue };
+        if (!alive _veh || { !canMove _veh } || { fuel _veh < AIC_RIDE_MIN_FUEL } || { (locked _veh) == 2 }) then { continue };
         if (_veh isKindOf "Ship" || { _veh isKindOf "Plane" }) then { continue };
         // repair, fuel and ammo trucks have their own job
         if (([_veh] call AIC_fnc_supplyRoles) isNotEqualTo []) then { continue };
@@ -140,9 +154,10 @@ private _bestKey = 1e12;
 
     private _isHeli = _gVeh isKindOf "Air";
     private _d = (getPosATL _gVeh) distance2D _cargoPos;
-    if (_d > _searchR) then { continue };
-    // a ground ride from farther away than the walk itself is pointless
-    if (!_isHeli && { _d > _trip }) then { continue };
+    // transport-only vehicles wait at bases and exist to go and fetch squads
+    if (_d > (_searchR * ([1, AIC_TRANSPORT_RANGE_MULT] select _transportOnly))) then { continue };
+    // a fighting vehicle from farther away than the walk itself is not worth it
+    if (!_isHeli && { !_transportOnly } && { _d > _trip }) then { continue };
 
     private _arm = [_gVeh] call AIC_fnc_vehicleArmament;
     private _tier = if (_isHeli isEqualTo _preferHeli) then { 0 } else { 1 };
@@ -166,6 +181,9 @@ if (isNull _best) exitWith {
 };
 
 if (_probe) exitWith { _best };
+
+// reserves the surplus, so one cycle cannot lend a garrison below its size
+[_cmd, _best] call AIC_fnc_canLeaveGarrison;
 
 _best setVariable ["AIC_transportVehicle", _bestVeh];
 

@@ -67,6 +67,7 @@ User-tunable values are settings, not constants.
 | `AIC_REISSUE_TOL_FIXED` | 50 | issueOrder same-job tolerance for fixed points; allocateForces "already DEFENDing HQ" |
 | `AIC_NEAR_HQ_GROUND` / `_HELI` / `_PLANE` | 250 / 400 / 1500 | allocateForces "at HQ" radius; PLANE also monitorOrders RETREAT/RTB completion |
 | `AIC_THREAT_RADIUS` | 1500 | garrisonStatus threat sum, allocateForces DEFENSIVE counter-attack near HQ |
+| `AIC_TEAM_MIN_APART`, `AIC_DEPOT_DELAY`, `AIC_TRANSPORT_RANGE_MULT`, `AIC_PICKUP_DANGER_RADIUS`, `AIC_RIDE_MIN_FUEL` | 240, 180, 2, 400, 0.2 | teamCycle, garrisonCycle, findTransport, issueOrder |
 | `AIC_SUPPLY_REACH`, `AIC_SUPPLY_WORK_TIME`, `AIC_SUPPLY_RADIUS`, `AIC_SUPPLY_TIMEOUT`, `AIC_SUPPLY_JOBS_PER_CYCLE`, `AIC_SUPPLY_DANGER_RADIUS` | 30, 20, 3000, 600, 2, 400 | supplyCycle |
 | `AIC_TEAM_MIN_SIZE`, `AIC_TEAM_MAX`, `AIC_MAX_SIDE_GROUPS` | 3, 3, 240 | splitGroup, splitForRide limits |
 | `AIC_ATTACK_SPLIT_SIZE`, `AIC_ATTACK_SPLIT_RANGE`, `AIC_ATTACK_SPLIT_COOLDOWN` | 8, 600, 900 | monitorOrders: when a squad splits for an attack |
@@ -395,7 +396,7 @@ New objective sources:
   4. Groups at their home objective with task IDLE get `DEFEND` there (or `PATROL` for every second group) through `issueOrder`.
   - `[commander, true] call` (homes only): step 1 without any order, then step 2, returns 0. `commanderCycle` calls it right before `allocateForces`, so even on the first cycle every group already has a home.
 - `AIC_fnc_freeSeats` — `[vehicle, transportGroup, cargoGroup(optional)] call` → free passenger seats: empty cargo seats plus empty FFV seats from one `fullCrew [veh, "", true]` enumeration (seats held by the cargo group's own members count as free), minus the transport group's own members on foot. The one seat rule used by `findTransport` and `orderTransport`.
-- `AIC_fnc_dismountCarrier` — `[group, vehicle, land(optional, false)] call` → bool. Gets a group out of another group's vehicle: only from a stopped vehicle or landed helicopter; with `land` a flying helicopter is told to land instead. Used by `issueOrder`, repeated by `monitorOrders` until the squad is out.
+- `AIC_fnc_dismountCarrier` — `[group, vehicle, land(optional, false), force(optional, false)] call` → bool. The one place groups get out of another group's vehicle (`issueOrder`, `monitorOrders`, `transportCycle`). A flying helicopter with a pilot is never left; with `land` it is told to land. Otherwise only a stopped or landed vehicle is left, unless `force`.
 - `AIC_fnc_nearestBase` — `[commander, pos] call` → objective id of the nearest owned base or `BASE_HQ`, `""` if none. Home of transport-only crews (`garrisonCycle`) and of helicopters coming back from a ride (`transportCycle`).
 - `AIC_fnc_supplyRoles` — `[vehicle] call` → any of `"repair"`, `"fuel"`, `"ammo"`, from the config values `transportRepair`, `transportFuel`, `transportAmmo`. Such vehicles never carry troops.
 - `AIC_fnc_supplyCycle` — `[commander] call` → vehicles serviced. Runs after `transportCycle` (setting `useSupplyTrucks`). Task `"SUPPLY"`, record keys `"supplyTarget"`, `"supplyWp"`, `"supplyArrive"`, rules in the function header. Only transport-only groups are used.

@@ -4,10 +4,11 @@
  *   Puts squads back together (server only, setting "dynamicSquads").
  *   Teams of one squad (same "teamId", AIC_fnc_splitGroup) merge into the
  *   biggest of them once nobody is on a ride or in a fight (60 s without
- *   contact), they have the same task and objective, and their leaders are
- *   within AIC_TEAM_MERGE_RADIUS. Teams that never meet stop being teams
- *   AIC_TEAM_LIFETIME seconds after their last ride, and go on as ordinary
- *   groups. A team merged into a group on DEFEND has that group take its
+ *   contact), they have the same task and objective, their leaders are
+ *   within AIC_TEAM_MERGE_RADIUS, and they have been apart for at least
+ *   AIC_TEAM_MIN_APART seconds, so a flank can develop. Teams that never meet
+ *   stop being teams AIC_TEAM_LIFETIME seconds after their last ride, and go
+ *   on as ordinary groups. A group on DEFEND that takes anybody in takes its
  *   positions again, so everybody gets a place.
  *   Remnants: an infantry group shot down to AIC_REMNANT_SIZE men or fewer
  *   (from at least 4, so sniper and AT pairs are left alone) joins the
@@ -68,6 +69,10 @@ private _fnc_merge = {
     _units doFollow (leader _toGrp);
     _to set ["initialSize", (_to getOrDefault ["initialSize", 1]) + (_from getOrDefault ["initialSize", count _units])];
     _from set ["teamId", 0];
+    // positions again, so the newcomers get one as well
+    if ((_to getOrDefault ["task", ""]) isEqualTo "DEFEND") then {
+        [_cmd, _toGrp, "DEFEND", _to getOrDefault ["taskPos", []], _to getOrDefault ["objective", ""], true] call AIC_fnc_issueOrder;
+    };
 };
 
 private _records = (values _groupData) select {
@@ -114,6 +119,7 @@ private _teams = createHashMap;
             private _rec = _x;
             if (
                 (_rec get "group") isNotEqualTo _leadGrp
+                && {(time - (_rec getOrDefault ["teamTime", time])) > AIC_TEAM_MIN_APART}
                 && {[_rec] call _fnc_free}
                 && {(_rec getOrDefault ["task", ""]) isEqualTo (_lead getOrDefault ["task", ""])}
                 && {(_rec getOrDefault ["objective", ""]) isEqualTo (_lead getOrDefault ["objective", ""])}
@@ -128,10 +134,6 @@ private _teams = createHashMap;
         _merges = _merges + _joined;
         ["%1: squad %2 is back together (%3 teams joined)", [_side, groupId _leadGrp, _joined]] call AIC_fnc_log;
         if (({(_x getOrDefault ["teamId", 0]) > 0} count _list) < 2) then {_lead set ["teamId", 0]};
-        // positions again, so the newcomers get one as well
-        if ((_lead getOrDefault ["task", ""]) isEqualTo "DEFEND") then {
-            [_cmd, _leadGrp, "DEFEND", _lead getOrDefault ["taskPos", []], _lead getOrDefault ["objective", ""], true] call AIC_fnc_issueOrder;
-        };
     };
 
     if ((time - (_lead getOrDefault ["teamTime", time])) > AIC_TEAM_LIFETIME) then {

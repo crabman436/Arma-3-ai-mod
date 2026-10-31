@@ -322,9 +322,18 @@ DEFEND farther than `transportMinDistance` away gets a ride if one is free:
 
 - Candidates are MOTOR, MECH and HELI groups that are IDLE, DEFENDing or
   PATROLling, can move, are within `transportSearchRadius` of the infantry,
-  and have enough free cargo and FFV seats for the whole group. A garrison
-  with enemies near it never lends its vehicles, and vehicles at a base are
-  preferred over those of a town.
+  and have enough free cargo and FFV seats for the whole group. Vehicles in
+  a fight, or low on fuel, are not used. A garrison with enemies near it, or
+  no vehicles to spare, keeps its fighting vehicles, while trucks and other
+  transport-only crews always answer, from up to twice the radius. Vehicles
+  at a base are preferred over those of a town.
+- Nobody calls for a ride while under fire or with enemies known within
+  400 m. A squad that comes under fire while its ride is still far away calls
+  the ride off and fights.
+- Infantry orders go out first each cycle, so an APC is still there when the
+  squad next to it asks for a ride. A vehicle never leaves the pickup without
+  its troops. After the drop, armed vehicles that carried a squad into an
+  attack stay and fight with it. Only unarmed crews go home.
 - Unarmed or lightly armed vehicles are preferred over IFVs and tanks, so
   fighting vehicles stay in the fight.
 - Beyond `heliTransportDistance`, helicopters are preferred (when `useAir` is
@@ -371,8 +380,12 @@ out of a repaired vehicle gets back in.
 
 Crews of unarmed vehicles (trucks, transport helicopters without guns) are
 transport-only: the general never sends them to attack, garrison a town or
-patrol. Trucks move to the nearest base and wait there for the next ride, and
-helicopters fly to the nearest base after each ride. Helicopters armed only with door guns
+patrol. This goes by the vehicle, so a lone passenger or a crew stepping out
+changes nothing. Trucks stay put for three minutes, so squads near them can ask
+for a ride, then move to the nearest base and wait there, and never drive off
+with somebody else's troops aboard. Helicopters fly to the nearest base after
+each ride. A transport group with several vehicles is split into one group per
+vehicle, so each can carry a squad. Helicopters armed only with door guns
 are kept for rides too and are not used as close air support while
 `useTransport` is on; gunships and planes do the strikes.
 

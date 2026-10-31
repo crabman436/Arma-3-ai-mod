@@ -113,7 +113,7 @@ if (count _tRec == 0 || { count _cRec == 0 }) exitWith {
 // ---------------------------------------------------------------- vehicle
 private _fnc_usable = {
     params ["_veh"];
-    !isNull _veh && { alive _veh } && { canMove _veh } && { fuel _veh >= 0.05 } && { (locked _veh) != 2 }
+    !isNull _veh && { alive _veh } && { canMove _veh } && { fuel _veh >= AIC_RIDE_MIN_FUEL } && { (locked _veh) != 2 }
     && { !isNull (driver _veh) } && { alive (driver _veh) } && { (group (driver _veh)) isEqualTo _tGroup }
 };
 

@@ -48,6 +48,16 @@ if (isNil "_plan" || { !(_plan isEqualType []) }) then {
 };
 _cmd set ["lastPlanTime", time];
 
+// Infantry first: vehicles look cheap to the planner and are staffed first, so
+// in plan order an APC would be gone before the squad next to it asks for a ride
+private _planData = _cmd getOrDefault ["groupData", createHashMap];
+private _fnc_planInf = {
+    _x isEqualType createHashMap && {
+        private _g = _x getOrDefault ["group", grpNull];
+        !isNull _g && {((_planData getOrDefault [hashValue _g, createHashMap]) getOrDefault ["type", ""]) isEqualTo "INF"}
+    }
+};
+
 {
     if !(_x isEqualType createHashMap) then { continue };
     private _group = _x getOrDefault ["group", grpNull];
@@ -61,7 +71,7 @@ _cmd set ["lastPlanTime", time];
     if !(_objective isEqualType "") then { _objective = ""; };
 
     [_cmd, _group, _task, _pos, _objective] call AIC_fnc_issueOrder;
-} forEach _plan;
+} forEach ((_plan select _fnc_planInf) + (_plan select {!(call _fnc_planInf)}));
 
 // 9. logistics: garrisons between owned objectives / bases, then transports
 [_cmd] call AIC_fnc_garrisonCycle;

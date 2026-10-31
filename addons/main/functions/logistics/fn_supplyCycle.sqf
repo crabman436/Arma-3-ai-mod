@@ -10,7 +10,7 @@
  *   count, static weapons and player vehicles do not. Crews that bailed out
  *   of an immobile vehicle still count through their assigned vehicle.
  *   A truck is free with task IDLE or DEFEND, crewed by a transport-only
- *   group, able to move and not at a threatened home. Each cycle up to
+ *   group, able to move, with fuel, and not at a threatened home. Each cycle up to
  *   AIC_SUPPLY_JOBS_PER_CYCLE free trucks go to the nearest vehicle they can
  *   help within AIC_SUPPLY_RADIUS: task "SUPPLY", record keys "supplyTarget",
  *   "supplyRoles", "supplyWp", "supplyArrive". Vehicles with an enemy known
@@ -83,7 +83,7 @@ private _fnc_stock = {
 private _fnc_truck = {
     params ["_grp"];
     private _v = objectParent (leader _grp);
-    if (isNull _v || {!alive _v} || {!canMove _v} || {!alive (driver _v)} || {(group (driver _v)) isNotEqualTo _grp}) exitWith {objNull};
+    if (isNull _v || {!alive _v} || {!canMove _v} || {(fuel _v) < 0.02} || {!alive (driver _v)} || {(group (driver _v)) isNotEqualTo _grp}) exitWith {objNull};
     _v
 };
 
@@ -96,32 +96,6 @@ private _fnc_finish = {
     _rec set ["objective", ""];
     _rec set ["supplyTarget", objNull];
 };
-
-// ------------------------------------------------------------ vehicles in need
-private _needy = [];
-{
-    private _grp = _x get "group";
-    if ((_x getOrDefault ["type", ""]) in ["MOTOR", "MECH", "ARMOR", "ARTY", "HELI"]) then {
-        private _vehicles = [];
-        {
-            private _v = objectParent _x;
-            if (isNull _v) then {_v = assignedVehicle _x};
-            if (!isNull _v) then {_vehicles pushBackUnique _v};
-        } forEach (units _grp);
-        {
-            private _v = _x;
-            if (
-                alive _v
-                && {!(_v isKindOf "StaticWeapon")}
-                && {_v isKindOf "LandVehicle" || {_v isKindOf "Helicopter" && {isTouchingGround _v}}}
-                && {!isPlayer (effectiveCommander _v)}
-            ) then {
-                private _needs = [_v] call _fnc_needs;
-                if (_needs isNotEqualTo []) then {_needy pushBack [_v, _needs]};
-            };
-        } forEach _vehicles;
-    };
-} forEach _records;
 
 // ------------------------------------------------------------ running jobs
 private _served = 0;
@@ -154,9 +128,12 @@ private _taken = [];
         _rec set ["supplyArrive", -1];
         // the vehicle moved on: follow it
         private _p = getPosATL _target;
-        if ((_p distance2D (_rec getOrDefault ["taskPos", _p])) > 50) then {
+        if ((_p distance2D (_rec getOrDefault ["taskPos", _p])) > (AIC_SUPPLY_REACH * 0.5)) then {
+            private _i = _rec getOrDefault ["supplyWp", 0];
             _rec set ["taskPos", [_p select 0, _p select 1, 0]];
-            [_grp, _rec getOrDefault ["supplyWp", 0]] setWaypointPosition [_p, 0];
+            [_grp, _i] setWaypointPosition [_p, 0];
+            // also restarts a waypoint the truck had already finished
+            _grp setCurrentWaypoint [_grp, _i];
         };
         continue;
     };
@@ -191,15 +168,43 @@ private _taken = [];
     [_rec] call _fnc_finish;
 } forEach _records;
 
+// ------------------------------------------------------------ vehicles in need
+// (only looked for when a truck is free)
+private _freeTrucks = _records select {
+    (_x getOrDefault ["transportOnly", false]) isEqualTo true
+    && {(_x getOrDefault ["task", ""]) in ["IDLE", "DEFEND"]}
+    && {([[_x get "group"] call _fnc_truck] call AIC_fnc_supplyRoles) isNotEqualTo []}
+};
+
+private _needy = [];
+if (_freeTrucks isNotEqualTo []) then {
+    private _seen = [];
+    {
+        {
+            private _v = objectParent _x;
+            if (isNull _v) then {_v = assignedVehicle _x};
+            if (!isNull _v && {!(_v in _seen)}) then {
+                _seen pushBack _v;
+                if (
+                    alive _v
+                    && {!(_v isKindOf "StaticWeapon")}
+                    && {_v isKindOf "LandVehicle" || {_v isKindOf "Helicopter" && {isTouchingGround _v}}}
+                    && {!isPlayer (effectiveCommander _v)}
+                ) then {
+                    private _needs = [_v] call _fnc_needs;
+                    if (_needs isNotEqualTo []) then {_needy pushBack [_v, _needs]};
+                };
+            };
+        } forEach (units (_x get "group"));
+    } forEach _records;
+};
+
 // ------------------------------------------------------------ new jobs
 private _jobs = 0;
 {
     private _rec = _x;
-    if !((_rec getOrDefault ["transportOnly", false]) isEqualTo true) then {continue};
-    if !((_rec getOrDefault ["task", ""]) in ["IDLE", "DEFEND"]) then {continue};
     private _grp = _rec get "group";
     private _truck = [_grp] call _fnc_truck;
-    if (isNull _truck || {([_truck] call AIC_fnc_supplyRoles) isEqualTo []}) then {continue};
 
     // filled up again at base
     private _home = _rec getOrDefault ["home", ""];
@@ -263,6 +268,6 @@ private _jobs = 0;
     _jobs = _jobs + 1;
 
     ["%1: supply truck %2 (%3) goes to %4, %5 m away", [_side, groupId _grp, typeOf _truck, typeOf _best, round _bestDist]] call AIC_fnc_log;
-} forEach _records;
+} forEach _freeTrucks;
 
 _served

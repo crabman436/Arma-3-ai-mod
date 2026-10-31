@@ -93,13 +93,36 @@ private _totalPower = 0;
             } forEach _alive;
 
             // --- Transport-only ---
-            // everyone crews an unarmed vehicle (truck, transport helicopter),
-            // nobody on foot or in cargo: the group carries others and is
-            // never sent to fight (AIC_fnc_availableGroups) or to patrol
-            private _transportOnly = _vehicles isNotEqualTo []
-                && { (_alive findIf { isNull objectParent _x || { ((objectParent _x) getCargoIndex _x) >= 0 } }) < 0 }
-                && { (_vehicles findIf { ([_x] call AIC_fnc_vehicleArmament) > 0 }) < 0 };
+            // the group drives unarmed vehicles (truck, transport helicopter)
+            // and carries at most one extra man: it carries others and is never
+            // sent to fight (AIC_fnc_availableGroups) or to patrol. Judged by
+            // the vehicles, not by who sits where this moment, so a crew that
+            // stepped out or a lone passenger does not turn a truck into an
+            // attack group
+            private _driven = [];
+            {
+                private _veh = objectParent _x;
+                if (isNull _veh) then {_veh = assignedVehicle _x};
+                if (!isNull _veh && {alive _veh} && {!(_veh isKindOf "StaticWeapon")}
+                    && {(group (driver _veh)) isEqualTo _grp || {(group (assignedDriver _veh)) isEqualTo _grp}}) then {
+                    _driven pushBackUnique _veh;
+                };
+            } forEach _alive;
+            private _riders = {
+                private _veh = objectParent _x;
+                if (isNull _veh) then {!((assignedVehicle _x) in _driven)} else {!(_veh in _driven) || {(_veh getCargoIndex _x) >= 0}}
+            } count _alive;
+            private _transportOnly = _driven isNotEqualTo []
+                && {_riders <= 1}
+                && {(_driven findIf {([_x] call AIC_fnc_vehicleArmament) > 0}) < 0};
             _record set ["transportOnly", _transportOnly];
+
+            // a transport crew on foot climbs back in once things are calm
+            private _engaged = _record getOrDefault ["lastEngaged", -1e6];
+            if (_transportOnly && {!(_engaged isEqualType 0) || {(time - _engaged) > 60}}) then {
+                private _foot = _alive select {isNull objectParent _x && {(assignedVehicle _x) in _driven}};
+                if (_foot isNotEqualTo []) then {_foot orderGetIn true};
+            };
 
             private _vehHealth = 1;
             if (_vehicles isNotEqualTo []) then {

@@ -62,6 +62,8 @@
 #define AIC_ATTACK_SPLIT_SIZE 8
 #define AIC_ATTACK_SPLIT_RANGE 600
 #define AIC_ATTACK_SPLIT_COOLDOWN 900
+// s teams stay apart before they may merge, so a flank can develop
+#define AIC_TEAM_MIN_APART 240
 // s a team waits at the drop for the teams still riding
 #define AIC_TEAM_RALLY_WAIT 120
 // teams merge when their leaders are this close; after this many seconds
@@ -84,6 +86,15 @@
 #define AIC_SUPPLY_DANGER_RADIUS 400
 
 // ---------------------------------------------------------------- transport
+// s a transport-only crew stays put before leaving for its base, so squads
+// next to it can ask for a ride first
+#define AIC_DEPOT_DELAY 180
+// transport-only vehicles answer from this many times "transportSearchRadius"
+#define AIC_TRANSPORT_RANGE_MULT 2
+// no ride with an enemy known this close to the waiting squad (m)
+#define AIC_PICKUP_DANGER_RADIUS 400
+// a vehicle needs this much fuel for a ride
+#define AIC_RIDE_MIN_FUEL 0.2
 // a ride is aborted after at least this many seconds
 #define AIC_RIDE_TIMEOUT 900
 // no new ride for a group within this many seconds of an aborted one
