@@ -189,6 +189,10 @@ _group addEventHandler ["Empty", {
     if (!(_rec isEqualType createHashMap) || { count _rec == 0 }) exitWith {};
 
     [_rec] call AIC_fnc_deleteHelipads;
+    // a ride ending with everybody dead would otherwise leave no trace in the log
+    if ((_rec getOrDefault ["task", ""]) in ["TRANSPORT", "TRANSPORTED"]) then {
+        ["%1: group %2 wiped out during a ride (%3)", [side _group, groupId _group, _rec get "task"]] call AIC_fnc_log;
+    };
     // Never deleteAt the record here: the commander cycle is scheduled and may
     // be suspended inside a forEach over "groupData". The record is dropped
     // by the next AIC_fnc_registerGroups sweep; loops skip it until then.

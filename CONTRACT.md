@@ -67,6 +67,8 @@ User-tunable values are settings, not constants.
 | `AIC_REISSUE_TOL_FIXED` | 50 | issueOrder same-job tolerance for fixed points; allocateForces "already DEFENDing HQ" |
 | `AIC_NEAR_HQ_GROUND` / `_HELI` / `_PLANE` | 250 / 400 / 1500 | allocateForces "at HQ" radius; PLANE also monitorOrders RETREAT/RTB completion |
 | `AIC_THREAT_RADIUS` | 1500 | garrisonStatus threat sum, allocateForces DEFENSIVE counter-attack near HQ |
+| `AIC_HOT_LZ_RADIUS` | 300 | transportCycle: a helicopter more than 600 m out moves an LZ with a threat this close |
+| `AIC_AIR_AVOID_RADIUS` | 700 | flightPath: distance transport helicopters keep from known hostile spots |
 | `AIC_STANDTO_RANGE` | 800 | garrisonCycle: a threat cluster this close to an objective's edge makes its garrison stand to |
 | `AIC_RIDE_TIMEOUT` | 900 | orderTransport `"rideLimit"` minimum, transportCycle ride abort |
 | `AIC_RIDE_ABORT_COOLDOWN` | 600 | issueOrder: no new ride after `"rideAbortTime"` (set by transportCycle) |
@@ -385,6 +387,8 @@ New objective sources:
   - `[commander, true] call` (homes only): step 1 without any order, then step 2, returns 0. `commanderCycle` calls it right before `allocateForces`, so even on the first cycle every group already has a home.
 - `AIC_fnc_freeSeats` — `[vehicle, transportGroup, cargoGroup(optional)] call` → free passenger seats: empty cargo seats plus empty FFV seats from one `fullCrew [veh, "", true]` enumeration (seats held by the cargo group's own members count as free), minus the transport group's own members on foot. The one seat rule used by `findTransport` and `orderTransport`.
 - `AIC_fnc_dismountCarrier` — `[group, vehicle, land(optional, false)] call` → bool. Gets a group out of another group's vehicle: only from a stopped vehicle or landed helicopter; with `land` a flying helicopter is told to land instead. Used by `issueOrder`, repeated by `monitorOrders` until the squad is out.
+- `AIC_fnc_isLanded` — `[vehicle] call` → bool. Helicopter: touching the ground, or below 3.5 m and slower than 15 km/h (`land "GET IN"` / `"GET OUT"` only hover low). Other vehicles: stopped. Used by `transportCycle`, `dismountCarrier` and `issueOrder`.
+- `AIC_fnc_flightPath` — `[commander, from, to] call` → detour position or `[]`. The first threat cluster, contact or enemy-held objective within `AIC_AIR_AVOID_RADIUS` of the line, ignoring the ends, is passed on the side with more room. `orderTransport` puts it as a MOVE waypoint between LOAD and TR UNLOAD.
 - `AIC_fnc_findTransport` — `[commander, cargoGroup, destPos] call` → group or grpNull.
   - Candidates are own groups of type MOTOR, MECH or HELI where:
     - the task is IDLE, DEFEND or PATROL

@@ -59,6 +59,10 @@
 // drop point stand-offs short of the destination
 #define AIC_LZ_THREAT_RADIUS 800
 #define AIC_LZ_OFFSET_HELI 450
+// a helicopter still on its way moves an LZ with a threat this close to it
+#define AIC_HOT_LZ_RADIUS 300
+// transport helicopters keep this far from known hostile spots on the way
+#define AIC_AIR_AVOID_RADIUS 700
 #define AIC_DROP_OFFSET_GROUND 250
 #define AIC_DROP_OFFSET_GROUND_THREAT 400
 

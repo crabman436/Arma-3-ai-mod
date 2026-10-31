@@ -210,7 +210,7 @@ if (_curTask isEqualTo "TRANSPORTED") then {
     private _veh = _record getOrDefault ["transportVeh", objNull];
     // (a flying helicopter lands first, AIC_fnc_transportCycle then gets them out)
     if (_veh isEqualType objNull && {!isNull _veh}
-        && {!(_veh isKindOf "Air") || {isTouchingGround _veh} || {!alive (driver _veh)}}) then {
+        && {!(_veh isKindOf "Air") || {[_veh] call AIC_fnc_isLanded} || {!alive (driver _veh)}}) then {
         {
             if (alive _x && {objectParent _x isEqualTo _veh}) then {
                 unassignVehicle _x;

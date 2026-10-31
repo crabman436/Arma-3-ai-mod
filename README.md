@@ -340,6 +340,13 @@ in that very vehicle, and dismounts for near orders. Put
 `(group this) setVariable ["AIC_noSplit", true]` in a leader's init to keep
 such a group together.
 
+Helicopters do not land on objectives that are not yours: the LZ is about
+450 m short of the target, on the side they come from. They fly around
+enemy-held objectives and known enemies on the way, one detour per flight, and
+move the LZ if it turns hot before they get there. Only what the general knows
+about can be avoided. If a ride ends early, the log says why, where, and how
+many were aboard.
+
 Crews of unarmed vehicles (trucks, transport helicopters without guns) are
 transport-only: the general never sends them to attack, defend or patrol,
 they wait at home for the next ride. Helicopters armed only with door guns

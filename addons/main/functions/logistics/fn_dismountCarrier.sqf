@@ -30,8 +30,7 @@ if (!isServer) exitWith { false };
 if (isNull _group || { isNull _carrier }) exitWith { false };
 
 private _isAir = _carrier isKindOf "Air";
-private _still = if (_isAir) then { isTouchingGround _carrier } else { (speed _carrier) < 2 };
-if (!_still) exitWith {
+if !([_carrier] call AIC_fnc_isLanded) exitWith {
     if (_land && { _isAir } && { alive _carrier } && { alive (driver _carrier) }
         && { (time - (_carrier getVariable ["AIC_landOrderTime", -1e6])) > 45 }) then {
         _carrier setVariable ["AIC_landOrderTime", time];

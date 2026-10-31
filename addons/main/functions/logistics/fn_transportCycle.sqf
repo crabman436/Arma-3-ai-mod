@@ -42,7 +42,11 @@
               -> land "GET OUT" (repeated every 45 s). Still airborne
               120 s after arriving -> the drop LZ is moved once to a
               flatter spot up to 400 m away (helipad and TR UNLOAD
-              waypoint follow; record "dropLzMoved").
+              waypoint follow; record "dropLzMoved"). A low, slow hover
+              counts as landed (AIC_fnc_isLanded).
+            - Helicopter more than 600 m out with a threat within
+              AIC_HOT_LZ_RADIUS of the drop -> the LZ is moved once to
+              AIC_LZ_OFFSET_HELI short of the threat (record "hotLzMoved").
             - Transport waypoints finished and the vehicle stopped on the
               ground anywhere -> cargo ordered out.
             - No cargo unit in a vehicle any more -> the "final" order is
@@ -115,7 +119,7 @@ private _fnc_validPos = {
 // first, and the next call (or the transport section below) gets them out
 private _fnc_unload = {
     params ["_units", "_veh", "_grp"];
-    if (!isNull _veh && { _veh isKindOf "Air" } && { !isTouchingGround _veh }
+    if (!isNull _veh && { _veh isKindOf "Air" } && { !([_veh] call AIC_fnc_isLanded) }
         && { alive _veh } && { canMove _veh } && { alive (driver _veh) }) exitWith {
         if ((time - (_veh getVariable ["AIC_landOrderTime", -1e6])) > 45) then {
             _veh setVariable ["AIC_landOrderTime", time];
@@ -136,16 +140,17 @@ private _fnc_unload = {
 // once per leg find a flatter spot farther out, move the helipad and the
 // transport's waypoint there. Returns true if the LZ was moved.
 private _fnc_relocateLz = {
-    params ["_rec", "_tRec", "_tGroup", "_veh", "_leg"]; // _leg "pickup" / "drop"
+    // _leg "pickup" / "drop"; a hot LZ passes its own centre and flag
+    params ["_rec", "_tRec", "_tGroup", "_veh", "_leg", ["_center", []], ["_flag", ""]];
     private _isPickup = _leg isEqualTo "pickup";
-    private _flag = ["dropLzMoved", "pickupLzMoved"] select _isPickup;
+    if (_flag isEqualTo "") then { _flag = ["dropLzMoved", "pickupLzMoved"] select _isPickup; };
     if (_rec getOrDefault [_flag, false]) exitWith { false };
     _rec set [_flag, true];
     private _posKey = ["dropPos", "pickupPos"] select _isPickup;
     private _padKey = ["lz", "pickupLz"] select _isPickup;
     private _wpKey = ["wpUnload", "wpLoad"] select _isPickup;
 
-    private _old = _rec getOrDefault [_posKey, getPosATL _veh];
+    private _old = if (_center isEqualTo []) then { _rec getOrDefault [_posKey, getPosATL _veh] } else { _center };
     private _c = [_old select 0, _old select 1, 0];
     private _p = [_c, 20, 400, 15, 0, 0.2, 0, [], [_c, _c]] call BIS_fnc_findSafePos;
     if (!(_p isEqualType []) || { count _p < 2 }) exitWith { false };
@@ -165,7 +170,7 @@ private _fnc_relocateLz = {
     if (_i isEqualType 0 && { _i >= 0 } && { _i < count (waypoints _tGroup) }) then {
         [_tGroup, _i] setWaypointPosition [_p, 0];
         // also re-arms a TR UNLOAD the helicopter had already completed
-        _tGroup setCurrentWaypoint [_tGroup, _i];
+        if ((currentWaypoint _tGroup) >= _i) then { _tGroup setCurrentWaypoint [_tGroup, _i]; };
     };
     _veh land "NONE";
     true
@@ -260,14 +265,20 @@ private _fnc_boardFallback = {
     // -------------------------------------------------- transport still there?
     private _tUnits = if (isNull _tGroup) then { [] } else { (units _tGroup) select { alive _x } };
     private _drv = if (isNull _veh) then { objNull } else { driver _veh };
-    private _gone = _tUnits isEqualTo []
-        || { isNull _veh } || { !alive _veh } || { !canMove _veh }
-        || { isNull _drv } || { !alive _drv } || { (group _drv) isNotEqualTo _tGroup }
-        || { (_tRec getOrDefault ["task", ""]) isNotEqualTo "TRANSPORT" }
-        || { (_tRec getOrDefault ["transport", grpNull]) isNotEqualTo _grp };
-    if (_gone) then {
+    private _aboardNow = { !isNull _veh && { objectParent _x isEqualTo _veh } } count _units;
+    private _lost = switch (true) do {
+        case (_tUnits isEqualTo []): { "crew dead" };
+        case (isNull _veh || { !alive _veh }): { "vehicle destroyed" };
+        case (!canMove _veh): { "vehicle immobile" };
+        case (!alive _drv): { "driver dead" };
+        case ((group _drv) isNotEqualTo _tGroup): { "driver left the group" };
+        case ((_tRec getOrDefault ["task", ""]) isNotEqualTo "TRANSPORT"): { "transport has another task" };
+        case ((_tRec getOrDefault ["transport", grpNull]) isNotEqualTo _grp): { "transport has other cargo" };
+        default { "" };
+    };
+    if (_lost isNotEqualTo "") then {
         [_units, _veh, _grp] call _fnc_unload;
-        _finals pushBack [_grp, _rec, "transport lost", true];
+        _finals pushBack [_grp, _rec, format ["transport lost (%1, %2 aboard) at %3", _lost, _aboardNow, _lpos apply { round _x }], true];
         continue;
     };
 
@@ -289,7 +300,7 @@ private _fnc_boardFallback = {
         _rec set ["statusTime", time];
         private _refPos = if (_phase isEqualTo "PICKUP") then { _pickupPos } else { _dropPos };
         private _state = if (_isHeli) then {
-            if (isTouchingGround _veh) then { "landed" } else { "airborne" }
+            if ([_veh] call AIC_fnc_isLanded) then { "landed" } else { "airborne" }
         } else {
             format ["%1 km/h", round speed _veh]
         };
@@ -316,10 +327,9 @@ private _fnc_boardFallback = {
                 _rec set ["pickupLz", objNull];
                 if (_isHeli) then { _veh land "NONE"; };
                 // push the transport on in case the LOAD / GETIN sync hangs
-                private _iUnload = _tRec getOrDefault ["wpUnload", -1];
-                if (_iUnload isEqualType 0 && { _iUnload >= 0 } && { _iUnload < count (waypoints _tGroup) }
-                    && { (currentWaypoint _tGroup) < _iUnload }) then {
-                    _tGroup setCurrentWaypoint [_tGroup, _iUnload];
+                private _iNext = (_tRec getOrDefault ["wpLoad", -2]) + 1;
+                if (_iNext > 0 && { _iNext < count (waypoints _tGroup) } && { (currentWaypoint _tGroup) < _iNext }) then {
+                    _tGroup setCurrentWaypoint [_tGroup, _iNext];
                 };
                 _tRec set ["lastPos", _vPos];
                 _tRec set ["lastMoveTime", time];
@@ -344,7 +354,7 @@ private _fnc_boardFallback = {
             private _nearPickupTime = _rec getOrDefault ["nearPickupTime", -1];
 
             // helicopter hovering over the pickup -> make it land
-            if (_isHeli && { !isTouchingGround _veh } && { (_vPos distance2D _pickupPos) < 300 || { _near } }) then {
+            if (_isHeli && { !([_veh] call AIC_fnc_isLanded) } && { (_vPos distance2D _pickupPos) < 300 || { _near } }) then {
                 if ((_rec getOrDefault ["hoverTime", -1]) < 0) then { _rec set ["hoverTime", time]; };
                 if ((time - (_rec get "hoverTime")) > 45 && { (time - (_rec getOrDefault ["landOrderTime", -1e6])) > 60 }) then {
                     _veh land "GET IN";
@@ -368,7 +378,7 @@ private _fnc_boardFallback = {
                 private _stalled = _orderAge > _PICKUP_STALL
                     || { _nearPickupTime >= 0 && { (time - _nearPickupTime) > 90 } };
                 if (!_stalled) exitWith {};
-                if (_near && { !_isHeli || { isTouchingGround _veh } }) then {
+                if (_near && { !_isHeli || { [_veh] call AIC_fnc_isLanded } }) then {
                     private _n = [_units, _veh] call _fnc_boardFallback;
                     _rec set ["getInFallback", true];
                     _rec set ["getInFallbackTime", time];
@@ -441,11 +451,24 @@ private _fnc_boardFallback = {
     private _stopped = (speed _veh) < 3;
     private _wpsDone = (currentWaypoint _tGroup) >= (count waypoints _tGroup);
 
+    // the LZ turned hot while the helicopter is on its way: land short of it
+    if (_isHeli && { _dDrop > 600 } && { !(_rec getOrDefault ["hotLzMoved", false]) }) then {
+        private _hot = [_cmd, _dropPos, AIC_HOT_LZ_RADIUS] call AIC_fnc_nearestThreat;
+        if (_hot isNotEqualTo []) then {
+            private _c = _hot getPos [AIC_LZ_OFFSET_HELI, _hot getDir _vPos];
+            if ([_rec, _tRec, _tGroup, _veh, "drop", _c, "hotLzMoved"] call _fnc_relocateLz) then {
+                ["%1: LZ of group %2 turned hot, %3 lands at %4 instead", [
+                    _side, groupId _grp, groupId _tGroup, (_rec get "dropPos") apply { round _x }
+                ]] call AIC_fnc_log;
+            };
+        };
+    };
+
     if (_dDrop < _nearR) then {
         if ((_rec getOrDefault ["nearDropTime", -1]) < 0) then { _rec set ["nearDropTime", time]; };
         private _nearAge = time - (_rec get "nearDropTime");
         if (_isHeli) then {
-            if (isTouchingGround _veh) then {
+            if ([_veh] call AIC_fnc_isLanded) then {
                 [_units, _veh, _grp] call _fnc_unload;
             } else {
                 if (_nearAge > 20 && { (time - (_rec getOrDefault ["landOrderTime", -1e6])) > 45 }) then {
@@ -470,11 +493,11 @@ private _fnc_boardFallback = {
     _rec set ["nearDropTime", -1];
 
     // TR UNLOAD finished somewhere else and the vehicle sits on the ground
-    if (_wpsDone && { _stopped } && { !_isHeli || { isTouchingGround _veh } }) then {
+    if (_wpsDone && { _stopped } && { !_isHeli || { [_veh] call AIC_fnc_isLanded } }) then {
         [_units, _veh, _grp] call _fnc_unload;
         continue;
     };
-    if (_wpsDone && { _isHeli } && { !isTouchingGround _veh }
+    if (_wpsDone && { _isHeli } && { !([_veh] call AIC_fnc_isLanded) }
         && { (time - (_rec getOrDefault ["landOrderTime", -1e6])) > 45 }) then {
         _veh land "GET OUT";
         _rec set ["landOrderTime", time];
@@ -568,7 +591,7 @@ private _fnc_objPos = {
             continue;
         };
         // a flying helicopter is waited for: moveOut would drop them to their death
-        if ((time - _outTime) <= 60 || { _veh isKindOf "Air" && { !isTouchingGround _veh } }) then {
+        if ((time - _outTime) <= 60 || { _veh isKindOf "Air" && { !([_veh] call AIC_fnc_isLanded) } }) then {
             [_inside, _veh, _cargo] call _fnc_unload;
             continue;
         };

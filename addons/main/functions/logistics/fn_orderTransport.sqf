@@ -32,12 +32,16 @@
           AIC_fnc_transportCycle.
         Drop-off: a TR UNLOAD waypoint.
           - Helicopter: LZ 300-600 m short of destPos (450 m on the side the
-            helicopter comes from), or at the destination if no known enemy
-            contact / threat cluster is within 800 m of it. Flat spot via
+            helicopter comes from). Only at the destination if no known enemy
+            contact / threat cluster is within 800 m of it, the final task is
+            not ATTACK and the objective (if any) is ours. A detour
+            (AIC_fnc_flightPath) is flown between pickup and LZ when something
+            known to be hostile lies on the way. Flat spot via
             BIS_fnc_findSafePos (fallback findEmptyPosition), invisible
             helipad created there and stored in the transport record "lz".
           - Ground vehicle: 200-400 m short (400 m if threatened, else
-            250 m; never more than 40 % of the trip), road-snapped.
+            250 m, same rule as above; never more than 40 % of the trip),
+            road-snapped.
         Ground transports drive AWARE / FULL, helicopters fly CARELESS / FULL.
 
         Records:
@@ -198,6 +202,12 @@ private _threatened = (((_cmd getOrDefault ["knownEnemies", []]) + (_cmd getOrDe
     && { count (_x getOrDefault ["pos", []]) >= 2 }
     && { ((_x get "pos") distance2D _dest) < AIC_LZ_THREAT_RADIUS }
 }) >= 0;
+// nobody lands on an objective that is not ours, contacts known or not
+if (!_threatened) then {
+    private _objRec = if (_objective isEqualTo "") then { createHashMap } else { [_cmd, _objective] call AIC_fnc_getObjective };
+    _threatened = _finalTask isEqualTo "ATTACK"
+        || { count _objRec > 0 && { (_objRec getOrDefault ["owner", sideUnknown]) isNotEqualTo _side } };
+};
 
 private _trip = _pickupPos distance2D _dest;
 private _dirBack = _dest getDir _pickupPos;
@@ -252,6 +262,20 @@ _wpLoad setWaypointSpeed "FULL";
 _wpLoad setWaypointFormation "COLUMN";
 _wpLoad setWaypointCompletionRadius (if (_isHeli) then { 60 } else { 40 });
 
+// around what is known to be hostile on the way
+if (_isHeli) then {
+    private _via = [_cmd, _pickupPos, _dropPos] call AIC_fnc_flightPath;
+    if (_via isNotEqualTo []) then {
+        private _wpVia = _tGroup addWaypoint [_via, 0];
+        _wpVia setWaypointType "MOVE";
+        _wpVia setWaypointBehaviour _tBeh;
+        _wpVia setWaypointCombatMode "YELLOW";
+        _wpVia setWaypointSpeed "FULL";
+        _wpVia setWaypointCompletionRadius 200;
+        ["%1: %2 flies around known enemies via %3", [_side, groupId _tGroup, _via apply { round _x }]] call AIC_fnc_log;
+    };
+};
+
 private _wpUnload = _tGroup addWaypoint [_dropPos, 0];
 _wpUnload setWaypointType "TR UNLOAD";
 _wpUnload setWaypointBehaviour _tBeh;
@@ -262,6 +286,8 @@ _wpUnload setWaypointCompletionRadius (if (_isHeli) then { 30 } else { 40 });
 _cGroup setBehaviour "AWARE";
 _cGroup setSpeedMode "FULL";
 (units _cGroup) allowGetIn true;
+// TR UNLOAD only unloads groups the vehicle was added to (a squad placed aboard)
+_cGroup addVehicle _veh;
 
 private _wpGetIn = _cGroup addWaypoint [_pickupPos, 0];
 _wpGetIn setWaypointType "GETIN";
@@ -326,6 +352,7 @@ _cRec set ["landOrderTime", -1];
 _cRec set ["approachTime", -1];
 _cRec set ["pickupLzMoved", false];
 _cRec set ["dropLzMoved", false];
+_cRec set ["hotLzMoved", false];
 _cRec set ["lastPos", _cPos];
 _cRec set ["lastMoveTime", time];
 

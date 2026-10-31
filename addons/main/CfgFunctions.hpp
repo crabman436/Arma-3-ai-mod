@@ -93,6 +93,8 @@ class CfgFunctions
             class canLeaveGarrison {};
             class garrisonCycle {};
             class dismountCarrier {};
+            class flightPath {};
+            class isLanded {};
             class freeSeats {};
             class findTransport {};
             class orderTransport {};
