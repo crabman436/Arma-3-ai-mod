@@ -84,6 +84,13 @@ if (_useArty && { (_now - (_cmd getOrDefault ["lastArtyTime", -1e6])) >= _artyCo
     private _artyGroups = [["ARTY"]] call _fnc_groupsOfType;
     if (_artyGroups isEqualTo []) exitWith {};
 
+    // only clusters worth a mission (strong enough, seen recently); checked
+    // before any gun's magazines are scanned
+    private _artyTargets = _threats select {
+        (_x getOrDefault ["power", 0]) >= 2 && { ([_x] call _fnc_freshness) <= 120 }
+    };
+    if (_artyTargets isEqualTo []) exitWith {};
+
     // pre-compute usable guns + candidate magazines per group
     private _batteries = [];
     {
@@ -110,8 +117,6 @@ if (_useArty && { (_now - (_cmd getOrDefault ["lastArtyTime", -1e6])) >= _artyCo
     {
         private _cluster = _x;
         private _power = _cluster getOrDefault ["power", 0];
-        if (_power < 2) then { continue };
-        if (([_cluster] call _fnc_freshness) > 120) then { continue };
 
         private _cPos = _cluster get "pos";
         private _target = [_cPos select 0, _cPos select 1, 0];
@@ -129,7 +134,7 @@ if (_useArty && { (_now - (_cmd getOrDefault ["lastArtyTime", -1e6])) >= _artyCo
         } forEach _batteries;
 
         if (_artyFired) then { break };
-    } forEach _threats;
+    } forEach _artyTargets;
 };
 
 // ======================================================================= AIR
@@ -140,6 +145,10 @@ private _airCooldown = [_cmd, "airCooldown"] call AIC_fnc_getSetting;
 if (_useAir && { (_now - (_cmd getOrDefault ["lastAirTime", -1e6])) >= _airCooldown }) then {
     private _airGroups = [["HELI", "PLANE"]] call _fnc_groupsOfType;
     if (_airGroups isEqualTo []) exitWith {};
+
+    // only clusters seen recently; checked before any aircraft is inspected
+    private _airTargets = _threats select { ([_x] call _fnc_freshness) <= 120 };
+    if (_airTargets isEqualTo []) exitWith {};
 
     private _available = [];   // [group, vehicle, maxRange]
     private _busyTargets = []; // positions currently being struck
@@ -181,7 +190,6 @@ if (_useAir && { (_now - (_cmd getOrDefault ["lastAirTime", -1e6])) >= _airCoold
 
     {
         private _cluster = _x;
-        if (([_cluster] call _fnc_freshness) > 120) then { continue };
         private _cPos = _cluster get "pos";
         if (_busyTargets findIf { (_x distance2D _cPos) < 300 } >= 0) then { continue };
 
@@ -200,7 +208,7 @@ if (_useAir && { (_now - (_cmd getOrDefault ["lastAirTime", -1e6])) >= _airCoold
             _airTasked = true;
             break;
         };
-    } forEach _threats;
+    } forEach _airTargets;
 };
 
 [_artyFired, _airTasked]

@@ -76,9 +76,11 @@ private _side = _cmd getOrDefault ["side", side _group];
 private _fnc_attachVehicle = {
     params [["_veh", objNull, [objNull]], ["_vehSide", sideUnknown, [sideUnknown]]];
     if (isNull _veh || { !alive _veh } || { _veh isKindOf "CAManBase" }) exitWith {};
+    // the side crewing it now, refreshed on every attach (VehicleAdded of a
+    // later group), so a captured vehicle's wreck goes to the right commander
+    _veh setVariable ["AIC_side", _vehSide];
     if (_veh getVariable ["AIC_ehAttached", false]) exitWith {};
     _veh setVariable ["AIC_ehAttached", true];
-    _veh setVariable ["AIC_side", _vehSide];
     _veh addEventHandler ["Hit", {
         params ["_veh"];
         private _grp = group (effectiveCommander _veh);
@@ -119,7 +121,11 @@ private _fnc_attachUnit = {
         private _grp = group _unit;
         if (isNull _grp || { isNull _firer }) exitWith {};
         if (!dynamicSimulationEnabled _grp && { (time - (_grp getVariable ["AIC_engagedAt", -1e6])) < AIC_EH_THROTTLE }) exitWith {};
-        if (((side _grp) getFriend (side group _firer)) >= AIC_HOSTILE_FRIEND) exitWith {};
+        // vehicle weapons report the vehicle as firer (its group is grpNull):
+        // judge hostility by whoever commands it
+        private _shooter = if (_firer isKindOf "CAManBase") then { _firer } else { effectiveCommander _firer };
+        if (isNull _shooter) exitWith {};
+        if (((side _grp) getFriend (side group _shooter)) >= AIC_HOSTILE_FRIEND) exitWith {};
         [_grp] call AIC_fnc_groupEngaged;
     }];
 };

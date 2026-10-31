@@ -206,10 +206,13 @@ HashMap: `"group"`, `"task"`, `"pos"`, `"objective"` (id or `""`).
 - `AIC_fnc_log` — `[message, args(optional array)] call`. `diag_log format ["[AIC] " + msg, args...]`; also `systemChat` if `AIC_ns get "debug"` is true.
 - `AIC_fnc_moduleCommander` — Eden module function for `AIC_ModuleCommander` (standard module params `[_logic, _units, _activated]`). Reads module attributes, builds settings, calls `AIC_fnc_createCommander`. Objective modules synced to it are added.
 - `AIC_fnc_moduleObjective` — Eden module function for `AIC_ModuleObjective`. Registers the objective with all existing commanders (and stores itself in the `AIC_ns get "objectiveModules"` array) so commanders created later also pick it up.
+- `AIC_fnc_moduleAttr` — `[logic, name, default] call` → the module attribute normalised to the default's type (number: strings parsed, bools 0/1; bool: numbers > 0, "true"/"1"; string: `str`). The one attribute rule used by `moduleCommander`, `moduleObjective` and `collectObjectives`.
 
 ### groups (`functions/groups`)
 - `AIC_fnc_registerGroups` — `[commander] call`. Adds all groups of the side with alive units, `!isPlayer` leaders (always; `excludePlayerGroups` additionally excludes groups that contain any player), not `group getVariable ["AIC_exclude", false]`, and **local to the server** (groups owned by a headless client are not commanded: AIC's argument-local commands such as `doMove`, `doStop`, `land`, `orderGetIn`, `doArtilleryFire` and the unit `Hit` / `FiredNear` handlers only work where the group is local; a group that moves to a headless client is released by the sweep). Removes empty/dead groups. Creates group records.
 - `AIC_fnc_classifyGroup` — `[group] call` → type string.
+- `AIC_fnc_newGroupRecord` — `[group] call` → a complete group record (type, power, `initialSize`, task `"IDLE"`, and every logistics key). The one record constructor, used by `registerGroups`, `updateGroups` and `issueOrder`.
+- `AIC_fnc_splitPassengers` — `[commander] call` → array of new groups. Runs only if `splitPassengers`. For every commandable group of the side whose members crew a transport-class vehicle (any air vehicle, or a ground vehicle without real weapons) and that has at least two other alive members (cargo / FFV seats or on foot), those members `joinSilent` a new group of the side. Groups crewing an armed ground vehicle, player groups, `AIC_exclude` and `AIC_noSplit` groups are left alone. Called by `registerGroups` before its sweep.
 - `AIC_fnc_vehicleType` — `[vehicle] call` → type string of a crewed vehicle (PLANE, HELI, NAVAL, ARTY, STATIC, MECH, ARMOR, MOTOR). The one decision tree used by `classifyGroup` and `groupPower`.
 - `AIC_fnc_vehicleWeapons` — `[vehicle, mannedOnly(optional, false)] call` → array of real weapon classes (driver turret and non-FFV turrets; horns, smoke launchers, flares, searchlights, laser designators and fake weapons ignored). The one "is it armed?" rule used by `groupPower`, `findTransport` and `supportCycle`.
 - `AIC_fnc_groupPower` — `[group] call` → number. Rough combat value: infantry 1/unit, light vehicle armed 3, APC/IFV 6, tank 10, attack heli 10, plane 12, artillery 4, static 2; scaled by damage.
@@ -319,6 +322,7 @@ is parked again.
 | `"garrisonPerPriority"` | 5 | desired garrison power per point of objective priority |
 | `"garrisonMovesPerCycle"` | 2 | max garrison transfers ordered per cycle |
 | `"useTransport"` | true | infantry going far get a vehicle ride |
+| `"splitPassengers"` | true | passengers sharing a group with a transport crew get a group of their own (`AIC_fnc_splitPassengers`) |
 | `"transportMinDistance"` | 1200 | an infantry order farther than this tries to get a transport |
 | `"heliTransportDistance"` | 3000 | beyond this, helicopters are preferred (if `useAir`) |
 | `"transportSearchRadius"` | 4000 | max distance between the infantry group and a candidate transport |
@@ -373,6 +377,7 @@ New objective sources:
   3. For objectives with a deficit (most negative surplus × priority first), pick donor groups (INF, MOTOR, MECH or ARMOR; task IDLE/DEFEND/PATROL; `canLeaveGarrison` true). Prefer bases, then the largest surplus, then the shortest distance. Send each with `AIC_fnc_issueOrder` (`DEFEND`, objective pos, objective id) and set its home to the target. Stop at `garrisonMovesPerCycle`. Don't strip an objective that has a threat cluster within 1500 m.
   4. Groups at their home objective with task IDLE get `DEFEND` there (or `PATROL` for every second group) through `issueOrder`.
   - `[commander, true] call` (homes only): step 1 without any order, then step 2, returns 0. `commanderCycle` calls it right before `allocateForces`, so even on the first cycle every group already has a home.
+- `AIC_fnc_freeSeats` — `[vehicle, transportGroup, cargoGroup(optional)] call` → free passenger seats: empty cargo seats plus empty FFV seats from one `fullCrew [veh, "", true]` enumeration (seats held by the cargo group's own members count as free), minus the transport group's own members on foot. The one seat rule used by `findTransport` and `orderTransport`.
 - `AIC_fnc_findTransport` — `[commander, cargoGroup, destPos] call` → group or grpNull.
   - Candidates are own groups of type MOTOR, MECH or HELI where:
     - the task is IDLE, DEFEND or PATROL
@@ -384,11 +389,12 @@ New objective sources:
   - Unarmed or lightly armed vehicles are preferred over IFVs and tanks, so fighting vehicles aren't pulled from combat (weapons as in `AIC_fnc_vehicleWeapons`).
   - Groups whose home is a base are preferred (other homes add 25 % to the cost).
 - `AIC_fnc_orderTransport` — `[commander, transportGroup, cargoGroup, destPos, finalTask, finalPos, objectiveId] call` → bool.
+  - Makes the driver / pilot the transport group's leader (`selectLeader`) if the leader is not inside the vehicle: waypoints are followed by the leader, so a leader on foot would walk the LOAD waypoint while the vehicle stays put. `transportCycle` repeats this check every cycle.
   - Wakes both groups and clears their waypoints.
   - Pickup: the transport MOVEs (LOAD) to the cargo leader; the cargo gets a GETIN waypoint attached to the vehicle (`waypointAttachVehicle`), synchronised with the LOAD. Fallback (in `transportCycle`): when the pickup is older than 240 s, or the transport has been within 150 m of the cargo for 90 s, and the vehicle is within 150 m (helicopters: landed), every cargo unit outside gets a free seat with `assignAsCargoIndex` (cargo seats first) or `assignAsTurret` (FFV) and `orderGetIn true`; if not everybody is aboard 180 s later the ride is aborted.
   - Drop-off: a `TR UNLOAD` waypoint at a safe drop point. For helicopters this is an LZ found with `findEmptyPosition` / `BIS_fnc_findSafePos`, 300–600 m short of `destPos` (or at the objective if no threat is near), with an invisible `Land_HelipadEmpty_F` created there and stored in the transport record under `"lz"`. Ground vehicles stop 200–400 m short.
   - Sets transport task `TRANSPORT` and cargo task `TRANSPORTED`, plus `"transport"`, `"final"`, `taskTime`, `lastPos` and `lastMoveTime` on both records.
-- `AIC_fnc_transportCycle` — `[commander] call`. For each `TRANSPORTED` group:
+- `AIC_fnc_transportCycle` — `[commander] call`. Logs a status line per ride every 60 s (record `"statusTime"`: phase, vehicle distance to cargo and to pickup / drop, landed / airborne or speed, waypoint index, units aboard). For each `TRANSPORTED` group:
   - **Dismounted** during the ride (no unit in any vehicle): issue the `"final"` order with force and clear `"transport"`. Within 500 m of the drop or the final pos it is logged as "dropped off", otherwise as "dismounted en route"; the order is issued either way.
   - **Transport gone** (dead, can't move, or task no longer TRANSPORT), pickup older than 900 s (`AIC_RIDE_TIMEOUT`), ride older than the record's `"rideLimit"` (`max(900, 2 * rideLength / speed + 240)` s, set by `orderTransport`), or the transport stuck for 180 s away from the drop: dismount (`doGetOut`/`leaveVehicle`) and issue the final order on foot with force.
 
@@ -400,6 +406,7 @@ New objective sources:
 
 - `AIC_fnc_issueOrder`:
   - Always calls `AIC_fnc_setGroupSim [cmd, group, false]` before dispatching.
+  - A group at least half of whose alive members sit in one vehicle driven by another commanded group (type MOTOR / MECH / HELI, task IDLE / DEFEND / PATROL): a far (> `transportMinDistance`) ATTACK / REINFORCE / DEFEND order calls `orderTransport` with that group and vehicle (the ride starts aboard, `transportCycle` moves it to RIDE at once); any other order first dismounts the group if the vehicle is landed / stopped.
   - For INF groups with task ATTACK, REINFORCE or DEFEND, when `useTransport` is on, the distance is > `transportMinDistance`, the group isn't already TRANSPORTED and no ride was aborted for it in the last 600 s (`"rideAbortTime"`), it calls `findTransport`. If a transport is found, it calls `orderTransport` and returns instead of dispatching.
   - Supports RTB like RETREAT, and treats TRANSPORT/TRANSPORTED as externally managed: it never re-issues to them unless forced.
 - `AIC_fnc_monitorOrders`: RTB completes like RETREAT, then becomes `IDLE`; it also completes at once if the leader's vehicle can't move. TRANSPORT and TRANSPORTED groups are skipped, because transportCycle owns them. Parked groups are never treated as stuck.

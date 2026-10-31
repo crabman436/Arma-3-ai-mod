@@ -59,22 +59,13 @@ if (_objectiveModules isEqualType []) then {
     {
         private _logic = _x;
         if (!isNull _logic) then {
-            private _name = _logic getVariable ["Name", ""];
-            if !(_name isEqualType "") then { _name = str _name; };
-            private _radius = _logic getVariable ["Radius", _defRadius];
-            if (_radius isEqualType "") then { _radius = parseNumber _radius; };
-            if !(_radius isEqualType 0) then { _radius = _defRadius; };
-            private _priority = _logic getVariable ["Priority", 2];
-            if (_priority isEqualType "") then { _priority = parseNumber _priority; };
-            if !(_priority isEqualType 0) then { _priority = 2; };
-            private _garrison = _logic getVariable ["Garrison", 0];
-            if (_garrison isEqualType "") then { _garrison = parseNumber _garrison; };
-            if !(_garrison isEqualType 0) then { _garrison = 0; };
-            _garrison = _garrison max 0;
-            private _isBase = _logic getVariable ["IsBase", false];
-            if (_isBase isEqualType 0) then { _isBase = _isBase > 0; };
-            if (_isBase isEqualType "") then { _isBase = (toLowerANSI _isBase) in ["true", "1"]; };
-            if !(_isBase isEqualType false) then { _isBase = false; };
+            // AIC_fnc_moduleAttr: the same normalisation AIC_fnc_moduleObjective uses
+            // (addObjective maps radius <= 0 to the default and priority <= 0 to 1)
+            private _name = [_logic, "Name", ""] call AIC_fnc_moduleAttr;
+            private _radius = [_logic, "Radius", _defRadius] call AIC_fnc_moduleAttr;
+            private _priority = [_logic, "Priority", 2] call AIC_fnc_moduleAttr;
+            private _garrison = ([_logic, "Garrison", 0] call AIC_fnc_moduleAttr) max 0;
+            private _isBase = [_logic, "IsBase", false] call AIC_fnc_moduleAttr;
             [_cmd, getPosATL _logic, _name, _radius, _priority, "MODULE", _isBase, _garrison] call AIC_fnc_addObjective;
         };
     } forEach _objectiveModules;

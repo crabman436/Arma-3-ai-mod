@@ -308,8 +308,24 @@ DEFEND farther than `transportMinDistance` away gets a ride if one is free:
 - Beyond `heliTransportDistance`, helicopters are preferred (when `useAir` is
   on). Otherwise the closest ground vehicle is used.
 
+A squad placed in the same group as a helicopter or truck crew is split
+off into its own group when the commander starts (`splitPassengers`): the
+crew keeps the vehicle, the squad becomes infantry that can be flown in,
+dropped off and fight as a unit while the vehicle leaves. Armed ground
+vehicles with their squad (APCs, IFVs, tanks) are left as they are. A squad
+that already sits in another group's vehicle gets its far orders as a ride
+in that very vehicle, and dismounts for near orders. Put
+`(group this) setVariable ["AIC_noSplit", true]` in a leader's init to keep
+such a group together.
+
 The vehicle drives or flies to the infantry, and the infantry boards it. The
-vehicle then carries them to a drop point. Trucks and APCs stop 200 to 400 m
+driver or pilot is made leader of the vehicle's group for the ride if the
+leader is not aboard (waypoints are followed by the leader, so a crew chief
+standing outside would otherwise walk to the pickup while the helicopter
+stays put). The vehicle then carries them to a drop point. Every minute each
+ride writes a status line to the RPT (distance to the troops, landed or
+airborne, units aboard), so a ride that does not progress can be read off
+the log. Trucks and APCs stop 200 to 400 m
 short of the destination. Helicopters land at an LZ 300 to 600 m short of it,
 or right at the objective if no enemy is near it. After the drop the
 infantry carry out their real order, and the vehicle returns home (task `RTB`)
@@ -339,6 +355,7 @@ attack. The rest of the army stays parked and costs nothing.
 | `garrisonPerPriority` | 5 | Desired garrison power per point of objective priority (a base's guard size) |
 | `garrisonMovesPerCycle` | 2 | Maximum garrison transfers ordered per cycle |
 | `useTransport` | true | Infantry ordered far away get a vehicle ride |
+| `splitPassengers` | true | Passengers placed in the same group as a helicopter or truck crew get a squad of their own (group variable `AIC_noSplit` opts a group out) |
 | `transportMinDistance` | 1200 | Infantry orders farther than this (m) look for a transport |
 | `heliTransportDistance` | 3000 | Beyond this distance (m), helicopters are preferred (if `useAir`) |
 | `transportSearchRadius` | 4000 | Maximum distance (m) between the infantry and a candidate transport |

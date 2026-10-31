@@ -38,6 +38,12 @@
  *     - Before dispatching, the group is woken (AIC_fnc_setGroupSim false).
  *       Skipped (identical) orders do not wake it, so parked garrisons
  *       that keep their order stay parked.
+ *     - A group whose members mostly sit in a vehicle driven by another
+ *       commanded group (a squad placed in a helicopter, split off by
+ *       AIC_fnc_splitPassengers): a far ATTACK / REINFORCE / DEFEND order
+ *       becomes a ride with that very vehicle (AIC_fnc_orderTransport, the
+ *       ride starts in the vehicle), any other order first dismounts the
+ *       group when the vehicle is landed / stopped.
  *     - INF groups ordered to ATTACK / REINFORCE / DEFEND farther than
  *       "transportMinDistance" (setting "useTransport" on, group not
  *       already TRANSPORTED, at least half of it on foot, no ride aborted
@@ -94,19 +100,8 @@ if !(_groupData isEqualType createHashMap) then {
 private _key = hashValue _group;
 private _record = _groupData getOrDefault [_key, createHashMap];
 if (count _record == 0) then {
-    // Not registered yet (should be rare) - create a minimal record
-    private _size = {alive _x} count units _group;
-    _record = createHashMapFromArray [
-        ["group", _group],
-        ["type", [_group] call AIC_fnc_classifyGroup],
-        ["power", [_group] call AIC_fnc_groupPower],
-        ["initialSize", _size max 1],
-        ["strength", 1],
-        ["task", "IDLE"],
-        ["taskPos", []],
-        ["taskTime", time],
-        ["objective", ""]
-    ];
+    // Not registered yet (should be rare) - create a complete record
+    _record = [_group] call AIC_fnc_newGroupRecord;
     _groupData set [_key, _record];
 };
 private _type = _record getOrDefault ["type", ""];
@@ -234,11 +229,62 @@ if (_curTask isEqualTo "TRANSPORT") then {
     _record set ["transport", grpNull];
 };
 
+// --- Aboard another commanded group's vehicle ---------------------------------
+// (a squad placed in a helicopter / truck, split off by AIC_fnc_splitPassengers)
+private _rideAbort = _record getOrDefault ["rideAbortTime", -1e6];
+if !(_rideAbort isEqualType 0) then { _rideAbort = -1e6; };
+if (_curTask isNotEqualTo "TRANSPORTED") then {
+    private _alive = (units _group) select {alive _x};
+    private _carrier = objNull;
+    private _aboard = 0;
+    {
+        private _v = objectParent _x;
+        if (!isNull _v) then {
+            private _n = { objectParent _x isEqualTo _v } count _alive;
+            if (_n > _aboard) then { _aboard = _n; _carrier = _v; };
+        };
+    } forEach _alive;
+    if (!isNull _carrier && { (_aboard * 2) >= count _alive }) then {
+        private _drv = driver _carrier;
+        private _cGrp = if (isNull _drv) then { grpNull } else { group _drv };
+        private _cRec = if (isNull _cGrp) then { createHashMap } else { _groupData getOrDefault [hashValue _cGrp, createHashMap] };
+        if (!(_cGrp isEqualTo _group) && { count _cRec > 0 } && { alive _drv }) then {
+            private _far = ((getPosATL (leader _group)) distance2D _pos) > ([_cmd, "transportMinDistance"] call AIC_fnc_getSetting);
+            private _rideOk = _task in ["ATTACK", "REINFORCE", "DEFEND"] && { _far }
+                && { ([_cmd, "useTransport"] call AIC_fnc_getSetting) isEqualTo true }
+                && { (time - _rideAbort) >= AIC_RIDE_ABORT_COOLDOWN }
+                && { (_cRec getOrDefault ["type", ""]) in ["MOTOR", "MECH", "HELI"] }
+                && { (_cRec getOrDefault ["task", "IDLE"]) in ["IDLE", "DEFEND", "PATROL"] }
+                && { canMove _carrier };
+            if (_rideOk) then {
+                _cGrp setVariable ["AIC_transportVehicle", _carrier];
+                private _r = [_cmd, _cGrp, _group, _pos, _task, _pos, _objective] call AIC_fnc_orderTransport;
+                if (!isNil "_r" && {_r isEqualTo true}) then { _task = "TRANSPORTED"; };
+            };
+            if (_task isNotEqualTo "TRANSPORTED") then {
+                // no ride: get out, but only from a landed / stopped vehicle
+                private _still = if (_carrier isKindOf "Air") then { isTouchingGround _carrier } else { (speed _carrier) < 2 };
+                if (_still) then {
+                    {
+                        if (objectParent _x isEqualTo _carrier) then {
+                            unassignVehicle _x;
+                            [_x] orderGetIn false;
+                            doGetOut _x;
+                        };
+                    } forEach _alive;
+                    _group leaveVehicle _carrier;
+                    ["%1: group %2 dismounts %3 of group %4 for %5", [
+                        _cmd getOrDefault ["side", sideUnknown], groupId _group, typeOf _carrier, groupId _cGrp, _task
+                    ]] call AIC_fnc_log;
+                };
+            };
+        };
+    };
+};
+
 // --- Long infantry moves: try to get a ride -----------------------------------
 // (no new ride within 600 s of an aborted one: "rideAbortTime" is set by
 // AIC_fnc_transportCycle, so a failing vehicle cannot cause abort/re-ride loops)
-private _rideAbort = _record getOrDefault ["rideAbortTime", -1e6];
-if !(_rideAbort isEqualType 0) then { _rideAbort = -1e6; };
 if (_type == "INF" && {_task in ["ATTACK", "REINFORCE", "DEFEND"]} && {_curTask isNotEqualTo "TRANSPORTED"}
     && {(time - _rideAbort) >= AIC_RIDE_ABORT_COOLDOWN}
     && {([_cmd, "useTransport"] call AIC_fnc_getSetting) isEqualTo true}) then {

@@ -14,6 +14,10 @@
         group's own members on foot). It must seat every alive cargo unit.
 
         Pickup:
+          - if the transport group's leader is not inside the vehicle, the
+            driver / pilot is made leader (selectLeader): waypoints are
+            followed by the leader, so a leader on foot would walk the LOAD
+            waypoint while the vehicle stays put;
           - both groups are woken (AIC_fnc_setGroupSim) and their waypoints
             cleared (AIC_fnc_clearWaypoints);
           - the transport gets a LOAD waypoint at the pickup point (cargo
@@ -103,19 +107,6 @@ if (count _tRec == 0 || { count _cRec == 0 }) exitWith {
 };
 
 // ---------------------------------------------------------------- vehicle
-private _fnc_freeSeats = {
-    params ["_veh", "_grp"];
-    // one enumeration so every seat is counted once (an FFV seat is not
-    // also counted as a cargo seat)
-    private _free = {
-        _x params ["_unit", "_role", "_cargoIdx", "_path", ["_isFFV", false]];
-        isNull _unit && { (_role == "cargo") || { _isFFV isEqualTo true } }
-    } count (fullCrew [_veh, "", true]);
-    private _ownNeed = {
-        alive _x && { isNull objectParent _x } && { (assignedVehicle _x) in [objNull, _veh] }
-    } count (units _grp);
-    _free - _ownNeed
-};
 private _fnc_usable = {
     params ["_veh"];
     !isNull _veh && { alive _veh } && { canMove _veh } && { fuel _veh >= 0.05 } && { (locked _veh) != 2 }
@@ -124,7 +115,7 @@ private _fnc_usable = {
 
 private _veh = _tGroup getVariable ["AIC_transportVehicle", objNull];
 _tGroup setVariable ["AIC_transportVehicle", nil];
-if (!([_veh] call _fnc_usable) || { ([_veh, _tGroup] call _fnc_freeSeats) < _cargoCount }) then {
+if (!([_veh] call _fnc_usable) || { ([_veh, _tGroup, _cGroup] call AIC_fnc_freeSeats) < _cargoCount }) then {
     _veh = objNull;
     private _bestSeats = -1;
     private _seen = [];
@@ -133,7 +124,7 @@ if (!([_veh] call _fnc_usable) || { ([_veh, _tGroup] call _fnc_freeSeats) < _car
         if (!isNull _v && { !(_v in _seen) }) then {
             _seen pushBack _v;
             if ([_v] call _fnc_usable) then {
-                private _s = [_v, _tGroup] call _fnc_freeSeats;
+                private _s = [_v, _tGroup, _cGroup] call AIC_fnc_freeSeats;
                 if (_s >= _cargoCount && { _s > _bestSeats }) then { _bestSeats = _s; _veh = _v; };
             };
         };
@@ -144,6 +135,15 @@ if (isNull _veh) exitWith {
     false
 };
 private _isHeli = _veh isKindOf "Air";
+
+// Waypoints are followed by the group leader. A leader outside the vehicle
+// (a crew chief on foot, a helicopter grouped with a squad) would walk the
+// LOAD waypoint while the vehicle stays put, so the driver / pilot leads.
+private _drv = driver _veh;
+if ((leader _tGroup) isNotEqualTo _drv && { !((objectParent (leader _tGroup)) isEqualTo _veh) }) then {
+    _tGroup selectLeader _drv;
+    ["orderTransport: %1 leader was not aboard %2, the driver now leads the group", [groupId _tGroup, typeOf _veh]] call AIC_fnc_log;
+};
 
 // ---------------------------------------------------------------- helpers
 // flat, open spot for a helicopter near _c (max _r m), or _c itself

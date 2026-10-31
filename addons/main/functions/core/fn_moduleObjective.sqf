@@ -30,30 +30,21 @@ if (isNull _logic || { !_activated }) exitWith { true };
 if (isNil "AIC_ns") then { call AIC_fnc_preInit; };
 private _objectiveModules = AIC_ns get "objectiveModules";
 
-// --- normalise attributes
-private _name = _logic getVariable ["Name", ""];
-if !(_name isEqualType "") then { _name = str _name; };
+// --- normalise attributes (AIC_fnc_moduleAttr: the one rule every reader uses)
+private _name = [_logic, "Name", ""] call AIC_fnc_moduleAttr;
 if (_name isEqualTo "") then {
     _name = format ["Objective %1", count _objectiveModules + 1];
 };
 
-private _radius = _logic getVariable ["Radius", 300];
-if (_radius isEqualType "") then { _radius = parseNumber _radius; };
-if (!(_radius isEqualType 0) || { _radius <= 0 }) then { _radius = 300; };
+private _radius = [_logic, "Radius", 300] call AIC_fnc_moduleAttr;
+if (_radius <= 0) then { _radius = 300; };
 
-private _priority = _logic getVariable ["Priority", 2];
-if (_priority isEqualType "") then { _priority = parseNumber _priority; };
-if (!(_priority isEqualType 0) || { _priority <= 0 }) then { _priority = 1; };
+private _priority = [_logic, "Priority", 2] call AIC_fnc_moduleAttr;
+if (_priority <= 0) then { _priority = 1; };
 
-private _garrison = _logic getVariable ["Garrison", 0];
-if (_garrison isEqualType "") then { _garrison = parseNumber _garrison; };
-if !(_garrison isEqualType 0) then { _garrison = 0; };
-_garrison = _garrison max 0;
+private _garrison = ([_logic, "Garrison", 0] call AIC_fnc_moduleAttr) max 0;
 
-private _isBase = _logic getVariable ["IsBase", false];
-if (_isBase isEqualType 0) then { _isBase = _isBase > 0; };
-if (_isBase isEqualType "") then { _isBase = (toLowerANSI _isBase) in ["true", "1"]; };
-if !(_isBase isEqualType true) then { _isBase = false; };
+private _isBase = [_logic, "IsBase", false] call AIC_fnc_moduleAttr;
 
 _logic setVariable ["Name", _name];
 _logic setVariable ["Radius", _radius];

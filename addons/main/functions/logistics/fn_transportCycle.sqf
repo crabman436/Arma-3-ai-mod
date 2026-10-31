@@ -14,6 +14,11 @@
               waypoint (in case the LOAD / GETIN synchronisation hangs).
             - Helicopter hovering within 300 m of the pickup point for
               more than 45 s -> land "GET IN" (repeated every 60 s).
+            - Every 60 s a status line is logged (phase, vehicle distance to
+              the cargo and to the pickup / drop, landed / airborne or speed,
+              waypoint index, units aboard), and the driver / pilot is made
+              leader of the transport group whenever the leader is found
+              outside the vehicle (waypoints follow the leader).
             - Fallback (record "getInFallback"): when the order is older
               than 240 s, or the vehicle has been within 150 m of the cargo
               leader for 90 s without everybody aboard, and the vehicle is
@@ -213,6 +218,31 @@ private _fnc_boardFallback = {
     private _inAnyVeh = { !isNull objectParent _x } count _units;
     private _vPos = getPosATL _veh;
 
+    // the driver / pilot must lead the transport group (waypoints follow the
+    // leader); a leader that dismounted or was swapped in would strand the ride
+    private _tLeader = leader _tGroup;
+    if (_tLeader isNotEqualTo _drv && { !((objectParent _tLeader) isEqualTo _veh) }) then {
+        _tGroup selectLeader _drv;
+        ["%1: %2 leader was outside %3, the driver now leads the group", [_side, groupId _tGroup, typeOf _veh]] call AIC_fnc_log;
+    };
+
+    // ride status once a minute (the pickup and ride phases are otherwise silent)
+    if ((time - (_rec getOrDefault ["statusTime", -1e6])) >= 60) then {
+        _rec set ["statusTime", time];
+        private _refPos = if (_phase isEqualTo "PICKUP") then { _pickupPos } else { _dropPos };
+        private _state = if (_isHeli) then {
+            if (isTouchingGround _veh) then { "landed" } else { "airborne" }
+        } else {
+            format ["%1 km/h", round speed _veh]
+        };
+        ["%1: ride %2 by %3: %4 %5 s, vehicle %6 m from cargo, %7 m from %8, %9, wp %10/%11, aboard %12/%13", [
+            _side, groupId _grp, groupId _tGroup, _phase, round _phaseAge,
+            round (_vPos distance2D _lpos), round (_vPos distance2D _refPos),
+            if (_phase isEqualTo "PICKUP") then { "pickup" } else { "drop" },
+            _state, currentWaypoint _tGroup, count waypoints _tGroup, _aboard, count _units
+        ]] call AIC_fnc_log;
+    };
+
     // ================================================== PICKUP
     if (_phase isEqualTo "PICKUP") then {
         // own scope: the exitWith branches below must still reach "continue"
@@ -287,6 +317,9 @@ private _fnc_boardFallback = {
                         private _tLeader = leader _tGroup;
                         if (!isNull _tLeader && { alive _tLeader }) then { _tLeader doMove _lpos; };
                         _rec set ["approachTime", time];
+                        ["%1: pickup of group %2 by %3 stalled %4 m apart, both sent towards each other", [
+                            _side, groupId _grp, groupId _tGroup, round _dVeh
+                        ]] call AIC_fnc_log;
                     };
                 };
             } else {

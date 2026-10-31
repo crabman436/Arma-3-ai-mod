@@ -174,47 +174,18 @@ _cmd set ["hq", _hq];
 // --- objectives (needs HQ for nearest auto objectives)
 [_cmd] call AIC_fnc_collectObjectives;
 
-// --- implicit base objective at the HQ (garrison system home of last resort)
+// --- implicit base objective at the HQ (garrison system home of last
+// resort). AIC_fnc_collectObjectives has already added BASE_HQ at this very
+// "hq", so addObjective returns that record (it dedupes by id and place).
 private _baseRadius = ([_cmd, "objectiveRadius"] call AIC_fnc_getSetting) min 300;
-private _objCountBefore = count (_cmd getOrDefault ["objectives", []]);
 private _base = [_cmd, _hq, "HQ", _baseRadius, 1, "BASE", true, 0] call AIC_fnc_addObjective;
-if !((_base getOrDefault ["id", ""]) isEqualTo AIC_BASE_ID) then {
-    // addObjective did not produce the "BASE_HQ" id (e.g. source not accepted):
-    // drop the stray record it may have appended and add BASE_HQ directly
-    ["createCommander: addObjective returned '%1' for the HQ base, adding BASE_HQ directly", [_base getOrDefault ["id", ""]]] call AIC_fnc_log;
-    private _objectives = _cmd getOrDefault ["objectives", []];
-    if (count _base > 0 && { count _objectives > _objCountBefore }) then {
-        private _stray = _objectives find _base;
-        if (_stray >= _objCountBefore) then {
-            _objectives deleteAt _stray;
-            (_cmd getOrDefault ["objectiveIndex", createHashMap]) deleteAt (_base getOrDefault ["id", ""]);
-        };
-    };
-    private _existingBase = [_cmd, AIC_BASE_ID] call AIC_fnc_getObjective;
-    if (count _existingBase > 0) then {
-        _base = _existingBase;
-    } else {
-        _base = createHashMapFromArray [
-            ["id", AIC_BASE_ID],
-            ["name", "HQ"],
-            ["pos", [_hq select 0, _hq select 1, 0]],
-            ["radius", _baseRadius],
-            ["priority", 1],
-            ["owner", _side],
-            ["source", "BASE"],
-            ["score", 0]
-        ];
-        _objectives pushBack _base;
-        _cmd set ["objectives", _objectives];
-        private _index = _cmd getOrDefault ["objectiveIndex", createHashMap];
-        _index set [AIC_BASE_ID, _base];
-        _cmd set ["objectiveIndex", _index];
-    };
+if (count _base == 0) then {
+    ["createCommander: could not add the HQ base objective for %1 at %2", [_side, _hq apply { round _x }]] call AIC_fnc_log;
+} else {
+    _base set ["isBase", true];
+    _base set ["owner", _side];
+    if !((_base getOrDefault ["garrison", 0]) isEqualType 0) then { _base set ["garrison", 0]; };
 };
-_base set ["isBase", true];
-_base set ["owner", _side];
-if !((_base getOrDefault ["garrison", 0]) isEqualType 0) then { _base set ["garrison", 0]; };
-_base set ["garrison", _base getOrDefault ["garrison", 0]];
 
 // --- dynamic simulation: engine system on so parked groups freeze while no player is near
 if (([_cmd, "manageDynSim"] call AIC_fnc_getSetting) isEqualTo true) then {

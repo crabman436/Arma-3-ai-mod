@@ -30,25 +30,7 @@ if (isNull _logic) exitWith { true };
 if (isNil "AIC_ns") then { call AIC_fnc_preInit; };
 private _objectiveModules = AIC_ns get "objectiveModules";
 
-// --- attribute helpers
-private _fnc_num = {
-    params ["_value", "_default"];
-    if (isNil "_value") exitWith { _default };
-    if (_value isEqualType 0) exitWith { _value };
-    if (_value isEqualType "") exitWith { parseNumber _value };
-    if (_value isEqualType true) exitWith { [0, 1] select _value };
-    _default
-};
-private _fnc_bool = {
-    params ["_value", "_default"];
-    if (isNil "_value") exitWith { _default };
-    if (_value isEqualType true) exitWith { _value };
-    if (_value isEqualType 0) exitWith { _value > 0 };
-    if (_value isEqualType "") exitWith { (toLowerANSI _value) in ["true", "1"] };
-    _default
-};
-
-private _sideIndex = round ([_logic getVariable ["Side", 1], 1] call _fnc_num);
+private _sideIndex = round ([_logic, "Side", 1] call AIC_fnc_moduleAttr);
 private _side = [west, east, independent] select ((_sideIndex max 0) min 2);
 
 // --- deactivation removes the commander
@@ -61,17 +43,17 @@ if (!_activated) exitWith {
 
 // --- settings
 private _settings = createHashMapFromArray [
-    ["aggression", (([_logic getVariable ["Aggression", 0.5], 0.5] call _fnc_num) max 0) min 1],
-    ["loopInterval", ([_logic getVariable ["LoopInterval", 30], 30] call _fnc_num) max 5],
-    ["useArtillery", [_logic getVariable ["UseArtillery", true], true] call _fnc_bool],
-    ["useAir", [_logic getVariable ["UseAir", true], true] call _fnc_bool],
-    ["autoObjectives", [_logic getVariable ["AutoObjectives", true], true] call _fnc_bool],
-    ["debugMarkers", [_logic getVariable ["DebugMarkers", false], false] call _fnc_bool],
-    ["reportToPlayers", [_logic getVariable ["ReportToPlayers", true], true] call _fnc_bool],
-    ["manageDynSim", [_logic getVariable ["ManageDynSim", true], true] call _fnc_bool],
-    ["manageGarrisons", [_logic getVariable ["ManageGarrisons", true], true] call _fnc_bool],
-    ["useTransport", [_logic getVariable ["UseTransport", true], true] call _fnc_bool],
-    ["manageCleanup", [_logic getVariable ["ManageCleanup", true], true] call _fnc_bool]
+    ["aggression", (([_logic, "Aggression", 0.5] call AIC_fnc_moduleAttr) max 0) min 1],
+    ["loopInterval", ([_logic, "LoopInterval", 30] call AIC_fnc_moduleAttr) max 5],
+    ["useArtillery", [_logic, "UseArtillery", true] call AIC_fnc_moduleAttr],
+    ["useAir", [_logic, "UseAir", true] call AIC_fnc_moduleAttr],
+    ["autoObjectives", [_logic, "AutoObjectives", true] call AIC_fnc_moduleAttr],
+    ["debugMarkers", [_logic, "DebugMarkers", false] call AIC_fnc_moduleAttr],
+    ["reportToPlayers", [_logic, "ReportToPlayers", true] call AIC_fnc_moduleAttr],
+    ["manageDynSim", [_logic, "ManageDynSim", true] call AIC_fnc_moduleAttr],
+    ["manageGarrisons", [_logic, "ManageGarrisons", true] call AIC_fnc_moduleAttr],
+    ["useTransport", [_logic, "UseTransport", true] call AIC_fnc_moduleAttr],
+    ["manageCleanup", [_logic, "ManageCleanup", true] call AIC_fnc_moduleAttr]
 ];
 
 // --- synced objective modules: make sure they are known before objectives are collected
@@ -89,14 +71,14 @@ if (count _cmd == 0) exitWith { true };
 // collectObjectives already reads AIC_ns "objectiveModules"; addObjective dedupes by id,
 // this guarantees synced objectives even if the commander already existed.
 {
-    private _garrison = ([_x getVariable ["Garrison", 0], 0] call _fnc_num) max 0;
-    private _isBase = [_x getVariable ["IsBase", false], false] call _fnc_bool;
+    private _garrison = ([_x, "Garrison", 0] call AIC_fnc_moduleAttr) max 0;
+    private _isBase = [_x, "IsBase", false] call AIC_fnc_moduleAttr;
     private _rec = [
         _cmd,
         getPosATL _x,
-        _x getVariable ["Name", "Objective"],
-        _x getVariable ["Radius", [_cmd, "objectiveRadius"] call AIC_fnc_getSetting],
-        _x getVariable ["Priority", 1],
+        [_x, "Name", "Objective"] call AIC_fnc_moduleAttr,
+        [_x, "Radius", [_cmd, "objectiveRadius"] call AIC_fnc_getSetting] call AIC_fnc_moduleAttr,
+        [_x, "Priority", 2] call AIC_fnc_moduleAttr,
         "MODULE",
         _isBase,
         _garrison

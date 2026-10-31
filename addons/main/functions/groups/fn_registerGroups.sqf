@@ -10,10 +10,10 @@
  *     - is not flagged with group variable "AIC_exclude" = true,
  *     - is local to the server (groups moved to a headless client are not
  *       commanded: AIC's argument-local commands would do nothing there).
- *   New groups get a fresh group record (type via AIC_fnc_classifyGroup,
- *   power via AIC_fnc_groupPower, task "IDLE", logistics keys "parked"
- *   false, "home" "", "transport" grpNull, "final" empty HashMap).
- *   Existing records missing the logistics keys get these defaults too.
+ *   Before the sweep AIC_fnc_splitPassengers moves passengers that share
+ *   a group with a transport crew into a group of their own.
+ *   New groups get a fresh, complete group record from
+ *   AIC_fnc_newGroupRecord (type, power, task "IDLE", logistics keys).
  *   Groups that died, changed side, got a player or were excluded are
  *   dropped together with their record; a dropped group AIC had parked is
  *   woken first (AIC_fnc_setGroupSim false) and its transport helipads
@@ -51,6 +51,10 @@ if (isNil "_groupData" || {!(_groupData isEqualType createHashMap)}) then {
     _groupData = createHashMap;
 };
 
+// --- Passengers sharing a group with a transport crew get their own group
+// (setting "splitPassengers"), so the sweep below registers both parts
+[_commander] call AIC_fnc_splitPassengers;
+
 // --- Collect currently eligible groups -----------------------------------
 private _eligible = (groups _side) select {
     private _grp = _x;
@@ -74,31 +78,10 @@ private _newData = createHashMap;
     private _record = _groupData getOrDefault [_key, createHashMap];
 
     if (count _record == 0 || {!((_record getOrDefault ["group", grpNull]) isEqualTo _grp)}) then {
-        private _aliveCount = {alive _x} count (units _grp);
-        _record = createHashMapFromArray [
-            ["group", _grp],
-            ["type", [_grp] call AIC_fnc_classifyGroup],
-            ["power", [_grp] call AIC_fnc_groupPower],
-            ["initialSize", _aliveCount max 1],
-            ["strength", 1],
-            ["task", "IDLE"],
-            ["taskPos", []],
-            ["taskTime", time],
-            ["objective", ""],
-            ["parked", false],
-            ["home", ""],
-            ["transport", grpNull],
-            ["final", createHashMap]
-        ];
+        _record = [_grp] call AIC_fnc_newGroupRecord;
         if (!isNil "AIC_ns" && { AIC_ns getOrDefault ["debug", false] isEqualTo true }) then {
             ["Commander %1 took control of group %2 (%3)", [_side, groupId _grp, _record get "type"]] call AIC_fnc_log;
         };
-    } else {
-        // Records created elsewhere (e.g. AIC_fnc_issueOrder) may lack the logistics keys
-        if !("parked" in _record) then {_record set ["parked", false]};
-        if !("home" in _record) then {_record set ["home", ""]};
-        if !("transport" in _record) then {_record set ["transport", grpNull]};
-        if !("final" in _record) then {_record set ["final", createHashMap]};
     };
 
     // engine event handlers (EnemyDetected / UnitKilled / Empty / Hit /

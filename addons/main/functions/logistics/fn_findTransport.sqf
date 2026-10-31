@@ -75,22 +75,6 @@ if !(_garrisons isEqualType createHashMap) then { _garrisons = createHashMap; };
 private _trip = _cargoPos distance2D _dest;
 private _preferHeli = _useAir && { _trip > _heliDist };
 
-// free seats of a vehicle for passengers of another group
-private _fnc_freeSeats = {
-    params ["_veh", "_grp"];
-    // one enumeration so every seat is counted once (an FFV seat is not
-    // also counted as a cargo seat)
-    private _free = {
-        _x params ["_unit", "_role", "_cargoIdx", "_path", ["_isFFV", false]];
-        isNull _unit && { (_role == "cargo") || { _isFFV isEqualTo true } }
-    } count (fullCrew [_veh, "", true]);
-    // own members on foot that will climb back into this vehicle
-    private _ownNeed = {
-        alive _x && { isNull objectParent _x } && { (assignedVehicle _x) in [objNull, _veh] }
-    } count (units _grp);
-    _free - _ownNeed
-};
-
 // 0 unarmed, 1 machine guns, 2 cannon / rockets / missiles / tracked
 private _fnc_armament = {
     params ["_veh"];
@@ -147,7 +131,7 @@ private _bestKey = 1e12;
         private _veh = _x;
         if (!alive _veh || { !canMove _veh } || { fuel _veh < 0.05 } || { (locked _veh) == 2 }) then { continue };
         if (_veh isKindOf "Ship" || { _veh isKindOf "Plane" }) then { continue };
-        private _seats = [_veh, _grp] call _fnc_freeSeats;
+        private _seats = [_veh, _grp, _cargo] call AIC_fnc_freeSeats;
         if (_seats < _cargoCount) then { continue };
         if (_veh isEqualTo _leaderVeh) then { _seats = _seats + 1000; };
         if (_seats > _gSeats) then { _gSeats = _seats; _gVeh = _veh; };

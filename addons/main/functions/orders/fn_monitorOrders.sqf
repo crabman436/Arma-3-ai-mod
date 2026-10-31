@@ -212,7 +212,14 @@ private _fnc_setIdle = {
     if !(_task in ["ATTACK", "REINFORCE", "RETREAT", "RTB", "PATROL", "DEFEND", "SUPPORT"]) then { continue };
     if (time - _lastMoveTime < AIC_STUCK_TIMEOUT) then { continue };
 
-    private _far = if (_task == "PATROL") then { true } else { _dist > (_arriveR max 200) };
+    // DEFEND: AIC_fnc_orderDefend holds vehicle groups up to ~260 m from the
+    // centre (100 m offset + 120 m road snap + 40 m completion radius), so a
+    // group holding there is not stuck
+    private _far = switch (_task) do {
+        case "PATROL": { true };
+        case "DEFEND": { _dist > ((_arriveR max 200) + 100) };
+        default { _dist > (_arriveR max 200) };
+    };
     if (!_far) then { continue };
 
     // In contact: standing still is fighting, not being stuck. Besides a

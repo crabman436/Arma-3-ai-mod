@@ -18,6 +18,7 @@ class CfgFunctions
             class log {};
             class moduleCommander {};
             class moduleObjective {};
+            class moduleAttr {};
         };
 
         class groups
@@ -25,6 +26,8 @@ class CfgFunctions
             file = "\z\aic\addons\main\functions\groups";
             class registerGroups {};
             class classifyGroup {};
+            class newGroupRecord {};
+            class splitPassengers {};
             class groupPower {};
             class updateGroups {};
             class availableGroups {};
@@ -87,6 +90,7 @@ class CfgFunctions
             class garrisonStatus {};
             class canLeaveGarrison {};
             class garrisonCycle {};
+            class freeSeats {};
             class findTransport {};
             class orderTransport {};
             class transportCycle {};
