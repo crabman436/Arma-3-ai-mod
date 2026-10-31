@@ -139,6 +139,62 @@ class CfgVehicles
                 typeName = "BOOL";
                 defaultValue = "true";
             };
+            class SplitPassengers: Checkbox
+            {
+                property = "AIC_ModuleCommander_SplitPassengers";
+                displayName = "Split passengers from crews";
+                tooltip = "Squads placed in the same group as a truck or helicopter crew get their own group, so they can be flown in and fight as a unit while the vehicle leaves. Groups with variable AIC_noSplit = true are left alone.";
+                typeName = "BOOL";
+                defaultValue = "true";
+            };
+            class DynamicSquads: Checkbox
+            {
+                property = "AIC_ModuleCommander_DynamicSquads";
+                displayName = "Dynamic squads";
+                tooltip = "Squads too big for one vehicle split into teams that each get a ride and regroup after landing. Big squads split into two fireteams near an attack, one flanking. Teams and remnants merge again.";
+                typeName = "BOOL";
+                defaultValue = "true";
+            };
+            class StagedAssaults: Checkbox
+            {
+                property = "AIC_ModuleCommander_StagedAssaults";
+                displayName = "Staged assaults";
+                tooltip = "Ground attacks on an objective gather in an assembly area first and come in on a broad front, infantry leading into towns while vehicles give fire support from outside.";
+                typeName = "BOOL";
+                defaultValue = "true";
+            };
+            class SpreadGroups: Checkbox
+            {
+                property = "AIC_ModuleCommander_SpreadGroups";
+                displayName = "Spread groups";
+                tooltip = "Infantry groups that bunch up within 70 m are walked apart, unless they are in contact or taking up positions.";
+                typeName = "BOOL";
+                defaultValue = "true";
+            };
+            class UseVehicleParks: Checkbox
+            {
+                property = "AIC_ModuleCommander_UseVehicleParks";
+                displayName = "Vehicle parks at bases";
+                tooltip = "Idle vehicles at bases wait in a laid-out motor pool with engines off, helicopters in a helicopter park.";
+                typeName = "BOOL";
+                defaultValue = "true";
+            };
+            class UseSupplyTrucks: Checkbox
+            {
+                property = "AIC_ModuleCommander_UseSupplyTrucks";
+                displayName = "Use supply trucks";
+                tooltip = "Repair, fuel and ammo trucks are sent to vehicles that need them and refill at base.";
+                typeName = "BOOL";
+                defaultValue = "true";
+            };
+            class GarrisonManStatics: Checkbox
+            {
+                property = "AIC_ModuleCommander_GarrisonManStatics";
+                displayName = "Garrisons man static weapons";
+                tooltip = "Up to half of an infantry garrison mans empty static weapons in its area (mortars excluded).";
+                typeName = "BOOL";
+                defaultValue = "true";
+            };
             class ModuleDescription: ModuleDescription {};
         };
 

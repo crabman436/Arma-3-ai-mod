@@ -175,7 +175,9 @@ change them live through `(_cmd get "settings") set [key, value]`.
 
 The Eden module sets Side, Aggression, LoopInterval, UseArtillery, UseAir,
 AutoObjectives, DebugMarkers, ReportToPlayers, ManageDynSim, ManageGarrisons,
-UseTransport and ManageCleanup. The others keep their defaults. The settings
+UseTransport, ManageCleanup, SplitPassengers, DynamicSquads, StagedAssaults,
+SpreadGroups, UseVehicleParks, UseSupplyTrucks and GarrisonManStatics. The
+others keep their defaults. The settings
 for parking, garrisons and transport are listed in the next section, the
 cleanup settings in "Performance and cleanup".
 

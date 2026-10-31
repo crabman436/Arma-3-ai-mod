@@ -4,7 +4,9 @@
     Description:
         Eden module function of AIC_ModuleCommander (server only).
         Reads the module attributes (including the logistics checkboxes
-        ManageDynSim, ManageGarrisons, UseTransport and ManageCleanup), builds a settings
+        ManageDynSim, ManageGarrisons, UseTransport, ManageCleanup, SplitPassengers,
+        DynamicSquads, StagedAssaults, SpreadGroups, UseVehicleParks, UseSupplyTrucks
+        and GarrisonManStatics), builds a settings
         HashMap and creates the commander via AIC_fnc_createCommander. Objective modules
         synchronised to this module are registered and added to the
         commander. When the module is deactivated (synced trigger
@@ -53,6 +55,13 @@ private _settings = createHashMapFromArray [
     ["manageDynSim", [_logic, "ManageDynSim", true] call AIC_fnc_moduleAttr],
     ["manageGarrisons", [_logic, "ManageGarrisons", true] call AIC_fnc_moduleAttr],
     ["useTransport", [_logic, "UseTransport", true] call AIC_fnc_moduleAttr],
+    ["splitPassengers", [_logic, "SplitPassengers", true] call AIC_fnc_moduleAttr],
+    ["dynamicSquads", [_logic, "DynamicSquads", true] call AIC_fnc_moduleAttr],
+    ["stagedAssaults", [_logic, "StagedAssaults", true] call AIC_fnc_moduleAttr],
+    ["spreadGroups", [_logic, "SpreadGroups", true] call AIC_fnc_moduleAttr],
+    ["useVehicleParks", [_logic, "UseVehicleParks", true] call AIC_fnc_moduleAttr],
+    ["useSupplyTrucks", [_logic, "UseSupplyTrucks", true] call AIC_fnc_moduleAttr],
+    ["garrisonManStatics", [_logic, "GarrisonManStatics", true] call AIC_fnc_moduleAttr],
     ["manageCleanup", [_logic, "ManageCleanup", true] call AIC_fnc_moduleAttr]
 ];
 

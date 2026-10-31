@@ -507,7 +507,10 @@ New objective sources:
 | `"cleanupMaxPerCycle"` | 20 | max bodies / wrecks deleted per commander cycle |
 
 `AIC_ModuleCommander` gets a checkbox `ManageCleanup` (default true), read by
-`AIC_fnc_moduleCommander` into `"manageCleanup"`.
+`AIC_fnc_moduleCommander` into `"manageCleanup"`. The same holds for the
+checkboxes `SplitPassengers`, `DynamicSquads`, `StagedAssaults`, `SpreadGroups`,
+`UseVehicleParks`, `UseSupplyTrucks` and `GarrisonManStatics` (all default true),
+read into the settings of the same name in lower camel case.
 
 ## New commander keys
 
