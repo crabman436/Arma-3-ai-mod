@@ -108,6 +108,24 @@ private _totalPower = 0;
                     _driven pushBackUnique _veh;
                 };
             } forEach _alive;
+            // nobody aboard or assigned (a crew that bailed out): the trucks
+            // it drove last are still its trucks while they stand close by
+            if (_driven isEqualTo []) then {
+                _driven = (_record getOrDefault ["ownVehicles", []]) select {
+                    alive _x && {isNull (driver _x)} && {((leader _grp) distance2D _x) < 300}
+                };
+                {
+                    private _veh = _x;
+                    if (isNull (assignedDriver _veh)) then {
+                        private _back = _alive select {isNull objectParent _x && {isNull (assignedVehicle _x)}};
+                        if (_back isNotEqualTo []) then {
+                            (_back select 0) assignAsDriver _veh;
+                            {_x assignAsCargo _veh} forEach (_back select [1, 1]);
+                        };
+                    };
+                } forEach _driven;
+            };
+            if (_driven isNotEqualTo []) then {_record set ["ownVehicles", _driven]};
             private _riders = {
                 private _veh = objectParent _x;
                 if (isNull _veh) then {!((assignedVehicle _x) in _driven)} else {!(_veh in _driven) || {(_veh getCargoIndex _x) >= 0}}

@@ -51,6 +51,16 @@ private _toWake = (_cmd getOrDefault ["groups", []]) select { _x isEqualType grp
     [_x] call AIC_fnc_deleteHelipads;
 } forEach _records;
 
+// helipads of the helicopter parks (AIC_fnc_parkSlot)
+{
+    if (_x isEqualType createHashMap) then {
+        { deleteVehicle _x; } forEach (_x getOrDefault ["heliPads", []]);
+        _x set ["heliPads", []];
+        _x set ["heliSlots", nil];
+        _x set ["parkSlots", nil];
+    };
+} forEach (_cmd getOrDefault ["objectives", []]);
+
 private _woken = 0;
 {
     if (_x isEqualType grpNull && { !isNull _x } && { !(_x getVariable ["AIC_noDynSim", false]) } && { dynamicSimulationEnabled _x }) then {

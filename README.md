@@ -328,8 +328,8 @@ still retreat to HQ, and join its garrison there.
 ### Assaults
 
 With `stagedAssaults` on, ground groups attacking an objective do not run at it
-one by one. The first group ordered there sets an **assembly area** about 750 m
-out. Each group goes to its own lane there, with vehicles behind the infantry,
+one by one. They gather in an **assembly area** about 750 m out, on the side
+the first group comes from. Each group goes to its own lane there, with vehicles behind the infantry,
 and transports drop their troops there. The assault starts when 70 % of its
 power has arrived, three minutes after the first group got there, after eight
 minutes in any case, or at once if a waiting group comes under fire.

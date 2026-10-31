@@ -43,7 +43,10 @@ private _list = [];
     private _grp = _rec getOrDefault ["group", grpNull];
     if (isNull _grp || {(_rec getOrDefault ["type", ""]) isNotEqualTo "INF"}) then {continue};
     if !((_rec getOrDefault ["task", ""]) in ["IDLE", "ATTACK", "REINFORCE", "DEFEND", "PATROL", "RETREAT"]) then {continue};
-    if ((_rec getOrDefault ["staged", false]) isEqualTo true) then {continue};
+    // waiting in an assembly area (a group still marching there may be spread)
+    if ((_rec getOrDefault ["staged", false]) isEqualTo true
+        && {count (_rec getOrDefault ["stagePos", []]) >= 2}
+        && {((leader _grp) distance2D (_rec get "stagePos")) < 150}) then {continue};
     if (dynamicSimulationEnabled _grp) then {continue};
     private _leader = leader _grp;
     if (!alive _leader || {!isNull objectParent _leader}) then {continue};
@@ -68,11 +71,19 @@ private _seen = [];
     if (count _crowd < AIC_CROWD_GROUPS) then {continue};
 
     private _count = count _crowd;
+    // the one nearest the middle of the crowd stays, the others fan out around it
+    private _mid = [0, 0, 0];
+    { _mid = _mid vectorAdd (_x select 2); } forEach _crowd;
+    _mid = _mid vectorMultiply (1 / _count);
+    private _order = [];
+    { _order pushBack [(_x select 2) distance2D _mid, _forEachIndex]; } forEach _crowd;
+    _order sort true;
+    _crowd = _order apply { _crowd select (_x select 1) };
+    _pos = _crowd select 0 select 2;
     private _start = random 360;
     {
         _x params ["_rec", "_member"];
         _seen pushBack _member;
-        // the first one stays, it is the middle of the crowd
         if (_forEachIndex > 0 && {(time - (_rec getOrDefault ["lastSpread", -1e6])) > AIC_CROWD_COOLDOWN}) then {
             private _p = _pos getPos [AIC_CROWD_SPREAD, _start + _forEachIndex * 360 / (_count - 1)];
             if (!surfaceIsWater _p) then {

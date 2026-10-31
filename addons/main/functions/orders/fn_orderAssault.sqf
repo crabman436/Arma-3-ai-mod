@@ -81,9 +81,19 @@ _group setBehaviour "AWARE";
 _group setCombatMode "YELLOW";
 _group setSpeedMode "NORMAL";
 
+// a dry spot: the point itself, else the same distance from the target swung
+// around in 15 degree steps, else the fallback (never the town itself for a
+// place outside it)
 private _fnc_dry = {
-    params ["_p"];
-    if (surfaceIsWater _p) then {_target} else {[_p select 0, _p select 1, 0]}
+    params ["_p", ["_fallback", _target]];
+    private _d = _target distance2D _p;
+    private _b = _target getDir _p;
+    private _found = _fallback;
+    {
+        private _q = _target getPos [_d, _b + _x];
+        if (!surfaceIsWater _q) exitWith {_found = [_q select 0, _q select 1, 0]};
+    } forEach [0, 15, -15, 30, -30, 45, -45, 60, -60];
+    _found
 };
 private _fnc_wp = {
     params ["_p", "_wpType", "_beh", "_speed", "_form", "_done"];
@@ -104,7 +114,8 @@ if ((_assault get "state") isEqualTo "STAGE") exitWith {
         _p = _p getPos [120, _dir];
         _p = [[_p select 0, _p select 1, 0], 100] call AIC_fnc_roadPos;
     };
-    _p = [_p] call _fnc_dry;
+    // (a lane in the water: somewhere dry near it, else the assembly area itself)
+    _p = [_p, [_stage, _target] select (_stage isEqualTo [])] call _fnc_dry;
     // groups from one base do not march up one line: each goes its own way
     private _from = getPosATL _leader;
     private _way = _from distance2D _p;
@@ -125,13 +136,14 @@ if ((_assault get "state") isEqualTo "STAGE") exitWith {
 
 _record set ["staged", false];
 private _lanePos = {
-    params ["_dist", "_spread"];
-    [_target getPos [_dist, _dir + (_lane * _spread)]] call _fnc_dry
+    params ["_dist", "_spread", ["_fallback", _target]];
+    [_target getPos [_dist, _dir + (_lane * _spread)], _fallback] call _fnc_dry
 };
 
 // --- vehicles watch over a built-up objective from outside --------------------
 if (!_isInf && {_assault get "urban"} && {_assault get "hasInf"}) exitWith {
-    private _p = [_radius + AIC_ASSAULT_OVERWATCH, 20] call _lanePos;
+    // never into the town: a wet overwatch spot falls back to the assembly area
+    private _p = [_radius + AIC_ASSAULT_OVERWATCH, 20, [_stage, _target getPos [_radius + AIC_ASSAULT_OVERWATCH, _assault get "dir"]] select (_stage isEqualTo [])] call _lanePos;
     private _wp = [_p, "MOVE", "AWARE", "LIMITED", "WEDGE", 40] call _fnc_wp;
     [_p, "HOLD", "AWARE", "LIMITED", "WEDGE", 40] call _fnc_wp;
     _group setCurrentWaypoint _wp;

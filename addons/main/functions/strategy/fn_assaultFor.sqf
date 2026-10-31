@@ -14,9 +14,9 @@
  *     "hasInf"      - infantry is part of the assault
  *     "slots"       - lanes handed out so far
  *   The assembly area is objective radius / 2 + 600 m out, on the first
- *   group's side, or up to 90 degrees around if that spot is wet or has an
- *   enemy known within 300 m. An assault that finds no such spot, or whose
- *   first group is already close, starts in state "GO".
+ *   group's side (the HQ's side if that group is already close), or up to 90
+ *   degrees around if that spot is wet or has an enemy known within 300 m.
+ *   An assault that finds no such spot starts in state "GO".
  *   AIC_fnc_orderAssault gives the groups their orders, AIC_fnc_assaultCycle
  *   starts the assault and ends it.
  *
@@ -59,20 +59,26 @@ private _stageDist = (_radius * 0.5) + AIC_ASSAULT_STAGE;
 private _urban = _obj getOrDefault ["urban", -1];
 if !(_urban isEqualType true) then {
     _urban = (count (nearestTerrainObjects [_pos, ["HOUSE", "BUILDING", "CHURCH", "CHAPEL"], (_radius min 300) max 50, false, true])) >= 12;
+    // terrain never changes: kept on the objective, as AIC_fnc_allocateForces does
+    if (count _obj > 0) then {_obj set ["urban", _urban]};
 };
 
-// an assembly area in the dry and away from known enemies
+// an assembly area in the dry and away from known enemies, on the side the
+// first group comes from, or the HQ's side if that group is already close
 private _stage = [];
-private _dir = _pos getDir (leader _group);
-if (_dist > (_stageDist + 200)) then {
-    {
+private _hq = _cmd getOrDefault ["hq", []];
+private _dir = if (_dist > (_stageDist + 200) || { !(_hq isEqualType []) } || { count _hq < 2 }) then {
+    _pos getDir (leader _group)
+} else {
+    _pos getDir _hq
+};
+{
         private _p = _pos getPos [_stageDist, _dir + _x];
         if (!surfaceIsWater _p && {([_cmd, _p, 300] call AIC_fnc_nearestThreat) isEqualTo []}) exitWith {
             _stage = [_p select 0, _p select 1, 0];
             _dir = _dir + _x;
         };
-    } forEach [0, 45, -45, 90, -90];
-};
+} forEach [0, 45, -45, 90, -90];
 
 private _assault = createHashMapFromArray [
     ["id", _objective],

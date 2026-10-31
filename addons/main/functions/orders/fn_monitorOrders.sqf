@@ -230,6 +230,7 @@ private _fnc_setIdle = {
     // loop: AIC_fnc_splitForAttack adds records to groupData)
     if (_task == "ATTACK" && {_type == "INF"}
         && {!((_rec getOrDefault ["staged", false]) isEqualTo true)}
+        && {!((_rec getOrDefault ["overwatch", false]) isEqualTo true)}
         && {_dist < AIC_ATTACK_SPLIT_RANGE} && {_dist > 200}
         && {(time - (_rec getOrDefault ["lastSplit", -1e6])) > AIC_ATTACK_SPLIT_COOLDOWN}
         && {({alive _x} count (units _group)) >= AIC_ATTACK_SPLIT_SIZE}) then {
@@ -246,13 +247,22 @@ private _fnc_setIdle = {
 
     // --- stuck detection --------------------------------------------------------
     if (_type in ["STATIC", "ARTY", "PLANE"]) then { continue };
-    // waiting in an assembly area or on overwatch is the order, not being stuck
+    // waiting in an assembly area (once there) or on overwatch is the order,
+    // not being stuck; a group still on its way to the assembly area is checked
     if (_task == "ATTACK" && {
-        (_rec getOrDefault ["staged", false]) isEqualTo true || {(_rec getOrDefault ["overwatch", false]) isEqualTo true}
+        (_rec getOrDefault ["overwatch", false]) isEqualTo true
+        || {(_rec getOrDefault ["staged", false]) isEqualTo true
+            && {count (_rec getOrDefault ["stagePos", []]) >= 2}
+            && {(_leaderPos distance2D (_rec get "stagePos")) < 150}}
     }) then { continue };
     if !(_task in ["ATTACK", "REINFORCE", "RETREAT", "RTB", "PATROL", "DEFEND", "SUPPORT"]) then { continue };
     if (time - _lastMoveTime < AIC_STUCK_TIMEOUT) then { continue };
 
+    // a group marching to its assembly area is measured against that, not the town
+    if (_task == "ATTACK" && {(_rec getOrDefault ["staged", false]) isEqualTo true}
+        && {count (_rec getOrDefault ["stagePos", []]) >= 2}) then {
+        _dist = _leaderPos distance2D (_rec get "stagePos");
+    };
     // DEFEND: AIC_fnc_orderDefend holds vehicle groups up to ~260 m from the
     // centre (100 m offset + 120 m road snap + 40 m completion radius), so a
     // group holding there is not stuck

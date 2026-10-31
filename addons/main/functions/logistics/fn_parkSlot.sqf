@@ -5,9 +5,11 @@
  *   "useVehicleParks"). Each base lays out, the first time it is asked, a
  *   motor pool on a flat open spot: up to 20 places in rows for ground
  *   vehicles ("parkSlots") and up to 6 for helicopters ("heliSlots"), each
- *   helicopter place with an invisible helipad so the pilot lands there.
- *   A group keeps its place while its record "parkBase" is this base, also
- *   while it is away on a ride.
+ *   helicopter place with an invisible helipad so the pilot lands there
+ *   (base key "heliPads", deleted by AIC_fnc_removeCommander).
+ *   A group keeps its place while its record "home" is this base, also
+ *   while it is away on a ride or an attack; a group that moves home gives
+ *   it up.
  *
  * Parameters:
  *   0: HASHMAP - commander
@@ -53,7 +55,9 @@ if !(_key in _obj) then {
             if (!surfaceIsWater _p && {(_p isFlatEmpty [_size * 0.4, -1, 0.3, _size * 0.4, 0, false]) isNotEqualTo []}) then {
                 _slots pushBack _p;
                 if (_isHeli) then {
-                    createVehicle ["Land_HelipadEmpty_F", _p, [], 0, "CAN_COLLIDE"];
+                    private _pads = _obj getOrDefault ["heliPads", []];
+                    _pads pushBack (createVehicle ["Land_HelipadEmpty_F", _p, [], 0, "CAN_COLLIDE"]);
+                    _obj set ["heliPads", _pads];
                 };
             };
         };
@@ -86,7 +90,7 @@ private _own = -1;
         if (
             isNull _holder
             || {({alive _x} count (units _holder)) == 0}
-            || {(_hRec getOrDefault ["parkBase", ""]) isNotEqualTo _id}
+            || {(_hRec getOrDefault ["home", ""]) isNotEqualTo _id}
         ) then {_free = _forEachIndex};
     };
 } forEach _slots;
@@ -95,5 +99,4 @@ private _index = if (_own >= 0) then {_own} else {_free};
 if (_index < 0) exitWith {[]};
 
 _claims set [_index, _group];
-_rec set ["parkBase", _id];
 +(_slots select _index)

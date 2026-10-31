@@ -12,7 +12,8 @@
             1500 m of the objective.
           - "present": summed power of groups whose record "home" is this
             objective, whose task is DEFEND / PATROL / IDLE and whose leader
-            is within radius * 1.5 of the objective. Transport-only crews
+            (for a PATROL: its patrol centre, "taskPos") is within
+            radius * 1.5 of the objective. Transport-only crews
             (record "transportOnly") have no power here: a truck is no
             defender.
           - "surplus": present - desired.
@@ -140,7 +141,14 @@ private _objById = createHashMap; // id -> objective record (only the garrisoned
             if (!(_power isEqualType 0) || { (_rec getOrDefault ["transportOnly", false]) isEqualTo true }) then { _power = 0; };
             private _radius = _obj getOrDefault ["radius", 300];
             if !(_radius isEqualType 0) then { _radius = 300; };
-            private _near = ((getPosATL leader _grp) distance2D (_obj get "pos")) <= (_radius * 1.5);
+            // a patrol counts where it patrols, not where it is on its round
+            private _taskPos = _rec getOrDefault ["taskPos", []];
+            private _where = if (_task isEqualTo "PATROL" && { _taskPos isEqualType [] } && { count _taskPos >= 2 }) then {
+                _taskPos
+            } else {
+                getPosATL leader _grp
+            };
+            private _near = (_where distance2D (_obj get "pos")) <= (_radius * 1.5);
 
             if (_task in ["DEFEND", "PATROL", "IDLE"]) then {
                 if (_near) then {
