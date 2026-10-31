@@ -336,11 +336,13 @@ private _ok = switch (_task) do {
         }
     };
     case "DEFEND": {
-        // trucks wait behind the town instead of on the threatened side
-        private _rear = (_record getOrDefault ["transportOnly", false]) isEqualTo true;
+        // trucks wait behind the town instead of on the threatened side, and
+        // anti-air vehicles stay ready in the middle of what they protect
+        private _antiAir = (_record getOrDefault ["antiAir", false]) isEqualTo true;
+        private _rear = _antiAir || {(_record getOrDefault ["transportOnly", false]) isEqualTo true};
         private _threatPos = [_cmd, _pos] call AIC_fnc_nearestThreat;
         // at a quiet base vehicles wait in the motor pool
-        private _park = if (_threatPos isEqualTo [] && {_type in ["MOTOR", "MECH", "ARMOR"]}) then {
+        private _park = if (!_antiAir && {_threatPos isEqualTo []} && {_type in ["MOTOR", "MECH", "ARMOR"]}) then {
             [_cmd, _group, _objRec] call AIC_fnc_parkSlot
         } else {
             []

@@ -116,6 +116,8 @@ private _totalPower = 0;
                 && {_riders <= 1}
                 && {(_driven findIf {([_x] call AIC_fnc_vehicleArmament) > 0}) < 0};
             _record set ["transportOnly", _transportOnly];
+            // anti-air crews protect what they stand next to: never sent to fight on the ground
+            _record set ["antiAir", _vehicles isNotEqualTo [] && {(_vehicles findIf {!([_x] call AIC_fnc_isAntiAir)}) < 0}];
 
             // a transport crew on foot climbs back in once things are calm
             private _engaged = _record getOrDefault ["lastEngaged", -1e6];

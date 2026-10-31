@@ -283,6 +283,7 @@ if (_maxMoves > 0 && { _deficits isNotEqualTo [] }) then {
         private _homeEntry = _status getOrDefault [_home, createHashMap];
         (_rec getOrDefault ["type", ""]) in _donorTypes
         && { !((_rec getOrDefault ["transportOnly", false]) isEqualTo true) }
+        && { !((_rec getOrDefault ["antiAir", false]) isEqualTo true) }
         && { (_rec getOrDefault ["task", "IDLE"]) in _settleTasks }
         && { (_rec getOrDefault ["strength", 1]) > _threshold }
         // transfer cooldown: a group that changed home recently stays put
@@ -399,6 +400,7 @@ private _mix = createHashMap;
         private _patrol = (_m select 0) > (_m select 1)
             // infantry and armed cars patrol, tanks and APCs stand ready
             && { (_rec getOrDefault ["type", ""]) in ["INF", "MOTOR"] }
+            && { !((_rec getOrDefault ["antiAir", false]) isEqualTo true) }
             && { !((_rec getOrDefault ["transportOnly", false]) isEqualTo true) }
             && { !([_homeObj, _status getOrDefault [_home, createHashMap]] call _fnc_alert) };
         private _task = if (_patrol) then { "PATROL" } else { "DEFEND" };
@@ -443,6 +445,7 @@ private _standTo = 0;
         if (
             _task isEqualTo "DEFEND"
             && { _type isNotEqualTo "INF" }
+            && { !((_rec getOrDefault ["antiAir", false]) isEqualTo true) }
             && { _threatPos isNotEqualTo [] }
             && { (time - (_rec getOrDefault ["standToTime", -1e6])) > 120 }
             // parked, or holding the wrong side of the town

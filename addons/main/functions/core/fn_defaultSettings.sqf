@@ -44,6 +44,7 @@ createHashMapFromArray [
     ["garrisonManStatics", true],
     ["useVehicleParks", true],
     ["stagedAssaults", true],
+    ["spreadGroups", true],
 
     // --- logistics: transport
     ["useTransport", true],

@@ -109,6 +109,7 @@ private _bestKey = 1e12;
     if !(_home isEqualType "") then { _home = ""; };
     private _homeEntry = _garrisons getOrDefault [_home, createHashMap];
     // (trucks and other transport-only crews defend nothing, they stay available)
+    if ((_rec getOrDefault ["antiAir", false]) isEqualTo true) then { continue };
     private _transportOnly = (_rec getOrDefault ["transportOnly", false]) isEqualTo true;
     if (!_transportOnly) then {
         if (((_homeEntry getOrDefault ["threat", 0]) max 0) > 0) then { continue };

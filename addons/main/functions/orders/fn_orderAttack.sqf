@@ -96,7 +96,9 @@ private _first = [];
 
 // Approach waypoint
 if (count _via >= 2 || {_approachDist > 0 && {_dist > (_approachDist + _radius + 100)}}) then {
-    private _app = if (count _via >= 2) then {_via} else {_target getPos [_approachDist + (_radius * 0.5), _target getDir _leaderPos]};
+    // (infantry from one place does not come in on one line)
+    private _approachDir = (_target getDir _leaderPos) + (if (_type == "INF") then {(random 60) - 30} else {0});
+    private _app = if (count _via >= 2) then {_via} else {_target getPos [_approachDist + (_radius * 0.5), _approachDir]};
     _app = [_app select 0, _app select 1, 0];
     if (_isGroundVeh) then { _app = [_app, 200] call AIC_fnc_roadPos; };
     if (surfaceIsWater _app && {!_isAir}) then {
@@ -117,7 +119,7 @@ if (count _via >= 2 || {_approachDist > 0 && {_dist > (_approachDist + _radius +
 private _sadPos = _target;
 if (_type == "INF") then {
     // spread infantry a bit inside the area
-    private _p = _target getPos [random (_radius * 0.3), random 360];
+    private _p = _target getPos [random (_radius * 0.5), random 360];
     if (!surfaceIsWater _p) then { _sadPos = [_p select 0, _p select 1, 0]; };
 };
 private _wpS = _group addWaypoint [_sadPos, 0];

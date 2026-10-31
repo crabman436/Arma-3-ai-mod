@@ -63,7 +63,7 @@ private _stageDist = switch (true) do {
     default {0};
 };
 if (_stageDist > 0 && {_dist > _stageDist + 150}) then {
-    private _stage = _target getPos [_stageDist, _target getDir _leader];
+    private _stage = _target getPos [_stageDist, (_target getDir _leader) + (if (_type == "INF") then {(random 60) - 30} else {0})];
     _stage = [_stage select 0, _stage select 1, 0];
     if (_isGroundVeh) then { _stage = [_stage, 200] call AIC_fnc_roadPos; };
     if (!_isAir && {_type != "NAVAL"} && {surfaceIsWater _stage}) then { _stage = _target; };
@@ -77,6 +77,11 @@ if (_stageDist > 0 && {_dist > _stageDist + 150}) then {
     _first = _wpM;
 };
 
+// infantry spreads out around the place it reinforces
+if (_type == "INF") then {
+    private _p = _target getPos [40 + random 100, random 360];
+    if (!surfaceIsWater _p) then { _target = [_p select 0, _p select 1, 0]; };
+};
 private _wpS = _group addWaypoint [_target, 0];
 _wpS setWaypointType "SAD";
 _wpS setWaypointBehaviour "COMBAT";

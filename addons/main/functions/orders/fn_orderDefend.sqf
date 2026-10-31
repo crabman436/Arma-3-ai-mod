@@ -155,14 +155,17 @@ if (_type in ["MOTOR", "MECH", "ARMOR"]) exitWith {
 };
 
 // --- Infantry: move and hold (buildings: AIC_fnc_monitorGarrison) -----------
-private _wpM = _group addWaypoint [_center, 0];
+// every group makes for its own part of the place, not for the very middle
+private _spot = _center getPos [(_radius min 200) * (0.15 + random 0.25), random 360];
+_spot = if (surfaceIsWater _spot) then {_center} else {[_spot select 0, _spot select 1, 0]};
+private _wpM = _group addWaypoint [_spot, 0];
 _wpM setWaypointType "MOVE";
 _wpM setWaypointBehaviour "AWARE";
 _wpM setWaypointCombatMode "YELLOW";
 _wpM setWaypointSpeed "NORMAL";
 _wpM setWaypointFormation "WEDGE";
 _wpM setWaypointCompletionRadius 25;
-private _wpH = _group addWaypoint [_center, 0];
+private _wpH = _group addWaypoint [_spot, 0];
 _wpH setWaypointType "HOLD";
 _wpH setWaypointBehaviour "AWARE";
 _wpH setWaypointCombatMode "YELLOW";

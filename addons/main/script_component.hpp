@@ -54,8 +54,10 @@
 // ---------------------------------------------------------------- assaults
 // assembly area: this far from the objective plus half its radius (m)
 #define AIC_ASSAULT_STAGE 600
-// m between groups across the front
+// m between groups across the front, and groups per approach before the next
+// one opens (up to three: straight in and 70 degrees to either side)
 #define AIC_ASSAULT_FRONT 140
+#define AIC_ASSAULT_AXIS_LANES 3
 // the assault starts with this share of its power in place, this many s after
 // the first group arrived, or after the maximum wait in any case
 #define AIC_ASSAULT_READY 0.7
@@ -63,6 +65,14 @@
 #define AIC_ASSAULT_MAX_WAIT 480
 // m outside a built-up objective that vehicles watch over it from
 #define AIC_ASSAULT_OVERWATCH 250
+
+// ---------------------------------------------------------------- crowds
+// this many infantry groups with their leaders this close (m) are a crowd:
+// they spread out this far (m), at most once per cooldown (s)
+#define AIC_CROWD_GROUPS 3
+#define AIC_CROWD_RADIUS 70
+#define AIC_CROWD_SPREAD 150
+#define AIC_CROWD_COOLDOWN 120
 
 // ---------------------------------------------------------------- patrols
 // armed cars also patrol to an owned objective this close (m)

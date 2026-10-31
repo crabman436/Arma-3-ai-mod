@@ -84,6 +84,7 @@ private _fnc_planInf = {
 
 // 10a. split squads back together, remnants into groups with room
 [_cmd] call AIC_fnc_teamCycle;
+[_cmd] call AIC_fnc_spreadCycle;
 
 // 10b. garbage: old bodies / wrecks queued by the Killed handlers
 [_cmd] call AIC_fnc_cleanupCycle;

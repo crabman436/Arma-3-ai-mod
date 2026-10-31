@@ -51,6 +51,11 @@ if (_type == "NAVAL" && {!surfaceIsWater _dest}) then {
     if (_water isNotEqualTo []) then { _dest = _water; };
 };
 if (_isGroundVeh) then { _dest = [_dest, 150] call AIC_fnc_roadPos; };
+// infantry falling back does not end up on one spot
+if (_type == "INF") then {
+    private _p = _dest getPos [30 + random 120, random 360];
+    _dest = [_p select 0, _p select 1, 0];
+};
 // Land groups must not be sent into the sea
 if (!(_type in ["NAVAL", "HELI", "PLANE"]) && {surfaceIsWater _dest}) then {
     _dest = [_pos select 0, _pos select 1, 0];

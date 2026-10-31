@@ -2,10 +2,14 @@
  * Name: AIC_fnc_orderAssault
  * Description:
  *   Orders one ground group as part of an assault (AIC_fnc_assaultFor). Every
- *   group gets a lane, so the assault comes in on a broad front and not as a
- *   crowd on one line.
- *   State "STAGE": move to its place in the assembly area and hold, vehicles
- *   120 m behind the infantry (record "staged", "stagePos").
+ *   group gets a place of its own, so the assault comes in on a broad front
+ *   and not as a crowd on one line: AIC_ASSAULT_AXIS_LANES lanes side by side
+ *   on an approach, then a second approach 70 degrees to one side, a third to
+ *   the other, then further rows behind (records "assaultLane", "assaultAxis",
+ *   "assaultRow").
+ *   State "STAGE": move to its place near the assembly area and hold, vehicles
+ *   120 m behind the infantry (record "staged", "stagePos"). On a long march
+ *   a waypoint to the side keeps groups from one base off one line.
  *   State "GO":
  *     INF          : to its line of departure, then seek and destroy at a
  *                    walk (speed LIMITED), COMBAT, in line. A flanking team
@@ -49,19 +53,27 @@ private _leader = leader _group;
 if (isNull _leader || {!alive _leader}) exitWith {false};
 
 private _target = [_pos select 0, _pos select 1, 0];
-private _dir = _assault get "dir";
 private _isInf = _type isEqualTo "INF";
 private _formation = ["WEDGE", "STAG COLUMN"] select _isInf;
 
-// a lane of its own: 0, +1, -1, +2, -2, ...
-private _lane = _record getOrDefault ["assaultLane", 1e6];
-if ((_record getOrDefault ["assaultId", ""]) isNotEqualTo (_assault get "id") || {_lane > 1e5}) then {
+// a place of its own: lanes side by side on an approach, then the next
+// approach, then a second row behind the first
+if ((_record getOrDefault ["assaultId", ""]) isNotEqualTo (_assault get "id")) then {
     private _n = _assault get "slots";
     _assault set ["slots", _n + 1];
-    _lane = (ceil (_n / 2)) * ([-1, 1] select ((_n % 2) == 1));
     _record set ["assaultId", _assault get "id"];
-    _record set ["assaultLane", _lane];
+    _record set ["assaultLane", (_n % AIC_ASSAULT_AXIS_LANES) - floor (AIC_ASSAULT_AXIS_LANES / 2)];
+    _record set ["assaultAxis", (floor (_n / AIC_ASSAULT_AXIS_LANES)) % 3];
+    _record set ["assaultRow", floor (_n / (3 * AIC_ASSAULT_AXIS_LANES))];
 };
+private _lane = _record get "assaultLane";
+private _row = _record get "assaultRow";
+
+// its approach, if that does not end in the water
+private _stage = _assault get "stage";
+private _stageDist = if (_stage isEqualTo []) then {0} else {_target distance2D _stage};
+private _dir = (_assault get "dir") + ([0, 70, -70] select (_record get "assaultAxis"));
+if (_stage isNotEqualTo [] && {surfaceIsWater (_target getPos [_stageDist, _dir])}) then {_dir = _assault get "dir"};
 
 [_group] call AIC_fnc_clearWaypoints;
 _group allowFleeing 0;
@@ -87,15 +99,25 @@ private _fnc_wp = {
 
 // --- gather ------------------------------------------------------------------
 if ((_assault get "state") isEqualTo "STAGE") exitWith {
-    private _p = (_assault get "stage") getPos [_lane * AIC_ASSAULT_FRONT, _dir + 90];
+    private _p = (_target getPos [_stageDist + _row * 150, _dir]) getPos [_lane * AIC_ASSAULT_FRONT, _dir + 90];
     if !(_isInf) then {
         _p = _p getPos [120, _dir];
         _p = [[_p select 0, _p select 1, 0], 100] call AIC_fnc_roadPos;
     };
     _p = [_p] call _fnc_dry;
+    // groups from one base do not march up one line: each goes its own way
+    private _from = getPosATL _leader;
+    private _way = _from distance2D _p;
+    private _first = [];
+    if (_way > 800) then {
+        private _mid = (_from getPos [_way * 0.5, _from getDir _p]) getPos [(_lane * 200) + (random 100) - 50, (_from getDir _p) + 90];
+        if (!surfaceIsWater _mid) then {
+            _first = [[_mid select 0, _mid select 1, 0], "MOVE", "AWARE", "NORMAL", _formation, 60] call _fnc_wp;
+        };
+    };
     private _wp = [_p, "MOVE", "AWARE", "NORMAL", _formation, 40] call _fnc_wp;
     [_p, "HOLD", "AWARE", "NORMAL", ["WEDGE", "LINE"] select _isInf, 40] call _fnc_wp;
-    _group setCurrentWaypoint _wp;
+    _group setCurrentWaypoint ([_first, _wp] select (_first isEqualTo []));
     _record set ["staged", true];
     _record set ["stagePos", _p];
     true
@@ -118,12 +140,12 @@ if (!_isInf && {_assault get "urban"} && {_assault get "hasInf"}) exitWith {
 };
 
 // --- in at a walk, on a broad front --------------------------------------------
-private _start = if (count _via >= 2) then {[_via] call _fnc_dry} else {[_radius + 150 + (([50, 0] select _isInf)), 12] call _lanePos};
+private _start = if (count _via >= 2) then {[_via] call _fnc_dry} else {[_radius + 150 + (([50, 0] select _isInf)), 20] call _lanePos};
 private _first = [];
 if (count _via >= 2 || {(_leader distance2D _target) > (_radius + 200)}) then {
     _first = [_start, "MOVE", "AWARE", "LIMITED", "WEDGE", ([40, 25] select _isInf)] call _fnc_wp;
 };
-private _wpS = [[_radius * 0.3, 40] call _lanePos, "SAD", "COMBAT", "LIMITED", ["WEDGE", "LINE"] select _isInf, (_radius * 0.5) max 30] call _fnc_wp;
+private _wpS = [[_radius * 0.45, 40] call _lanePos, "SAD", "COMBAT", "LIMITED", ["WEDGE", "LINE"] select _isInf, (_radius * 0.5) max 30] call _fnc_wp;
 _group setCurrentWaypoint ([_first, _wpS] select (_first isEqualTo []));
 
 true

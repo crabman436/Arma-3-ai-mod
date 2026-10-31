@@ -67,6 +67,8 @@ User-tunable values are settings, not constants.
 | `AIC_REISSUE_TOL_FIXED` | 50 | issueOrder same-job tolerance for fixed points; allocateForces "already DEFENDing HQ" |
 | `AIC_NEAR_HQ_GROUND` / `_HELI` / `_PLANE` | 250 / 400 / 1500 | allocateForces "at HQ" radius; PLANE also monitorOrders RETREAT/RTB completion |
 | `AIC_THREAT_RADIUS` | 1500 | garrisonStatus threat sum, allocateForces DEFENSIVE counter-attack near HQ |
+| `AIC_ASSAULT_AXIS_LANES` | 3 | orderAssault: groups per approach |
+| `AIC_CROWD_GROUPS`, `AIC_CROWD_RADIUS`, `AIC_CROWD_SPREAD`, `AIC_CROWD_COOLDOWN` | 3, 70, 150, 120 | spreadCycle |
 | `AIC_ASSAULT_STAGE`, `AIC_ASSAULT_FRONT`, `AIC_ASSAULT_READY`, `AIC_ASSAULT_WAIT`, `AIC_ASSAULT_MAX_WAIT`, `AIC_ASSAULT_OVERWATCH` | 600, 140, 0.7, 180, 480, 250 | staged assaults |
 | `AIC_PATROL_LINK_RANGE` | 2500 | issueOrder: armed cars patrol to an owned objective this close |
 | `AIC_TEAM_MIN_APART`, `AIC_DEPOT_DELAY`, `AIC_TRANSPORT_RANGE_MULT`, `AIC_PICKUP_DANGER_RADIUS`, `AIC_RIDE_MIN_FUEL` | 240, 180, 2, 400, 0.2 | teamCycle, garrisonCycle, findTransport, issueOrder |
@@ -255,6 +257,8 @@ HashMap: `"group"`, `"task"`, `"pos"`, `"objective"` (id or `""`).
 - `AIC_fnc_orderAssault` — `[group, pos, radius, type, via, assault, record] call`. One ground group in a staged assault: its lane (`"assaultId"`, `"assaultLane"`), the assembly area (`"staged"`, `"stagePos"`) or the assault itself, vehicles on overwatch outside a built-up objective (`"overwatch"`).
 - `AIC_fnc_assaultFor` (strategy) — `[commander, group, pos, objectiveId] call` → the assault record, created on first use in commander key `"assaults"`, empty without an objective or with `stagedAssaults` off.
 - `AIC_fnc_assaultCycle` (strategy) — `[commander] call` → assaults started. Runs after `monitorOrders`, see the function header for the start rules.
+- `AIC_fnc_isAntiAir` (groups) — `[vehicle] call` → bool, per class cached in `AIC_ns`. Editor subcategory containing `_aa`, or a weapon with `airLock` 2 ammunition. `updateGroups` sets record `"antiAir"`: such groups are never available for attacks, rides, patrols or transfers, are never parked and hold the middle of their home.
+- `AIC_fnc_spreadCycle` (groups) — `[commander] call` → groups moved. Runs after `teamCycle`, record `"lastSpread"`, see the function header.
 - `AIC_fnc_garrisonBuildings` — `[group, center, radius, threatPos(optional), manStatics(optional)] call` → number of units given a position. Unscheduled one-shot, for every unit on foot except players, the leader last, each target stored in the unit variable `"AIC_garrisonPos"`: (1) empty armed static weapons in the radius, no mortars, by at most half of the group (`assignAsGunner`; unit variable `"AIC_gunnerOf"`, gun variable `"AIC_gunner"`; `classifyGroup` keeps such a gunner infantry); (2) buildings nearest the threatened side filled with up to 4 units each, high positions and positions near the threat first, claimed through the building variable `"AIC_claims"` and the unit variable `"AIC_buildingPos"` so groups do not share a spot; (3) the rest on a ring around the centre (an arc towards the threat if known), next to cover when some is within 8 m. Radius clamped to 30..200.
 - `AIC_fnc_nearestThreat` (intel) — `[commander, pos, range(optional, AIC_THREAT_RADIUS)] call` → `[x,y,0]` of the closest threat cluster or known contact, `[]` if none.
 - `AIC_fnc_monitorGarrison` — `[group, record, center, radius] call` → bool (done). Called by `monitorOrders` for every awake INF DEFEND group. Not garrisoned for the current order token: once the leader is within `(radius * 0.5) max 50` of the centre, calls `garrisonBuildings` and sets `"garrisonToken"`, `"garrisonTime"`, `"garrisonDone"` (true if nobody was sent). Garrisoned: units that reached their position (`unitReady` or < 2.5 m) get `doStop` + `setUnitPos "UP"`; after 120 s the rest get `doStop` where they are; `"garrisonDone"` once nobody is left to place.
@@ -346,6 +350,7 @@ is parked again.
 | `"useSupplyTrucks"` | true | repair, fuel and ammo trucks are sent to vehicles that need them |
 | `"useVehicleParks"` | true | vehicles wait in a laid-out motor pool at bases |
 | `"stagedAssaults"` | true | ground attacks on objectives gather in an assembly area first and come in on a broad front |
+| `"spreadGroups"` | true | infantry groups that bunch up are spread out |
 | `"useTransport"` | true | infantry going far get a vehicle ride |
 | `"splitPassengers"` | true | passengers sharing a group with a transport crew get a group of their own (`AIC_fnc_splitPassengers`) |
 | `"transportMinDistance"` | 1200 | an infantry order farther than this tries to get a transport |

@@ -60,7 +60,9 @@ private _result = [];
 
             // transport-only crews (trucks, transport helicopters) carry others, they never attack or defend
             private _transportOnly = (_record getOrDefault ["transportOnly", false]) isEqualTo true;
-            if (_typeOk && {!_transportOnly} && {!(_task in _excludedTasks)} && {_strength > _threshold}) then {
+            // neither do anti-air vehicles
+            private _antiAir = (_record getOrDefault ["antiAir", false]) isEqualTo true;
+            if (_typeOk && {!_transportOnly} && {!_antiAir} && {!(_task in _excludedTasks)} && {_strength > _threshold}) then {
                 _result pushBack [_record getOrDefault ["power", 0], _forEachIndex];
             };
         };

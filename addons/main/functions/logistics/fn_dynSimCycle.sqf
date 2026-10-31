@@ -158,6 +158,8 @@ private _woken = 0;
     // ---------------------------------------------------------- park conditions
     if (_isParked) then { continue };
     if !(_task in _parkTasks) then { continue };
+    // a frozen anti-air vehicle cannot see aircraft coming
+    if ((_rec getOrDefault ["antiAir", false]) isEqualTo true) then { continue };
     if ((behaviour _leader) isEqualTo "COMBAT") then { continue };
 
     private _taskPos = _rec getOrDefault ["taskPos", []];

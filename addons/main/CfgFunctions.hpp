@@ -30,6 +30,7 @@ class CfgFunctions
             class splitPassengers {};
             class splitGroup {};
             class teamCycle {};
+            class spreadCycle {};
             class groupPower {};
             class updateGroups {};
             class availableGroups {};
@@ -38,6 +39,7 @@ class CfgFunctions
             class vehicleType {};
             class vehicleWeapons {};
             class vehicleArmament {};
+            class isAntiAir {};
         };
 
         class intel

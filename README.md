@@ -339,6 +339,14 @@ taken by infantry: the planner picks infantry first, and vehicles stop about
 250 m outside to give fire support. They only go in if the infantry is lost. On
 open ground vehicles go in at a walk too.
 
+Infantry does not move as one mass. Each group gets its own place: three lanes
+side by side on an approach, then a second approach to one side and a third to
+the other, then rows behind them. Groups from one base take different ways on a
+long march, defending groups make for different parts of a town, and groups
+falling back or reinforcing spread out around the place. With `spreadGroups` on,
+three or more groups that still bunch up within 70 m walk 150 m apart, unless
+they are in contact or taking up positions.
+
 ### Transport
 
 With `useTransport` on, an infantry group ordered to ATTACK, REINFORCE or
@@ -390,6 +398,15 @@ stronger than what is known there: one team goes straight in, the other swings
 around a flank. Teams merge again when they meet, and a group shot down to two
 men joins a nearby group with room. Set `AIC_noSplit` on a group, as above, to
 keep it out of all this.
+
+### Anti-air vehicles
+
+Anti-air vehicles protect the place they are at. The general never sends them
+to attack, reinforce, patrol or give rides, or moves them to fill another
+garrison. They hold the middle of their home and are never parked, so they can
+see aircraft coming. They are recognised by their editor category or by
+ammunition made only for air targets, so a modded vehicle without either counts
+as an ordinary vehicle.
 
 ### Helicopters
 
@@ -464,6 +481,7 @@ attack. The rest of the army stays parked and costs nothing.
 | `dynamicSquads` | true | Squads split into teams to fit vehicles and to flank attacks, then merge again |
 | `stagedAssaults` | true | Ground attacks on objectives gather in an assembly area first and come in on a broad front |
 | `useVehicleParks` | true | Vehicles wait in a motor pool at bases |
+| `spreadGroups` | true | Infantry groups that bunch up are spread out |
 | `useSupplyTrucks` | true | Repair, fuel and ammo trucks are sent to vehicles that need them |
 | `useTransport` | true | Infantry ordered far away get a vehicle ride |
 | `splitPassengers` | true | Passengers placed in the same group as a helicopter or truck crew get a squad of their own (group variable `AIC_noSplit` opts a group out) |
