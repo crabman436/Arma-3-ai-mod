@@ -184,7 +184,10 @@ if (isNull _best) exitWith {
 if (_probe) exitWith { _best };
 
 // reserves the surplus, so one cycle cannot lend a garrison below its size
-[_cmd, _best] call AIC_fnc_canLeaveGarrison;
+// (a transport-only crew has no power in it, nothing to reserve)
+if !(((_groupData get (hashValue _best)) getOrDefault ["transportOnly", false]) isEqualTo true) then {
+    [_cmd, _best] call AIC_fnc_canLeaveGarrison;
+};
 
 _best setVariable ["AIC_transportVehicle", _bestVeh];
 

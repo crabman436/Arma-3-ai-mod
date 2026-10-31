@@ -152,7 +152,7 @@ private _taskColors = createHashMapFromArray [
     ["ATTACK", "ColorRed"], ["DEFEND", "ColorBlue"], ["PATROL", "ColorGreen"],
     ["RETREAT", "ColorOrange"], ["REINFORCE", "ColorYellow"], ["SUPPORT", "ColorPink"],
     ["IDLE", "ColorGrey"], ["TRANSPORT", "ColorWhite"], ["TRANSPORTED", "ColorKhaki"],
-    ["RTB", "ColorBrown"]
+    ["RTB", "ColorBrown"], ["SUPPLY", "ColorGUER"]
 ];
 private _typeIcons = createHashMapFromArray [
     ["INF", "inf"], ["MOTOR", "motor_inf"], ["MECH", "mech_inf"], ["ARMOR", "armor"],

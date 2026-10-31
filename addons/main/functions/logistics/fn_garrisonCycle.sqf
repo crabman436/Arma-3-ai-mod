@@ -54,11 +54,11 @@
              for 120 s, a stood-to group goes back to what it was doing
              (record "standToFrom").
 
-        With the optional homes-only flag only step 1 (without orders) and
-        step 2 run: AIC_fnc_commanderCycle uses it right before
-        AIC_fnc_allocateForces, so even on the very first cycle every group
-        already belongs to a garrison and the planner does not strip towns
-        that have not been assigned yet.
+        With the optional homes-only flag only step 1 (without orders) runs:
+        AIC_fnc_commanderCycle uses it right before AIC_fnc_allocateForces,
+        which computes the garrison status itself, so even on the very first
+        cycle every group already belongs to a garrison and the planner does
+        not strip towns that have not been assigned yet.
 
     Parameters:
         0: HASHMAP - commander
@@ -172,7 +172,7 @@ private _entries = [];
 } forEach _groupData;
 
 if (_entries isEqualTo []) exitWith {
-    [_cmd] call AIC_fnc_garrisonStatus;
+    if (!_homesOnly) then { [_cmd] call AIC_fnc_garrisonStatus; };
     0
 };
 
@@ -257,8 +257,9 @@ private _sentHome = 0;
 } forEach _entries;
 
 // ------------------------------------------------------------ 2. status
-private _status = [_cmd] call AIC_fnc_garrisonStatus;
+// (homes only: AIC_fnc_allocateForces computes it right after this)
 if (_homesOnly) exitWith { 0 };
+private _status = [_cmd] call AIC_fnc_garrisonStatus;
 
 // ------------------------------------------------------------ 3. transfers
 private _moves = 0;

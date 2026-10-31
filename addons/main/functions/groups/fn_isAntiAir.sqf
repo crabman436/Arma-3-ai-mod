@@ -21,6 +21,7 @@ params [["_veh", objNull, [objNull]]];
 
 if (isNull _veh || {!(_veh isKindOf "LandVehicle")}) exitWith {false};
 
+if (isNil "AIC_ns") then {call AIC_fnc_preInit};
 private _cache = AIC_ns getOrDefault ["antiAirClasses", createHashMap];
 AIC_ns set ["antiAirClasses", _cache];
 private _class = typeOf _veh;

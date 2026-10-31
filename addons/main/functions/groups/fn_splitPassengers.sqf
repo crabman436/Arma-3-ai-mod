@@ -28,6 +28,7 @@
  *
  * Parameters:
  *   0: HASHMAP - commander
+ *   1: ARRAY   - (optional) groups to look at, default all groups of the side
  *
  * Returns:
  *   ARRAY - the groups created
@@ -36,7 +37,10 @@
  *   private _new = [_commander] call AIC_fnc_splitPassengers;
  */
 
-params [["_commander", createHashMap, [createHashMap]]];
+params [
+    ["_commander", createHashMap, [createHashMap]],
+    ["_groups", [], [[]]]
+];
 
 if (!isServer) exitWith {[]};
 if (count _commander == 0) exitWith {[]};
@@ -46,6 +50,7 @@ private _side = _commander getOrDefault ["side", sideUnknown];
 if !(_side in [west, east, independent, civilian]) exitWith {[]};
 
 private _created = [];
+if (_groups isEqualTo []) then { _groups = groups _side; };
 
 {
     private _grp = _x;
@@ -91,7 +96,7 @@ private _created = [];
     ["splitPassengers: %1 moved %2 passengers of group %3 (%4) into new group %5", [
         _side, count _passengers, groupId _grp, typeOf (_vehicles select 0), groupId _new
     ]] call AIC_fnc_log;
-} forEach (groups _side);
+} forEach _groups;
 
 // a transport group with several vehicles could only ever carry one squad
 {
@@ -124,6 +129,6 @@ private _created = [];
         };
     } forEach _driven;
     ["splitPassengers: %1 group %2 split into %3 single-vehicle transport groups", [_side, groupId _grp, count _driven]] call AIC_fnc_log;
-} forEach (groups _side);
+} forEach _groups;
 
 _created

@@ -98,8 +98,11 @@ if (_observers isNotEqualTo []) then {
                     private _detected = false;
 
                     {
+                        // an exact fix: nothing more to learn from other observers
+                        if (_bestErr <= 1) exitWith {};
                         _x params ["", "_ownGroup", "_ownLeader"];
                         {
+                            if (_bestErr <= 1) exitWith {};
                             private _probe = _x;
                             if ((_ownGroup knowsAbout _probe) > _knowThreshold) then {
                                 _detected = true;

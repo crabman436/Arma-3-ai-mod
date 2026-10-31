@@ -194,8 +194,10 @@ private _fnc_setIdle = {
                 switch (_type) do {
                     // planes end the retreat in a 1200 m LOITER and never stop
                     case "PLANE": { _dist < AIC_NEAR_HQ_PLANE && {_age > 60} };
-                    // helicopters HOLD/hover above the rally point
-                    case "HELI": { _dist < 300 && {_age > 30} };
+                    // helicopters HOLD/hover above the rally point; a transport
+                    // going back to its parking place (RTB) lands there, not
+                    // on the nearest helipad 300 m away
+                    case "HELI": { _dist < ([300, 120] select (_task == "RTB")) && {_age > 30} };
                     // vehicles are road-snapped up to 150 m from HQ (+60 m wp radius)
                     default { _dist < 220 && {_wpDone || {(speed vehicle _leader) < 1}} && {_age > 10} };
                 };

@@ -58,10 +58,10 @@ private _formation = ["WEDGE", "STAG COLUMN"] select _isInf;
 
 // a place of its own: lanes side by side on an approach, then the next
 // approach, then a second row behind the first
-if ((_record getOrDefault ["assaultId", ""]) isNotEqualTo (_assault get "id")) then {
+if ((_record getOrDefault ["assaultId", ""]) isNotEqualTo (_assault get "key")) then {
     private _n = _assault get "slots";
     _assault set ["slots", _n + 1];
-    _record set ["assaultId", _assault get "id"];
+    _record set ["assaultId", _assault get "key"];
     _record set ["assaultLane", (_n % AIC_ASSAULT_AXIS_LANES) - floor (AIC_ASSAULT_AXIS_LANES / 2)];
     _record set ["assaultAxis", (floor (_n / AIC_ASSAULT_AXIS_LANES)) % 3];
     _record set ["assaultRow", floor (_n / (3 * AIC_ASSAULT_AXIS_LANES))];
@@ -155,7 +155,7 @@ if (!_isInf && {_assault get "urban"} && {_assault get "hasInf"}) exitWith {
 private _start = if (count _via >= 2) then {[_via] call _fnc_dry} else {[_radius + 150 + (([50, 0] select _isInf)), 20] call _lanePos};
 private _first = [];
 if (count _via >= 2 || {(_leader distance2D _target) > (_radius + 200)}) then {
-    _first = [_start, "MOVE", "AWARE", "LIMITED", "WEDGE", ([40, 25] select _isInf)] call _fnc_wp;
+    _first = [_start, "MOVE", "AWARE", "NORMAL", "WEDGE", ([40, 25] select _isInf)] call _fnc_wp;
 };
 private _wpS = [[_radius * 0.45, 40] call _lanePos, "SAD", "COMBAT", "LIMITED", ["WEDGE", "LINE"] select _isInf, (_radius * 0.5) max 30] call _fnc_wp;
 _group setCurrentWaypoint ([_first, _wpS] select (_first isEqualTo []));

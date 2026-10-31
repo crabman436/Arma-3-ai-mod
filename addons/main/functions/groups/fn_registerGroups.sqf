@@ -53,7 +53,9 @@ if (isNil "_groupData" || {!(_groupData isEqualType createHashMap)}) then {
 
 // --- Passengers sharing a group with a transport crew get their own group
 // (setting "splitPassengers"), so the sweep below registers both parts
-[_commander] call AIC_fnc_splitPassengers;
+// (only groups without a record: a registered group was checked when it came)
+private _unregistered = (groups _side) select { !((hashValue _x) in _groupData) };
+if (_unregistered isNotEqualTo []) then { [_commander, _unregistered] call AIC_fnc_splitPassengers; };
 
 // --- Collect currently eligible groups -----------------------------------
 private _eligible = (groups _side) select {

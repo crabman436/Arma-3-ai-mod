@@ -2,7 +2,8 @@
  * Name: AIC_fnc_vehicleArmament
  * Description:
  *   How heavily a vehicle is armed, from its real weapons
- *   (AIC_fnc_vehicleWeapons: horns, smoke, flares, ... ignored):
+ *   (AIC_fnc_vehicleWeapons: horns, smoke, flares, ... ignored), once per
+ *   vehicle class (cached in AIC_ns "armamentClasses"):
  *     0 - unarmed (truck, car, transport helicopter without guns)
  *     1 - machine guns only (door gunners, a roof MG)
  *     2 - a cannon, rockets or missiles, or any tracked vehicle
@@ -25,10 +26,18 @@ params [["_veh", objNull, [objNull]]];
 
 if (isNull _veh) exitWith {0};
 
-private _level = if (_veh isKindOf "Tank") then {2} else {0};
+// the weapons come from the class: looked up once per class (AIC_ns "armamentClasses")
+if (isNil "AIC_ns") then {call AIC_fnc_preInit};
+private _cache = AIC_ns getOrDefault ["armamentClasses", createHashMap];
+AIC_ns set ["armamentClasses", _cache];
+private _class = typeOf _veh;
+if (_class in _cache) exitWith {_cache get _class};
+
+private _level = [0, 2] select (_veh isKindOf "Tank");
 {
     private _sound = toLowerANSI getText (configFile >> "CfgWeapons" >> _x >> "nameSound");
-    _level = _level max (if (_sound in ["cannon", "rockets", "missiles"]) then {2} else {1});
+    _level = _level max ([1, 2] select (_sound in ["cannon", "rockets", "missiles"]));
 } forEach ([_veh, false] call AIC_fnc_vehicleWeapons);
 
+_cache set [_class, _level];
 _level

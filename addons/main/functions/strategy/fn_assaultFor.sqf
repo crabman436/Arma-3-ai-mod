@@ -5,6 +5,8 @@
  *   there (server only, setting "stagedAssaults"). An assault record lives in
  *   the commander's "assaults" HashMap under the objective id:
  *     "id", "pos"   - objective id and position
+ *     "key"         - id plus creation time: lanes handed out by an earlier
+ *                     assault on the same objective are not reused
  *     "stage"       - assembly area short of the objective, [] if there is none
  *     "dir"         - bearing from the objective to the assembly area
  *     "state"       - "STAGE" (groups gather) or "GO" (the assault is on)
@@ -82,6 +84,7 @@ private _dir = if (_dist > (_stageDist + 200) || { !(_hq isEqualType []) } || { 
 
 private _assault = createHashMapFromArray [
     ["id", _objective],
+    ["key", format ["%1@%2", _objective, round time]],
     ["pos", _pos],
     ["stage", _stage],
     ["dir", _dir],
