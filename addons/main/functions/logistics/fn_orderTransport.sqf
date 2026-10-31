@@ -33,8 +33,8 @@
         Drop-off: a TR UNLOAD waypoint.
           - Helicopter: LZ 300-600 m short of destPos (450 m on the side the
             helicopter comes from). Only at the destination if no known enemy
-            contact / threat cluster is within 800 m of it, the final task is
-            not ATTACK and the objective (if any) is ours. A detour
+            contact / threat cluster is within 800 m of it and there is no
+            objective, or destPos is an assault's assembly area. A detour
             (AIC_fnc_flightPath) is flown between pickup and LZ when something
             known to be hostile lies on the way. Flat spot via
             BIS_fnc_findSafePos (fallback findEmptyPosition), invisible
@@ -202,11 +202,13 @@ private _threatened = (((_cmd getOrDefault ["knownEnemies", []]) + (_cmd getOrDe
     && { count (_x getOrDefault ["pos", []]) >= 2 }
     && { ((_x get "pos") distance2D _dest) < AIC_LZ_THREAT_RADIUS }
 }) >= 0;
-// nobody lands on an objective that is not ours, contacts known or not
-if (!_threatened) then {
+// nobody lands on an objective that is not ours, contacts known or not, and
+// helicopters land outside every objective: the troops walk the last stretch
+// (an assembly area is already well short of it)
+if (!_threatened && { (_dest distance2D _finalPos) < 300 }) then {
     private _objRec = if (_objective isEqualTo "") then { createHashMap } else { [_cmd, _objective] call AIC_fnc_getObjective };
     _threatened = _finalTask isEqualTo "ATTACK"
-        || { count _objRec > 0 && { (_objRec getOrDefault ["owner", sideUnknown]) isNotEqualTo _side } };
+        || { count _objRec > 0 && { _isHeli || { (_objRec getOrDefault ["owner", sideUnknown]) isNotEqualTo _side } } };
 };
 
 private _trip = _pickupPos distance2D _dest;

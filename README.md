@@ -244,9 +244,9 @@ objective or a base. A town's garrison is the groups whose home is that town.
 Each garrisoned objective has a **desired** garrison power:
 
 - an objective module's `Garrison` attribute, if it is greater than 0,
-- otherwise `priority × garrisonPerPriority` (a village with priority 1 and the
-  default of 5 wants about 5 infantrymen),
-- a base only wants `garrisonPerPriority`, a small guard,
+- otherwise `priority × garrisonPerPriority`: with the default of 8 a village
+  wants a squad, a city two and a capital three,
+- a base wants two squads, `2 × garrisonPerPriority`,
 - plus half the power of enemy threat clusters within 1500 m.
 
 Everything above the desired power is **surplus**. Surplus is what the general
@@ -296,8 +296,18 @@ Infantry on DEFEND take real positions once they arrive:
 - Units watch the threat, and turn when it moves to another side of the town.
 
 Vehicles hold the threatened side of the town, spread out a little. Trucks and
-other transport-only crews wait behind the town instead, do not count as
-defenders and are never sent to fill another garrison.
+other transport-only crews do not count as defenders and are never sent to
+fill another garrison.
+
+At a base, vehicles wait in a **motor pool**: rows of parking places on open,
+flat ground, engines off, with a separate helicopter park of invisible helipads.
+A group keeps its place while it is away on a ride. When enemies come near,
+armed vehicles leave the park for the threatened side, and return afterwards.
+
+Patrols walk a route around the edge of the place, stopping to look around, and
+armed cars also drive to the next owned objective and back. Tanks and APCs do
+not patrol. A second group at a place goes on patrol, the third defends, and so
+on, so one group always holds the place itself.
 
 When a threat cluster comes within 800 m of a garrisoned objective's edge, the
 garrison **stands to**. Its patrols come in and take positions facing the
@@ -314,6 +324,20 @@ is called off goes back to DEFEND its home (or the town it was reinforcing).
 Groups sent to reinforce a threatened town count as incoming for it, so the
 garrison system doesn't send extra donors to the same threat. Damaged groups
 still retreat to HQ, and join its garrison there.
+
+### Assaults
+
+With `stagedAssaults` on, ground groups attacking an objective do not run at it
+one by one. The first group ordered there sets an **assembly area** about 750 m
+out. Each group goes to its own lane there, with vehicles behind the infantry,
+and transports drop their troops there. The assault starts when 70 % of its
+power has arrived, three minutes after the first group got there, after eight
+minutes in any case, or at once if a waiting group comes under fire.
+
+Infantry then comes in at a walk, in line, on a broad front. A built-up place is
+taken by infantry: the planner picks infantry first, and vehicles stop about
+250 m outside to give fire support. They only go in if the infantry is lost. On
+open ground vehicles go in at a walk too.
 
 ### Transport
 
@@ -366,6 +390,15 @@ stronger than what is known there: one team goes straight in, the other swings
 around a flank. Teams merge again when they meet, and a group shot down to two
 men joins a nearby group with room. Set `AIC_noSplit` on a group, as above, to
 keep it out of all this.
+
+### Helicopters
+
+Helicopters never take objectives: only an order from the transport system makes
+one land away from a base, and aircraft do not count towards holding ground.
+Transport helicopters land outside every objective, about 450 m short, and the
+troops walk in. CAS helicopters drop any old landing order when tasked, fly back
+to a base after three minutes with nothing to do, and land in the helicopter
+park.
 
 ### Supply trucks
 
@@ -425,10 +458,12 @@ attack. The rest of the army stays parked and costs nothing.
 | `dynSimWakeRange` | 1000 | A parked group wakes if an enemy is within this many metres of its leader |
 | `dynSimDistance` | 0 | If greater than 0, sets `"Group" setDynamicSimulationDistance` at commander start (the engine default otherwise) |
 | `manageGarrisons` | true | Distribute groups between owned objectives and bases |
-| `garrisonPerPriority` | 5 | Desired garrison power per point of objective priority (a base's guard size) |
+| `garrisonPerPriority` | 8 | Desired garrison power per point of objective priority (a base's guard size) |
 | `garrisonMovesPerCycle` | 2 | Maximum garrison transfers ordered per cycle |
 | `garrisonManStatics` | true | Infantry garrisons man empty static weapons in their area |
 | `dynamicSquads` | true | Squads split into teams to fit vehicles and to flank attacks, then merge again |
+| `stagedAssaults` | true | Ground attacks on objectives gather in an assembly area first and come in on a broad front |
+| `useVehicleParks` | true | Vehicles wait in a motor pool at bases |
 | `useSupplyTrucks` | true | Repair, fuel and ammo trucks are sent to vehicles that need them |
 | `useTransport` | true | Infantry ordered far away get a vehicle ride |
 | `splitPassengers` | true | Passengers placed in the same group as a helicopter or truck crew get a squad of their own (group variable `AIC_noSplit` opts a group out) |

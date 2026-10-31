@@ -48,10 +48,11 @@
           5. Stand-to. With a threat cluster within AIC_STANDTO_RANGE of a
              home's edge its patrols come in and DEFEND (infantry into
              positions facing the threat, record "standTo"), and armed
-             vehicles holding the wrong side of the town (more than 60
-             degrees off, at most every 120 s) move to the threatened side.
-             Once the threat is gone and the group has not been engaged for
-             120 s, a stood-to group goes back on patrol.
+             vehicles that are parked or hold the wrong side of the town (more
+             than 60 degrees off, at most every 120 s) move to the threatened
+             side. Once the threat is gone and the group has not been engaged
+             for 120 s, a stood-to group goes back to what it was doing
+             (record "standToFrom").
 
         With the optional homes-only flag only step 1 (without orders) and
         step 2 run: AIC_fnc_commanderCycle uses it right before
@@ -396,6 +397,8 @@ private _mix = createHashMap;
         // transport-only crews (trucks) wait at home for rides instead of
         // patrolling, and nobody starts a patrol into a coming attack
         private _patrol = (_m select 0) > (_m select 1)
+            // infantry and armed cars patrol, tanks and APCs stand ready
+            && { (_rec getOrDefault ["type", ""]) in ["INF", "MOTOR"] }
             && { !((_rec getOrDefault ["transportOnly", false]) isEqualTo true) }
             && { !([_homeObj, _status getOrDefault [_home, createHashMap]] call _fnc_alert) };
         private _task = if (_patrol) then { "PATROL" } else { "DEFEND" };
@@ -429,6 +432,7 @@ private _standTo = 0;
         if (_task isEqualTo "PATROL") then {
             if ([_cmd, _grp, "DEFEND", _homePos, _home] call AIC_fnc_issueOrder) then {
                 _rec set ["standTo", true];
+                _rec set ["standToFrom", "PATROL"];
                 _standTo = _standTo + 1;
             };
             continue;
@@ -439,13 +443,15 @@ private _standTo = 0;
         if (
             _task isEqualTo "DEFEND"
             && { _type isNotEqualTo "INF" }
-            && { _holdDir >= 0 }
             && { _threatPos isNotEqualTo [] }
             && { (time - (_rec getOrDefault ["standToTime", -1e6])) > 120 }
-            && { (abs (((_homePos getDir _threatPos) - _holdDir + 540) % 360 - 180)) > 60 }
+            // parked, or holding the wrong side of the town
+            && { _holdDir < 0 || { (abs (((_homePos getDir _threatPos) - _holdDir + 540) % 360 - 180)) > 60 } }
         ) then {
             _rec set ["standToTime", time];
             if ([_cmd, _grp, "DEFEND", _homePos, _home, true] call AIC_fnc_issueOrder) then {
+                _rec set ["standTo", true];
+                _rec set ["standToFrom", "DEFEND"];
                 _standTo = _standTo + 1;
             };
         };
@@ -455,7 +461,12 @@ private _standTo = 0;
             if (!(_engaged isEqualType 0) || { (time - _engaged) > 120 }) then {
                 _rec set ["standTo", false];
                 if (_task isEqualTo "DEFEND") then {
-                    [_cmd, _grp, "PATROL", _homePos, _home] call AIC_fnc_issueOrder;
+                    // patrols back out, vehicles back to their place
+                    if ((_rec getOrDefault ["standToFrom", "PATROL"]) isEqualTo "PATROL") then {
+                        [_cmd, _grp, "PATROL", _homePos, _home] call AIC_fnc_issueOrder;
+                    } else {
+                        [_cmd, _grp, "DEFEND", _homePos, _home, true] call AIC_fnc_issueOrder;
+                    };
                 };
             };
         };

@@ -7,7 +7,7 @@
         update objectives, determine stance, score objectives, garrison
         homes (AIC_fnc_garrisonCycle homes only), allocate forces and issue
         orders, garrison distribution, transports, supply trucks,
-        monitor orders, squad merges, garbage cleanup, dynamic simulation (park / wake), support, debug
+        monitor orders, assaults, squad merges, garbage cleanup, dynamic simulation (park / wake), support, debug
         markers and player reports.
 
     Parameters:
@@ -80,6 +80,7 @@ private _fnc_planInf = {
 
 // 10. follow up on running orders
 [_cmd] call AIC_fnc_monitorOrders;
+[_cmd] call AIC_fnc_assaultCycle;
 
 // 10a. split squads back together, remnants into groups with room
 [_cmd] call AIC_fnc_teamCycle;

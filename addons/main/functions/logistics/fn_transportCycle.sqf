@@ -655,6 +655,12 @@ private _fnc_objPos = {
         _homePos = if ([_hq] call _fnc_validPos) then { _hq } else { getPosATL (leader _grp) };
     };
 
+    // a helicopter goes to its place in the base's helicopter park
+    if ((_rec getOrDefault ["type", ""]) isEqualTo "HELI") then {
+        private _slot = [_cmd, _grp, [_cmd, _homeId] call AIC_fnc_getObjective, true] call AIC_fnc_parkSlot;
+        if (_slot isNotEqualTo []) then { _homePos = _slot; };
+    };
+
     [_rec] call AIC_fnc_deleteHelipads;
     if (!isNull _veh && { alive _veh } && { _veh isKindOf "Air" }) then { _veh land "NONE"; };
 

@@ -20,9 +20,11 @@
  *                          RTB also ends at once if the leader's vehicle
  *                          cannot move any more;
  *                          HELI: within 300 m after 30 s; PLANE: within
- *                          1500 m after 60 s. A helicopter finishing RTB
- *                          (a transport back home) is told to land, so
- *                          the dynamic-simulation system can park it.
+ *                          1500 m after 60 s. A helicopter finishing RTB or
+ *                          RETREAT is told to land, so the dynamic-simulation
+ *                          system can park it. A helicopter airborne and IDLE
+ *                          for 180 s (a finished CAS job) gets RTB to its
+ *                          place in the nearest base's helicopter park.
  *     SUPPORT            : after 10 min (air sorties end in a loiter).
  *     PATROL / DEFEND    : standing orders, never auto-complete. An awake
  *                          INF group on DEFEND occupies buildings through
@@ -70,6 +72,7 @@ private _defRadius = [_cmd, "objectiveRadius"] call AIC_fnc_getSetting;
 private _changes = 0;
 private _reissue = [];
 private _attackSplits = [];
+private _goHome = [];
 
 private _fnc_setIdle = {
     params ["_rec"];
@@ -111,6 +114,12 @@ private _fnc_setIdle = {
         _rec set ["lastPos", _leaderPos];
         _rec set ["lastMoveTime", time];
         continue
+    };
+
+    // a helicopter with nothing to do goes to a base, it does not hang in the air
+    if (_task == "IDLE" && {_type == "HELI"} && {(time - _taskTime) > 180}) then {
+        private _air = objectParent _leader;
+        if (!isNull _air && {_air isKindOf "Helicopter"} && {!isTouchingGround _air}) then {_goHome pushBack _group};
     };
 
     if (_task == "IDLE" || {!(_taskPos isEqualType [])} || {count _taskPos < 2}) then { continue };
@@ -165,7 +174,9 @@ private _fnc_setIdle = {
                 // objective is actually ours (updateObjectives 2:1 rule).
                 // Until then the task/objective stay, so issueOrder's
                 // same-objective skip keeps the group from being re-ordered.
-                ((_objRec getOrDefault ["owner", sideUnknown]) isEqualTo _side) && {_dist < _arriveR || {_wpDone}} && {_age > 30}
+                ((_objRec getOrDefault ["owner", sideUnknown]) isEqualTo _side)
+                && {_dist < _arriveR || {_wpDone} || {(_rec getOrDefault ["overwatch", false]) isEqualTo true}}
+                && {_age > 30}
             } else {
                 private _near = _dist < _arriveR;
                 private _clear = (_enemies findIf {
@@ -200,7 +211,7 @@ private _fnc_setIdle = {
             _group setSpeedMode "NORMAL";
         };
         // a transport helicopter back home lands (airborne groups are never parked)
-        if (_task == "RTB" && {_type == "HELI"}) then {
+        if (_task in ["RTB", "RETREAT"] && {_type == "HELI"}) then {
             private _veh = objectParent _leader;
             if (!isNull _veh && {alive _veh} && {_veh isKindOf "Helicopter"} && {!isTouchingGround _veh}) then {
                 [_group] call AIC_fnc_clearWaypoints;
@@ -218,6 +229,7 @@ private _fnc_setIdle = {
     // --- a big squad nearing its target splits into fireteams (after this
     // loop: AIC_fnc_splitForAttack adds records to groupData)
     if (_task == "ATTACK" && {_type == "INF"}
+        && {!((_rec getOrDefault ["staged", false]) isEqualTo true)}
         && {_dist < AIC_ATTACK_SPLIT_RANGE} && {_dist > 200}
         && {(time - (_rec getOrDefault ["lastSplit", -1e6])) > AIC_ATTACK_SPLIT_COOLDOWN}
         && {({alive _x} count (units _group)) >= AIC_ATTACK_SPLIT_SIZE}) then {
@@ -234,6 +246,10 @@ private _fnc_setIdle = {
 
     // --- stuck detection --------------------------------------------------------
     if (_type in ["STATIC", "ARTY", "PLANE"]) then { continue };
+    // waiting in an assembly area or on overwatch is the order, not being stuck
+    if (_task == "ATTACK" && {
+        (_rec getOrDefault ["staged", false]) isEqualTo true || {(_rec getOrDefault ["overwatch", false]) isEqualTo true}
+    }) then { continue };
     if !(_task in ["ATTACK", "REINFORCE", "RETREAT", "RTB", "PATROL", "DEFEND", "SUPPORT"]) then { continue };
     if (time - _lastMoveTime < AIC_STUCK_TIMEOUT) then { continue };
 
@@ -274,6 +290,13 @@ private _fnc_setIdle = {
         _changes = _changes + 1;
     };
 } forEach _attackSplits;
+
+{
+    private _base = [_cmd, getPosATL (leader _x)] call AIC_fnc_nearestBase;
+    private _slot = [_cmd, _x, [_cmd, _base] call AIC_fnc_getObjective, true] call AIC_fnc_parkSlot;
+    [_cmd, _x, "RTB", _slot, "", true] call AIC_fnc_issueOrder;
+    _changes = _changes + 1;
+} forEach _goHome;
 
 // Re-issue outside the iteration (issueOrder may touch groupData)
 {

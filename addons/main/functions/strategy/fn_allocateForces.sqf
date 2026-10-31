@@ -206,6 +206,11 @@ private _fnc_cost = {
     private _cost = (_dist * (_travelMult getOrDefault [_type, 1])) / (_suit max 0.1);
     // continuity bonus: already working on this target
     if ([_info, _target] call _fnc_onTarget) then {_cost = _cost * 0.5};
+    // a town is taken by infantry: vehicles join once there is some
+    if (_type != "INF" && {(_target get "task") == "ATTACK"} && {_target get "urban"}
+        && {((_target get "members") findIf {((_x select 0) get "type") == "INF"}) < 0}) then {
+        _cost = _cost * 3;
+    };
     _cost
 };
 

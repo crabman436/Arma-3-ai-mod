@@ -53,6 +53,10 @@ _hq = [_hq select 0, _hq select 1, 0];
 // a landed helicopter may be parked (dynamic simulation): wake it first
 [_cmd, _group, false] call AIC_fnc_setGroupSim;
 
+// a helicopter back from a job still has its order to land: drop it, or the
+// pilot lands at the target instead of attacking it
+if (_veh isKindOf "Helicopter") then { _veh land "NONE"; };
+
 // ---------------------------------------------------------------- waypoints
 [_group] call AIC_fnc_clearWaypoints;
 

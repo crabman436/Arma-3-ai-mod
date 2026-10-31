@@ -11,7 +11,9 @@
  *   within 400 m for ATTACK/REINFORCE, 50 m for the other tasks), unless
  *   _force is true.
  *   Task -> function:
- *     "ATTACK"    -> AIC_fnc_orderAttack    (radius = objective radius)
+ *     "ATTACK"    -> ground groups at an objective: AIC_fnc_orderAssault
+ *                    (a staged assault, AIC_fnc_assaultFor); otherwise
+ *                    AIC_fnc_orderAttack (radius = objective radius)
  *     "DEFEND"    -> AIC_fnc_orderDefend    (radius = objective radius, max 200)
  *     "PATROL"    -> AIC_fnc_orderPatrol    (radius = objective radius, or
  *                                            setting "objectiveRadius")
@@ -226,6 +228,14 @@ if (_curTask isEqualTo "TRANSPORT") then {
     _record set ["transport", grpNull];
 };
 
+// --- Where a ride ends ---------------------------------------------------------
+// an assault's troops are carried to its assembly area, not to the objective
+private _rideDest = +_pos;
+if (_task == "ATTACK" && {_type == "INF"}) then {
+    private _stage = ([_cmd, _group, _pos, _objective] call AIC_fnc_assaultFor) getOrDefault ["stage", []];
+    if (_stage isNotEqualTo []) then {_rideDest = +_stage};
+};
+
 // --- Aboard another commanded group's vehicle ---------------------------------
 // (a squad placed in a helicopter / truck, split off by AIC_fnc_splitPassengers)
 private _rideAbort = _record getOrDefault ["rideAbortTime", -1e6];
@@ -255,7 +265,7 @@ if (_curTask isNotEqualTo "TRANSPORTED") then {
                 && { canMove _carrier };
             if (_rideOk) then {
                 _cGrp setVariable ["AIC_transportVehicle", _carrier];
-                private _r = [_cmd, _cGrp, _group, _pos, _task, _pos, _objective] call AIC_fnc_orderTransport;
+                private _r = [_cmd, _cGrp, _group, _rideDest, _task, _pos, _objective] call AIC_fnc_orderTransport;
                 if (!isNil "_r" && {_r isEqualTo true}) then { _task = "TRANSPORTED"; };
             };
             if (_task isNotEqualTo "TRANSPORTED") then {
@@ -287,7 +297,7 @@ if (_type == "INF" && {_task in ["ATTACK", "REINFORCE", "DEFEND"]} && {_curTask 
             _tGrp = [_cmd, _group, _pos] call AIC_fnc_findTransport;
         };
         if (!isNil "_tGrp" && {_tGrp isEqualType grpNull} && {!isNull _tGrp}) then {
-            private _r = [_cmd, _tGrp, _group, _pos, _task, _pos, _objective] call AIC_fnc_orderTransport;
+            private _r = [_cmd, _tGrp, _group, _rideDest, _task, _pos, _objective] call AIC_fnc_orderTransport;
             if (!isNil "_r" && {_r isEqualTo true}) then { _task = "TRANSPORTED"; };
         };
     };
@@ -301,20 +311,60 @@ if (_task isEqualTo "TRANSPORTED") exitWith {
 };
 
 // --- Dispatch ----------------------------------------------------------------
+_record set ["staged", false];
+_record set ["overwatch", false];
+// a new order ends any landing (only AIC_fnc_transportCycle lands at an LZ)
+if (_type == "HELI") then {
+    private _air = objectParent (leader _group);
+    if (!isNull _air && {_air isKindOf "Air"}) then {_air land "NONE"};
+};
 private _ok = switch (_task) do {
     case "ATTACK": {
         // a flanking team goes through its point (AIC_fnc_splitForAttack), once
         private _via = _group getVariable ["AIC_attackVia", []];
         _group setVariable ["AIC_attackVia", nil];
-        [_group, _pos, _radius, _type, _via] call AIC_fnc_orderAttack
+        // objectives are taken by a staged assault, everything else directly
+        private _assault = if (_type in ["INF", "MOTOR", "MECH", "ARMOR"]) then {
+            [_cmd, _group, _pos, _objective] call AIC_fnc_assaultFor
+        } else {
+            createHashMap
+        };
+        if (count _assault == 0) then {
+            [_group, _pos, _radius, _type, _via] call AIC_fnc_orderAttack
+        } else {
+            [_group, _pos, _radius, _type, _via, _assault, _record] call AIC_fnc_orderAssault
+        }
     };
     case "DEFEND": {
         // trucks wait behind the town instead of on the threatened side
         private _rear = (_record getOrDefault ["transportOnly", false]) isEqualTo true;
         private _threatPos = [_cmd, _pos] call AIC_fnc_nearestThreat;
-        [_group, _pos, [_radius min 200, 60] select _rear, _type, _threatPos, _rear] call AIC_fnc_orderDefend
+        // at a quiet base vehicles wait in the motor pool
+        private _park = if (_threatPos isEqualTo [] && {_type in ["MOTOR", "MECH", "ARMOR"]}) then {
+            [_cmd, _group, _objRec] call AIC_fnc_parkSlot
+        } else {
+            []
+        };
+        [_group, _pos, [_radius min 200, 60] select _rear, _type, _threatPos, _rear, _park] call AIC_fnc_orderDefend
     };
-    case "PATROL":    { [_group, _pos, _radius, _type] call AIC_fnc_orderPatrol };
+    case "PATROL": {
+        // armed cars also drive to the next owned objective
+        private _link = [];
+        if (_type == "MOTOR") then {
+            private _bestDist = AIC_PATROL_LINK_RANGE;
+            private _side = _cmd getOrDefault ["side", sideUnknown];
+            {
+                private _p = _x getOrDefault ["pos", []];
+                if ((_x getOrDefault ["owner", sideUnknown]) isEqualTo _side && {count _p >= 2}
+                    && {(_x getOrDefault ["id", ""]) isNotEqualTo _objective}
+                    && {(_p distance2D _pos) < _bestDist}) then {
+                    _bestDist = _p distance2D _pos;
+                    _link = _p;
+                };
+            } forEach (_cmd getOrDefault ["objectives", []]);
+        };
+        [_group, _pos, _radius, _type, _link] call AIC_fnc_orderPatrol
+    };
     case "RETREAT":   { [_group, _pos, _type] call AIC_fnc_orderRetreat };
     case "RTB":       { [_group, _pos, _type] call AIC_fnc_orderRetreat };
     case "REINFORCE": { [_group, _pos, _type] call AIC_fnc_orderReinforce };

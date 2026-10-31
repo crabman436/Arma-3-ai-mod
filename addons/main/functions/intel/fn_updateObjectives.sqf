@@ -97,8 +97,8 @@ private _entityTypes = ["CAManBase", "LandVehicle", "Ship", "Air"];
                     if (_s in _countSides) then { _counts set [_s, (_counts getOrDefault [_s, 0]) + 1]; };
                 };
             } else {
-                // aircraft only hold ground when landed
-                if (alive _ent && { !(_ent isKindOf "Air") || { isTouchingGround _ent } }) then {
+                // aircraft never hold ground, landed or not
+                if (alive _ent && { !(_ent isKindOf "Air") }) then {
                     {
                         if (alive _x && { !captive _x }) then {
                             private _s = side group _x;

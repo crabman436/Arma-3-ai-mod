@@ -71,7 +71,7 @@ if (_stageDist > 0 && {_dist > _stageDist + 150}) then {
     _wpM setWaypointType "MOVE";
     _wpM setWaypointBehaviour "AWARE";
     _wpM setWaypointCombatMode "YELLOW";
-    _wpM setWaypointSpeed "FULL";
+    _wpM setWaypointSpeed (if (_type == "INF") then {"NORMAL"} else {"FULL"});
     _wpM setWaypointFormation (if (_isGroundVeh) then {"COLUMN"} else {"WEDGE"});
     _wpM setWaypointCompletionRadius (if (_type == "INF") then {25} else {60});
     _first = _wpM;

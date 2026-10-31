@@ -6,9 +6,10 @@
         owns, plus the implicit base "BASE_HQ" (always included).
         Per objective:
           - "desired": the objective's "garrison" override if > 0, otherwise
-            priority * "garrisonPerPriority" ("garrisonPerPriority" alone for
-            bases, "isBase" true). Plus 50 % of the power of the threat
-            clusters within 1500 m of the objective.
+            priority * "garrisonPerPriority" (villages have priority 1, cities
+            2, capitals 3), twice "garrisonPerPriority" for bases ("isBase"
+            true). Plus 50 % of the power of the threat clusters within
+            1500 m of the objective.
           - "present": summed power of groups whose record "home" is this
             objective, whose task is DEFEND / PATROL / IDLE and whose leader
             is within radius * 1.5 of the objective. Transport-only crews
@@ -89,7 +90,7 @@ private _objById = createHashMap; // id -> objective record (only the garrisoned
 
             private _desired = call {
                 if (_override > 0) exitWith { _override };
-                if (_isBase) exitWith { _perPriority };
+                if (_isBase) exitWith { 2 * _perPriority };
                 _priority * _perPriority
             };
 

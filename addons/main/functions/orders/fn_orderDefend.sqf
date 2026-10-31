@@ -31,6 +31,8 @@
  *   3: STRING - (optional) group type from AIC_fnc_classifyGroup; "" = classify now
  *   4: ARRAY   - (optional) position of the nearest threat, default [] (none)
  *   5: BOOL   - (optional) vehicles hold the rear instead, default false
+ *   6: ARRAY  - (optional) parking place at a base (AIC_fnc_parkSlot): the
+ *               vehicle drives there, holds, relaxed, and stops its engine
  *
  * Returns:
  *   BOOL - true if the order was applied
@@ -45,7 +47,8 @@ params [
     ["_radius", 150, [0]],
     ["_type", "", [""]],
     ["_threatPos", [], [[]]],
-    ["_rear", false, [false]]
+    ["_rear", false, [false]],
+    ["_park", [], [[]]]
 ];
 
 if (isNull _group || {count _pos < 2}) exitWith {false};
@@ -95,6 +98,26 @@ if (_type == "NAVAL") exitWith {
     private _wpH = _group addWaypoint [_water, 0];
     _wpH setWaypointType "HOLD";
     _wpH setWaypointCombatMode "YELLOW";
+    _group setCurrentWaypoint _wpM;
+    true
+};
+
+// --- Ground vehicles in the motor pool --------------------------------------
+if (_type in ["MOTOR", "MECH", "ARMOR"] && {count _park >= 2}) exitWith {
+    _group setVariable ["AIC_holdDir", -1];
+    private _wpM = _group addWaypoint [_park, 0];
+    _wpM setWaypointType "MOVE";
+    _wpM setWaypointBehaviour "SAFE";
+    _wpM setWaypointCombatMode "YELLOW";
+    _wpM setWaypointSpeed "LIMITED";
+    _wpM setWaypointFormation "COLUMN";
+    _wpM setWaypointCompletionRadius 12;
+    private _wpH = _group addWaypoint [_park, 0];
+    _wpH setWaypointType "HOLD";
+    _wpH setWaypointBehaviour "SAFE";
+    _wpH setWaypointCombatMode "YELLOW";
+    _wpH setWaypointCompletionRadius 12;
+    _wpM setWaypointStatements ["true", "if (local this) then { (vehicle this) engineOn false; };"];
     _group setCurrentWaypoint _wpM;
     true
 };

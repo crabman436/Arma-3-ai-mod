@@ -51,6 +51,23 @@
 // a threat cluster this close to an objective's edge makes its garrison stand to
 #define AIC_STANDTO_RANGE 800
 
+// ---------------------------------------------------------------- assaults
+// assembly area: this far from the objective plus half its radius (m)
+#define AIC_ASSAULT_STAGE 600
+// m between groups across the front
+#define AIC_ASSAULT_FRONT 140
+// the assault starts with this share of its power in place, this many s after
+// the first group arrived, or after the maximum wait in any case
+#define AIC_ASSAULT_READY 0.7
+#define AIC_ASSAULT_WAIT 180
+#define AIC_ASSAULT_MAX_WAIT 480
+// m outside a built-up objective that vehicles watch over it from
+#define AIC_ASSAULT_OVERWATCH 250
+
+// ---------------------------------------------------------------- patrols
+// armed cars also patrol to an owned objective this close (m)
+#define AIC_PATROL_LINK_RANGE 2500
+
 // ---------------------------------------------------------------- dynamic squads
 // the smallest team a squad is split into, and the most teams per squad
 #define AIC_TEAM_MIN_SIZE 3

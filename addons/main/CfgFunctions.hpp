@@ -58,6 +58,8 @@ class CfgFunctions
             class determineStance {};
             class scoreObjectives {};
             class allocateForces {};
+            class assaultFor {};
+            class assaultCycle {};
         };
 
         class orders
@@ -75,6 +77,7 @@ class CfgFunctions
             class waterPos {};
             class garrisonBuildings {};
             class monitorGarrison {};
+            class orderAssault {};
             class splitForAttack {};
         };
 
@@ -96,6 +99,7 @@ class CfgFunctions
             class canLeaveGarrison {};
             class garrisonCycle {};
             class dismountCarrier {};
+            class parkSlot {};
             class nearestBase {};
             class supplyRoles {};
             class supplyCycle {};

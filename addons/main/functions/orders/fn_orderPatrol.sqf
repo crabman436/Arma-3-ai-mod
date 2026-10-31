@@ -20,6 +20,7 @@
  *   1: ARRAY  - patrol centre
  *   2: NUMBER - (optional) patrol radius, default 300
  *   3: STRING - (optional) group type from AIC_fnc_classifyGroup; "" = classify now
+ *   4: ARRAY  - (optional) a next objective ground vehicles drive to, default []
  *
  * Returns:
  *   BOOL - true if waypoints were created
@@ -32,7 +33,8 @@ params [
     ["_group", grpNull, [grpNull]],
     ["_pos", [], [[]]],
     ["_radius", 300, [0]],
-    ["_type", "", [""]]
+    ["_type", "", [""]],
+    ["_link", [], [[]]]
 ];
 
 if (isNull _group || {count _pos < 2}) exitWith {false};
@@ -76,13 +78,14 @@ private _formation = switch (true) do {
     default {"WEDGE"};
 };
 
-// Pick 4-5 valid points
+// A route around the place, not a random walk through it: 5-6 points on a ring
+// at about the edge, in order, starting on the side the group is on
 private _points = [];
-private _wanted = 4 + floor random 2;
-private _tries = 0;
-while {count _points < _wanted && {_tries < 40}} do {
-    _tries = _tries + 1;
-    private _p = _center getPos [(_radius * 0.3) + random (_radius * 0.7), random 360];
+private _wanted = 5 + floor random 2;
+private _start = _center getDir _leader;
+private _turn = selectRandom [1, -1];
+for "_i" from 0 to (_wanted - 1) do {
+    private _p = _center getPos [_radius * (0.85 + random 0.3), _start + _turn * _i * 360 / _wanted];
     _p = [_p select 0, _p select 1, 0];
     if (_isGroundVeh) then { _p = [_p, 150] call AIC_fnc_roadPos; };
     private _wet = surfaceIsWater _p;
@@ -91,10 +94,15 @@ while {count _points < _wanted && {_tries < 40}} do {
         case (_isNaval): {_wet};
         default {!_wet};
     };
-    // keep points apart from each other
     if (_ok && {(_points findIf {_x distance2D _p < (_radius * 0.25)}) < 0}) then {
         _points pushBack _p;
     };
+};
+
+// an armed car goes on to the next objective and back
+if (_isGroundVeh && {count _link >= 2} && {_points isNotEqualTo []}) then {
+    private _p = [[_link select 0, _link select 1, 0], 200] call AIC_fnc_roadPos;
+    if (!surfaceIsWater _p) then { _points pushBack _p; };
 };
 
 if (_points isEqualTo []) exitWith {
@@ -117,6 +125,8 @@ private _first = [];
     _wp setWaypointSpeed _speed;
     _wp setWaypointFormation _formation;
     _wp setWaypointCompletionRadius (if (_isGroundVeh || _isAir || _isNaval) then {50} else {20});
+    // infantry stops and looks around at each point
+    if (_type == "INF") then { _wp setWaypointTimeout [10, 20, 40]; };
     if (_forEachIndex == 0) then { _first = _wp; };
 } forEach _points;
 
