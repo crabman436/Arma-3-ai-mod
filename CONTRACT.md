@@ -651,7 +651,9 @@ read by `AIC_fnc_moduleCommander`.
 ## New `AIC_ns` keys
 
 `"jevChecked"`, `"jevReady"` (bool, set once by `AIC_fnc_jevInit`),
-`"jevRequests"` (HashMap request id → side, for routing callbacks).
+`"jevRequests"` (HashMap request id → side, for routing callbacks),
+`"jevCounter"` (number: request ids are unique per mission, so a side's
+commander removed and created again never reuses an id still in flight).
 
 ## New commander keys
 
@@ -663,7 +665,7 @@ read by `AIC_fnc_moduleCommander`.
 - `"jevStats"`: counters `asked`, `answered`, `failed`, `timeouts`,
   `notSent`, and `<x>Compared` / `<x>Agreed` for `posture`, `mainEffort`,
   `fires`.
-- `"jevCounter"` (number, request ids), `"jevPostureSince"` (`[stance, time]`),
+- `"jevPostureSince"` (`[stance, time]`),
   `"jevLastSendError"`, `"jevLastFailure"` (log throttles).
 
 ## New functions (category `jev`, folder `functions/jev`)
@@ -671,9 +673,9 @@ read by `AIC_fnc_moduleCommander`.
 - `AIC_fnc_jevInit` — `[] call` → bool. Once per mission: extension `version` and `ready` checks, then the `ExtensionCallback` mission EH (name `"aic_jev"` → `AIC_fnc_jevOnAnswer`). Cached in `AIC_ns`; a missing extension or key is logged once.
 - `AIC_fnc_jevJson` — `[value] call` → JSON text. HashMap → object, array → array, number (non-finite → 0), bool, string (quotes → `'`, backslashes → `/`, control characters dropped), nil → null, anything else as its `str` text.
 - `AIC_fnc_jevPersona` — `[preset] call` → `[temperament, doctrine]`.
-- `AIC_fnc_jevBuildState` — `[commander] call` → briefing HashMap: `"state"` (sent to Jev: `general`, `side`, `time_of_day`, `current_posture`, `posture_held_min`, `own`, `enemy`, `objectives` keyed `o1..`, `threats` keyed `t1..`), `"generalName"`, `"objInfo"` (key → `[id, name, relation]`), `"threatInfo"` (key → text), `"attacks"` (keys with a running ATTACK), `"formula"` (`posture` = stance; `mainEffort` = highest-scored ENEMY/CONTESTED objective unless DEFENSIVE; `fires` = strongest threat seen within 120 s).
+- `AIC_fnc_jevBuildState` — `[commander] call` → briefing HashMap: `"state"` (sent to Jev: `general`, `side`, `time_of_day`, `current_posture`, `posture_held_min`, `own`, `enemy`, `objectives` keyed `o1..`, `threats` keyed `t1..`), `"generalName"`, `"objInfo"` (key → `[id, name, relation]`), `"threatInfo"` (key → text), `"attacks"` (keys with a running ATTACK), `"formula"` (`posture` = stance; `mainEffort` = highest-scored ENEMY/CONTESTED objective unless DEFENSIVE; `fires` = strongest threat of power ≥ 2 seen within 120 s, as `supportCycle`).
 - `AIC_fnc_jevQuestions` — `[commander, briefing] call` → questions HashMap: `posture`, `main_effort`, `continue_<oN>`, `intent_<tN>`, `fires_target`, `risk`, `enemy_plan`.
-- `AIC_fnc_jevAsk` — `[commander] call` → bool. Last step of `commanderCycle` when `"useJev"`. Skips while a briefing is pending and younger than `AIC_JEV_TIMEOUT`; gives up older ones (`timeouts`). Calls `"aic_jev" callExtension ["ask", [id, jevModel, stateJson, questionsJson]]`; id `"<side>-<n>"`.
+- `AIC_fnc_jevAsk` — `[commander] call` → bool. Last step of `commanderCycle` when `"useJev"`. Skips while a briefing is pending and younger than `AIC_JEV_TIMEOUT`; gives up older ones (`timeouts`). Sets `"jevPending"` and `"jevRequests"` **before** calling `"aic_jev" callExtension ["ask", [id, jevModel, stateJson, questionsJson]]` (the cycle is scheduled; a fast answer must find its briefing) and undoes both if the result is not `"queued"`; id `"<side>-<n>"` with n from `AIC_ns` `"jevCounter"`. The extension caps its per-attempt timeout at 9 s so every answer arrives within `AIC_JEV_TIMEOUT`.
 - `AIC_fnc_jevOnAnswer` — `[function, data] call` → bool. Unscheduled (EH). `parseSimpleArray` the data, route by `"jevRequests"`, drop answers that don't match `"jevPending"`, count `failed` for `"error"`, else store `"jev"` and call `jevShadowLog`.
 - `AIC_fnc_jevShadowLog` — `[commander] call`. Logs the answer next to `"formula"`; updates agreement counters; a summary every `AIC_JEV_SUMMARY_EVERY` answers.
 

@@ -191,7 +191,8 @@
 #define AIC_REPLAN_POLL 0.5
 
 // ---------------------------------------------------------------- jev (the general)
-// s after which an unanswered briefing is given up and a new one may be sent
+// s after which an unanswered briefing is given up and a new one may be sent;
+// the extension caps its own timeouts so an answer always comes before this
 #define AIC_JEV_TIMEOUT 20
 // least s between two RPT lines about the same kind of Jev failure
 #define AIC_JEV_LOG_THROTTLE 60

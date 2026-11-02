@@ -28,6 +28,10 @@ const MAX_IN_FLIGHT: usize = 4;
 /// the 10240-byte return buffer to be safe.
 const MAX_CALLBACK_LEN: usize = 9000;
 const MAX_ERROR_LEN: usize = 200;
+/// Per-attempt timeout cap: two attempts plus the 1 s pause (19 s) must fit
+/// inside the mod's AIC_JEV_TIMEOUT (20 s), or answers arrive after the
+/// briefing was given up and hold request slots for nothing.
+pub const MAX_TIMEOUT_S: u64 = 9;
 
 static IN_FLIGHT: AtomicUsize = AtomicUsize::new(0);
 
@@ -91,7 +95,7 @@ impl Config {
                 "api_url" if !v.is_empty() => cfg.api_url = v,
                 "timeout_s" => {
                     if let Ok(s) = v.parse::<u64>() {
-                        cfg.timeout = Duration::from_secs(s.clamp(1, 60));
+                        cfg.timeout = Duration::from_secs(s.clamp(1, MAX_TIMEOUT_S));
                     }
                 }
                 _ => {}
@@ -291,6 +295,8 @@ mod tests {
         assert_eq!(c.api_key.as_deref(), Some("from-file"));
         assert_eq!(c.api_url, "http://x/y");
         assert_eq!(c.timeout, Duration::from_secs(3));
+        let slow = Config::from_sources("timeout_s = 60", none);
+        assert_eq!(slow.timeout, Duration::from_secs(MAX_TIMEOUT_S));
 
         let env = |k: &str| (k == "TYPESAFE_API_KEY").then(|| "from-env".to_string());
         assert_eq!(Config::from_sources(file, env).api_key.as_deref(), Some("from-env"));

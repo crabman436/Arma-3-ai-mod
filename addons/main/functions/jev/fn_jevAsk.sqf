@@ -12,8 +12,10 @@
         One briefing per commander is in flight at a time ("jevPending":
         id, time, briefing). A briefing unanswered after AIC_JEV_TIMEOUT s
         is given up (counted as a timeout) and the next one may go out.
-        Request ids are "<side>-<n>"; AIC_ns "jevRequests" maps them back
-        to the side for the callback. Failures to send are logged at most
+        Request ids are "<side>-<n>" with n counted per mission (AIC_ns
+        "jevCounter"); AIC_ns "jevRequests" maps them back to the side for
+        the callback. Both "jevPending" and "jevRequests" are set before
+        the extension is called and undone if it refuses. Failures to send are logged at most
         every AIC_JEV_LOG_THROTTLE s. Counters are kept in "jevStats".
         Server only.
 
@@ -55,30 +57,37 @@ private _briefing = [_cmd] call AIC_fnc_jevBuildState;
 if (count _briefing == 0) exitWith { false };
 private _questions = [_cmd, _briefing] call AIC_fnc_jevQuestions;
 
-private _counter = (_cmd getOrDefault ["jevCounter", 0]) + 1;
-_cmd set ["jevCounter", _counter];
+// per mission, not per commander: a side whose commander is removed and created
+// again must not reuse an id that may still be in flight
+private _counter = (AIC_ns getOrDefault ["jevCounter", 0]) + 1;
+AIC_ns set ["jevCounter", _counter];
 private _id = format ["%1-%2", toLowerANSI str _side, _counter];
 
 private _stateJson = [_briefing get "state"] call AIC_fnc_jevJson;
 private _questionsJson = [_questions] call AIC_fnc_jevJson;
 private _model = [_cmd, "jevModel"] call AIC_fnc_getSetting;
 
-private _result = ("aic_jev" callExtension ["ask", [_id, _model, _stateJson, _questionsJson]]) param [0, ""];
-if !(_result isEqualTo "queued") exitWith {
-    _stats set ["notSent", (_stats getOrDefault ["notSent", 0]) + 1];
-    if ((time - (_cmd getOrDefault ["jevLastSendError", -1e6])) >= AIC_JEV_LOG_THROTTLE) then {
-        _cmd set ["jevLastSendError", time];
-        ["JEV %1: briefing not sent: %2", [_side, _result]] call AIC_fnc_log;
-    };
-    false
-};
-
+// registered before sending: this cycle is scheduled and may be paused right
+// after callExtension, and a fast answer must find its briefing
 _cmd set ["jevPending", createHashMapFromArray [
     ["id", _id],
     ["time", time],
     ["briefing", _briefing]
 ]];
 _requests set [_id, _side];
+
+private _call = "aic_jev" callExtension ["ask", [_id, _model, _stateJson, _questionsJson]];
+private _result = _call param [0, ""];
+if !(_result isEqualTo "queued") exitWith {
+    _requests deleteAt _id;
+    _cmd set ["jevPending", createHashMap];
+    _stats set ["notSent", (_stats getOrDefault ["notSent", 0]) + 1];
+    if ((time - (_cmd getOrDefault ["jevLastSendError", -1e6])) >= AIC_JEV_LOG_THROTTLE) then {
+        _cmd set ["jevLastSendError", time];
+        ["JEV %1: briefing not sent: '%2' (return code %3)", [_side, _result, _call param [1, -1]]] call AIC_fnc_log;
+    };
+    false
+};
 _stats set ["asked", (_stats getOrDefault ["asked", 0]) + 1];
 
 if (!isNil "AIC_ns" && { AIC_ns getOrDefault ["debug", false] isEqualTo true }) then {

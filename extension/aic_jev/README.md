@@ -31,14 +31,15 @@ this order (later wins):
 
    ```
    api_key = ts-...
-   # optional
+   # optional; per attempt, 1..9 s (the mod gives up on a briefing after 20 s)
    timeout_s = 8
    api_url = https://api.typesafe.ai/v1/systemone
    ```
 
 2. Environment variables `TYPESAFE_API_KEY` and `AIC_JEV_URL`.
 
-Keep `aic_jev.cfg` out of version control and mission files.
+Comments go on their own line (`#`). Keep `aic_jev.cfg` out of version
+control and mission files.
 
 ## Commands
 

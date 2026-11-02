@@ -20,9 +20,10 @@
           - "mainEffort": the highest-scored objective we don't hold (the
                           planner's first attack target), "none" when
                           DEFENSIVE or there is none
-          - "fires":      the strongest threat with a contact seen within
-                          AIC_JEV_FRESH_CONTACT s (supportCycle's choice,
-                          before its range checks), or "none"
+          - "fires":      the strongest threat of power 2 or more with a
+                          contact seen within AIC_JEV_FRESH_CONTACT s
+                          (supportCycle's choice, before its range
+                          checks), or "none"
 
         Also keeps the commander key "jevPostureSince" ([stance, time]) so
         the general knows how long the current posture has been held.
@@ -106,7 +107,8 @@ private _allObjectives = (_cmd getOrDefault ["objectives", []]) select {
     _x isEqualType createHashMap && { count (_x getOrDefault ["pos", []]) >= 2 }
 };
 
-private _threats = ([_allThreats, [], { _x getOrDefault ["power", 0] }, "DESCEND"] call BIS_fnc_sortBy) select [0, AIC_JEV_MAX_THREATS];
+// clusterThreats keeps "threats" sorted by power, strongest first
+private _threats = _allThreats select [0, AIC_JEV_MAX_THREATS];
 private _threatState = [];
 private _threatInfo = createHashMap;
 private _fires = "none";
@@ -136,7 +138,8 @@ private _fires = "none";
         };
     } forEach _allObjectives;
 
-    if (_fires isEqualTo "none" && { _seen <= AIC_JEV_FRESH_CONTACT }) then { _fires = _key; };
+    // as supportCycle: clusters of power 2 or more with a fresh contact
+    if (_fires isEqualTo "none" && { _power >= 2 } && { _seen <= AIC_JEV_FRESH_CONTACT }) then { _fires = _key; };
 
     _threatState pushBack createHashMapFromArray [
         ["id", _key],
@@ -152,7 +155,10 @@ private _fires = "none";
 } forEach _threats;
 
 // ------------------------------------------------------------------ objectives
-private _objectives = ([_allObjectives, [], { _x getOrDefault ["score", 0] }, "DESCEND"] call BIS_fnc_sortBy) select [0, AIC_JEV_MAX_OBJECTIVES];
+private _byScore = [];
+{ _byScore pushBack [_x getOrDefault ["score", 0], _forEachIndex]; } forEach _allObjectives;
+_byScore sort false;
+private _objectives = (_byScore select [0, AIC_JEV_MAX_OBJECTIVES]) apply { _allObjectives select (_x select 1) };
 private _objState = [];
 private _objInfo = createHashMap;
 private _attacks = [];

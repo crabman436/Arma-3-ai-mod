@@ -55,7 +55,9 @@ _questions set ["posture", ["What posture should your force take now?", [
 ]] call _fnc_choice];
 
 if (count _objInfo > 0) then {
-    private _options = (keys _objInfo) apply {
+    private _objKeys = keys _objInfo;
+    _objKeys sort true;
+    private _options = _objKeys apply {
         (_objInfo get _x) params ["", "_name", "_relation"];
         [_x, format ["%1 (held by: %2)", _name, toLowerANSI _relation]]
     };
