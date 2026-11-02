@@ -189,5 +189,21 @@
 #define AIC_REPLAN_FRESH_CONTACT 60
 // s between two checks of the commander loop while it waits for the next cycle
 #define AIC_REPLAN_POLL 0.5
+
+// ---------------------------------------------------------------- jev (the general)
+// s after which an unanswered briefing is given up and a new one may be sent
+#define AIC_JEV_TIMEOUT 20
+// least s between two RPT lines about the same kind of Jev failure
+#define AIC_JEV_LOG_THROTTLE 60
+// briefing size: objectives (by score), threat clusters (by power), and how
+// many of them get their own question (enemy intent, attack continuation)
+#define AIC_JEV_MAX_OBJECTIVES 8
+#define AIC_JEV_MAX_THREATS 6
+#define AIC_JEV_MAX_INTENT 3
+#define AIC_JEV_MAX_CONTINUE 3
+// a threat seen within this many s counts as fresh for fire support (as in supportCycle)
+#define AIC_JEV_FRESH_CONTACT 120
+// a shadow-mode agreement summary is logged every this many answers
+#define AIC_JEV_SUMMARY_EVERY 10
 // min seconds between two side-chat reports of one commander
 #define AIC_REPORT_THROTTLE 20

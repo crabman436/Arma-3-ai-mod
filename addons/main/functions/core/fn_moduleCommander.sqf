@@ -3,7 +3,8 @@
 
     Description:
         Eden module function of AIC_ModuleCommander (server only).
-        Reads the module attributes (including the ReplanOnContact checkbox
+        Reads the module attributes (including the ReplanOnContact checkbox,
+        the Jev general fields UseJev, JevPersona, JevRank, JevName, JevMission
         and the logistics checkboxes
         ManageDynSim, ManageGarrisons, UseTransport, ManageCleanup, SplitPassengers,
         DynamicSquads, StagedAssaults, SpreadGroups, UseVehicleParks, UseSupplyTrucks
@@ -49,6 +50,11 @@ private _settings = createHashMapFromArray [
     ["aggression", (([_logic, "Aggression", 0.5] call AIC_fnc_moduleAttr) max 0) min 1],
     ["loopInterval", ([_logic, "LoopInterval", 30] call AIC_fnc_moduleAttr) max 5],
     ["replanOnContact", [_logic, "ReplanOnContact", true] call AIC_fnc_moduleAttr],
+    ["useJev", [_logic, "UseJev", false] call AIC_fnc_moduleAttr],
+    ["jevPersona", ["methodical", "aggressive", "cautious", "opportunist"] select ((round ([_logic, "JevPersona", 0] call AIC_fnc_moduleAttr) max 0) min 3)],
+    ["jevRank", [_logic, "JevRank", ""] call AIC_fnc_moduleAttr],
+    ["jevName", [_logic, "JevName", ""] call AIC_fnc_moduleAttr],
+    ["jevMission", [_logic, "JevMission", ""] call AIC_fnc_moduleAttr],
     ["useArtillery", [_logic, "UseArtillery", true] call AIC_fnc_moduleAttr],
     ["useAir", [_logic, "UseAir", true] call AIC_fnc_moduleAttr],
     ["autoObjectives", [_logic, "AutoObjectives", true] call AIC_fnc_moduleAttr],

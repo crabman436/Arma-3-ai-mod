@@ -8,7 +8,8 @@
         homes (AIC_fnc_garrisonCycle homes only), allocate forces and issue
         orders, garrison distribution, transports, supply trucks,
         monitor orders, assaults, squad merges, garbage cleanup, dynamic simulation (park / wake), support, debug
-        markers and player reports.
+        markers, player reports and the general's briefing (Jev, if
+        "useJev").
 
     Parameters:
         0: HASHMAP - commander
@@ -109,3 +110,7 @@ if (([_cmd, "debugMarkers"] call AIC_fnc_getSetting) isEqualTo true) then {
 };
 
 [_cmd] call AIC_fnc_report;
+
+// 14. brief the general (setting "useJev"): sent on the extension's own thread,
+// the answer arrives later through AIC_fnc_jevOnAnswer (shadow mode: logged only)
+[_cmd] call AIC_fnc_jevAsk;

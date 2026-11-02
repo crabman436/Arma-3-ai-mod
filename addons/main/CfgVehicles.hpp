@@ -75,6 +75,53 @@ class CfgVehicles
                 typeName = "BOOL";
                 defaultValue = "true";
             };
+            class UseJev: Checkbox
+            {
+                property = "AIC_ModuleCommander_UseJev";
+                displayName = "Jev general (shadow mode)";
+                tooltip = "Brief TypeSafe's Jev model every cycle as this side's general and log his decisions next to the built-in formulas. Shadow mode: nothing changes in the game yet. Needs the aic_jev extension and an API key on the server.";
+                typeName = "BOOL";
+                defaultValue = "false";
+            };
+            class JevPersona: Combo
+            {
+                property = "AIC_ModuleCommander_JevPersona";
+                displayName = "Jev general: persona";
+                tooltip = "The general's temperament and doctrine.";
+                typeName = "NUMBER";
+                defaultValue = "0";
+                class Values
+                {
+                    class Methodical  { name = "Methodical";  value = 0; default = 1; };
+                    class Aggressive  { name = "Aggressive";  value = 1; };
+                    class Cautious    { name = "Cautious";    value = 2; };
+                    class Opportunist { name = "Opportunist"; value = 3; };
+                };
+            };
+            class JevRank: Edit
+            {
+                property = "AIC_ModuleCommander_JevRank";
+                displayName = "Jev general: rank";
+                tooltip = "For example Colonel. Used in his briefings and the log.";
+                typeName = "STRING";
+                defaultValue = "''";
+            };
+            class JevName: Edit
+            {
+                property = "AIC_ModuleCommander_JevName";
+                displayName = "Jev general: name";
+                tooltip = "For example Arkady Volkov.";
+                typeName = "STRING";
+                defaultValue = "''";
+            };
+            class JevMission: Edit
+            {
+                property = "AIC_ModuleCommander_JevMission";
+                displayName = "Jev general: mission";
+                tooltip = "What the general has been ordered to achieve, in a sentence. For example: Take and hold Kavala and the airfield.";
+                typeName = "STRING";
+                defaultValue = "''";
+            };
             class UseArtillery: Checkbox
             {
                 property = "AIC_ModuleCommander_UseArtillery";

@@ -75,6 +75,7 @@ _settings set ["retreatThreshold", ((_settings get "retreatThreshold") max 0) mi
 _settings set ["reserveRatio", ((_settings get "reserveRatio") max 0) min 1];
 _settings set ["loopInterval", (_settings get "loopInterval") max 5];
 _settings set ["replanMinInterval", (_settings get "replanMinInterval") max 5];
+_settings set ["jevMinConfidence", ((_settings get "jevMinConfidence") max 0) min 1];
 _settings set ["objectiveRadius", (_settings get "objectiveRadius") max 25];
 _settings set ["maxAutoObjectives", (round (_settings get "maxAutoObjectives")) max 0];
 _settings set ["artyCooldown", (_settings get "artyCooldown") max 0];

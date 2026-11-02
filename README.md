@@ -647,6 +647,86 @@ infantry around. You can put several bases near the front lines to shorten
 the trips. Keep player-led groups and scripted set pieces out with
 `AIC_exclude` or `AIC_noDynSim`.
 
+## The Jev general (experimental, shadow mode)
+
+Optionally, each commander can be given a general: TypeSafe's Jev decision
+model, briefed every cycle as a named officer with a temperament, a
+doctrine and a mission. The plan (see `docs/JEV_DESIGN.md`) is for Jev to
+make every command decision while the mod acts as his staff.
+
+**This version runs him in shadow mode only.** He is briefed and his
+decisions are written to the RPT next to what the built-in formulas
+decided, but nothing in the game changes. That makes it possible to judge
+his generalship on real missions before giving him command. Without the
+extension or a key, nothing changes at all and the mod stays pure SQF.
+
+### Setup
+
+1. Build the `aic_jev` extension and put `aic_jev_x64.dll` (Windows) or
+   `aic_jev_x64.so` (Linux) in the mod folder on the **server**
+   (`extension/aic_jev/README.md`). Clients don't need it.
+2. Give the server a TypeSafe API key: `TYPESAFE_API_KEY` in the
+   environment, or `api_key = ...` in `aic_jev.cfg` in the server folder.
+   The key never goes through the mission or SQF.
+3. Tick **Jev general (shadow mode)** on the AI Commander module and pick a
+   persona, rank, name and mission, or from script:
+
+```sqf
+private _s = createHashMapFromArray [
+    ["useJev", true],
+    ["jevPersona", "methodical"],
+    ["jevRank", "Colonel"],
+    ["jevName", "Arkady Volkov"],
+    ["jevMission", "Take and hold Kavala and the airfield."]
+];
+[east, _s] call AIC_fnc_createCommander;
+```
+
+At mission start the RPT says whether the general is ready
+(`JEV: aic_jev 0.1.0 ready`) or why not (extension not loaded, no key).
+
+### What gets logged
+
+After every cycle the general gets one briefing: the commander's picture
+(forces, the top objectives with who holds them and what is near them, the
+strongest enemy forces, running attacks) and his identity. He is asked his
+posture, main effort, whether each running attack should continue, what
+the strongest enemy forces are doing, what artillery should hit, how much
+risk to accept and what the enemy is doing as a whole. The answer comes
+back on a separate thread, usually well under a second later, and is
+logged like this:
+
+```
+[AIC] JEV EAST | Colonel Arkady Volkov | 340 ms, 912 tokens, jev-1.14.0
+[AIC]   posture:     formula BALANCED | Volkov DEFENSIVE (0.81)  <<
+[AIC]   main effort: formula Kavala | Volkov Agios Dionysios (0.66)  <<
+[AIC]   continue attack on Kavala: Volkov NO (0.22)
+[AIC]   enemy t1 (2 ARMOR, 3 INF (power 36) near Agios Dionysios): Volkov MAIN_ATTACK (0.7)
+[AIC]   fires:       formula t1 | Volkov t1 (0.58)
+[AIC]   risk:        Volkov 1.7 of 4 (0.55)
+[AIC]   enemy plan:  Volkov ATTACKING_US (0.62)
+```
+
+`<<` marks a disagreement with the formula, `unsure` a confidence below
+`jevMinConfidence`. Every 10 answers a summary line counts how often he
+agreed with the formulas and how many briefings failed or timed out. With
+`AIC_ns set ["debug", true]` the lines also appear in `systemChat`.
+
+### Settings
+
+| Key | Default | Meaning |
+|---|---|---|
+| `useJev` | false | Brief the Jev general every cycle (needs the extension and a key on the server) |
+| `jevModel` | `"jev-1.14.0"` | Jev model; pin a version, since aliases like `jev-latest` move |
+| `jevMinConfidence` | 0.6 | Answers below this confidence are marked unsure |
+| `jevPersona` | `"methodical"` | `methodical`, `aggressive`, `cautious`, `opportunist`, or your own temperament text |
+| `jevRank`, `jevName` | `""` | The general's rank and name |
+| `jevBackground` | `""` | A sentence or two of his history (script only) |
+| `jevMission` | `""` | What he has been ordered to achieve |
+
+Cost: one briefing per cycle of about 1,000–1,500 input tokens, so well
+under a US cent per commander per hour at TypeSafe's listed prices.
+
 ## Building the PBO
 
 The source layout:

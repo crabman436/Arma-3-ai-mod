@@ -614,3 +614,76 @@ by `AIC_fnc_moduleCommander` into `"replanOnContact"`.
 - `AIC_fnc_commanderLoop`: at the start of every iteration sets `"replanRequested"` false and `"replanReason"` `""`, then calls the cycle. Instead of one `sleep`, it waits with `waitUntil { sleep AIC_REPLAN_POLL; ... }` until the first of: the commander is disabled; `time` reaches the cycle's end + `(loopInterval - elapsed) max 1` (the old wait); `"replanRequested"` is true **and** `time` ≥ the cycle's end + `replanMinInterval max 5`. Both settings are read live. In debug mode the cycle-time log line of an early cycle ends with `(early: <reason>)`.
 - `AIC_fnc_groupEngaged`: reads the record's `"lastEngaged"` before stamping it. Then, if `"replanOnContact"` is true and no request is pending, calls `AIC_fnc_requestReplan` with reason `"contact of <groupId>"` when `time - previous lastEngaged ≥ AIC_REPLAN_FRESH_CONTACT`, else with `"losses of <groupId>"` when all of these hold: type not STATIC / ARTY / NAVAL; task not RETREAT / SUPPORT / TRANSPORT / TRANSPORTED / RTB; the record's `"strength"` (last cycle) is above `"retreatThreshold"`; alive units / `"initialSize"` is at or below it. Vehicle damage is not part of this estimate.
 - `AIC_fnc_createCommander`: initial keys `"replanRequested"` (false) and `"replanReason"` (`""`); clamps `"replanMinInterval"` to ≥ 5.
+
+---
+
+# Jev general extension (shadow mode)
+
+Design: `docs/JEV_DESIGN.md`. Optional: without the `aic_jev` extension or an
+API key, nothing below runs and the mod stays pure SQF. This version only
+**briefs and logs**; no answer changes the game yet.
+
+## New settings (in `AIC_fnc_defaultSettings`)
+
+| Key | Default | Meaning |
+|---|---|---|
+| `"useJev"` | false | brief the general at the end of every cycle |
+| `"jevModel"` | `"jev-1.14.0"` | model name sent with each briefing |
+| `"jevMinConfidence"` | 0.6 | answers below this are marked unsure in the log; clamped to 0..1 by `createCommander` |
+| `"jevPersona"` | `"methodical"` | preset (`methodical`, `aggressive`, `cautious`, `opportunist`) or free temperament text (`AIC_fnc_jevPersona`) |
+| `"jevRank"`, `"jevName"`, `"jevBackground"`, `"jevMission"` | `""` | the general's identity |
+
+`AIC_ModuleCommander` gets `UseJev` (checkbox, default false), `JevPersona`
+(combo 0..3 → the four presets), `JevRank`, `JevName`, `JevMission` (text),
+read by `AIC_fnc_moduleCommander`.
+
+## Constants (`script_component.hpp`)
+
+| Macro | Value | Used by |
+|---|---|---|
+| `AIC_JEV_TIMEOUT` | 20 | jevAsk: an unanswered briefing is given up after this many s |
+| `AIC_JEV_LOG_THROTTLE` | 60 | jevAsk, jevOnAnswer: least s between failure log lines |
+| `AIC_JEV_MAX_OBJECTIVES`, `AIC_JEV_MAX_THREATS` | 8, 6 | jevBuildState: objectives (by score) and threat clusters (by power) in a briefing |
+| `AIC_JEV_MAX_INTENT`, `AIC_JEV_MAX_CONTINUE` | 3, 3 | jevQuestions: threats asked about, running attacks asked about |
+| `AIC_JEV_FRESH_CONTACT` | 120 | jevBuildState: fresh threat for the fires formula, groups in contact |
+| `AIC_JEV_SUMMARY_EVERY` | 10 | jevShadowLog: answers between agreement summaries |
+
+## New `AIC_ns` keys
+
+`"jevChecked"`, `"jevReady"` (bool, set once by `AIC_fnc_jevInit`),
+`"jevRequests"` (HashMap request id → side, for routing callbacks).
+
+## New commander keys
+
+- `"jevPending"`: HashMap `"id"`, `"time"`, `"briefing"` of the briefing in
+  flight, or empty. At most one per commander.
+- `"jev"`: the latest answer: `"id"`, `"time"`, `"askedAt"`, `"answers"`
+  (HashMap name → answer array, see `jevOnAnswer`), `"briefing"`,
+  `"latency"` (ms), `"tokens"`, `"model"`.
+- `"jevStats"`: counters `asked`, `answered`, `failed`, `timeouts`,
+  `notSent`, and `<x>Compared` / `<x>Agreed` for `posture`, `mainEffort`,
+  `fires`.
+- `"jevCounter"` (number, request ids), `"jevPostureSince"` (`[stance, time]`),
+  `"jevLastSendError"`, `"jevLastFailure"` (log throttles).
+
+## New functions (category `jev`, folder `functions/jev`)
+
+- `AIC_fnc_jevInit` — `[] call` → bool. Once per mission: extension `version` and `ready` checks, then the `ExtensionCallback` mission EH (name `"aic_jev"` → `AIC_fnc_jevOnAnswer`). Cached in `AIC_ns`; a missing extension or key is logged once.
+- `AIC_fnc_jevJson` — `[value] call` → JSON text. HashMap → object, array → array, number (non-finite → 0), bool, string (quotes → `'`, backslashes → `/`, control characters dropped), nil → null, anything else as its `str` text.
+- `AIC_fnc_jevPersona` — `[preset] call` → `[temperament, doctrine]`.
+- `AIC_fnc_jevBuildState` — `[commander] call` → briefing HashMap: `"state"` (sent to Jev: `general`, `side`, `time_of_day`, `current_posture`, `posture_held_min`, `own`, `enemy`, `objectives` keyed `o1..`, `threats` keyed `t1..`), `"generalName"`, `"objInfo"` (key → `[id, name, relation]`), `"threatInfo"` (key → text), `"attacks"` (keys with a running ATTACK), `"formula"` (`posture` = stance; `mainEffort` = highest-scored ENEMY/CONTESTED objective unless DEFENSIVE; `fires` = strongest threat seen within 120 s).
+- `AIC_fnc_jevQuestions` — `[commander, briefing] call` → questions HashMap: `posture`, `main_effort`, `continue_<oN>`, `intent_<tN>`, `fires_target`, `risk`, `enemy_plan`.
+- `AIC_fnc_jevAsk` — `[commander] call` → bool. Last step of `commanderCycle` when `"useJev"`. Skips while a briefing is pending and younger than `AIC_JEV_TIMEOUT`; gives up older ones (`timeouts`). Calls `"aic_jev" callExtension ["ask", [id, jevModel, stateJson, questionsJson]]`; id `"<side>-<n>"`.
+- `AIC_fnc_jevOnAnswer` — `[function, data] call` → bool. Unscheduled (EH). `parseSimpleArray` the data, route by `"jevRequests"`, drop answers that don't match `"jevPending"`, count `failed` for `"error"`, else store `"jev"` and call `jevShadowLog`.
+- `AIC_fnc_jevShadowLog` — `[commander] call`. Logs the answer next to `"formula"`; updates agreement counters; a summary every `AIC_JEV_SUMMARY_EVERY` answers.
+
+## Changes to existing functions
+
+- `AIC_fnc_commanderCycle`: step 14, `AIC_fnc_jevAsk` after `report`.
+- `AIC_fnc_createCommander`: clamps `"jevMinConfidence"` to 0..1.
+- `AIC_fnc_moduleCommander`: reads the five Jev attributes.
+
+## Extension (`extension/aic_jev`)
+
+Rust, `arma-rs`. Commands `version`, `ready`, `ask`; callbacks `"answer"` /
+`"error"`. See `extension/aic_jev/README.md`.

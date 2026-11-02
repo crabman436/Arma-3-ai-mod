@@ -5,7 +5,7 @@
         Returns a fresh HashMap with the default commander settings
         (see CONTRACT.md, "Settings HashMap" and the logistics extension:
         dynamic simulation, garrisons and transport; garbage management;
-        the replan-on-contact extension).
+        the replan-on-contact extension; the Jev general).
 
     Parameters:
         None
@@ -37,6 +37,16 @@ createHashMapFromArray [
     // --- reaction: early cycles when groups meet the enemy
     ["replanOnContact", true],
     ["replanMinInterval", 5],
+
+    // --- the general (Jev); shadow mode only in this version
+    ["useJev", false],
+    ["jevModel", "jev-1.14.0"],
+    ["jevMinConfidence", 0.6],
+    ["jevPersona", "methodical"],
+    ["jevName", ""],
+    ["jevRank", ""],
+    ["jevBackground", ""],
+    ["jevMission", ""],
 
     // --- logistics: dynamic simulation
     ["manageDynSim", true],

@@ -22,6 +22,19 @@ class CfgFunctions
             class moduleAttr {};
         };
 
+        class jev
+        {
+            file = "\z\aic\addons\main\functions\jev";
+            class jevInit {};
+            class jevJson {};
+            class jevPersona {};
+            class jevBuildState {};
+            class jevQuestions {};
+            class jevAsk {};
+            class jevOnAnswer {};
+            class jevShadowLog {};
+        };
+
         class groups
         {
             file = "\z\aic\addons\main\functions\groups";

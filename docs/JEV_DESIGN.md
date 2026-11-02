@@ -1,7 +1,23 @@
 # Jev for the AI Commander — design
 
-Status: **proposal, not implemented.** Builds on the `claude/replan-on-contact`
-branch (it uses `AIC_fnc_requestReplan`).
+Status: **step 1 of the rollout (section 11) is built: shadow mode.** The
+`aic_jev` extension (`extension/aic_jev`) and the briefing functions
+(`functions/jev`) brief the general every cycle and log his decisions next
+to the formulas; nothing is applied to the game yet. Everything else here
+is still a proposal. Uses `AIC_fnc_requestReplan` from the replan-on-contact
+change.
+
+Built so far vs this document:
+
+| Piece | State |
+|---|---|
+| Extension, one briefing per cycle (sections 4, 9) | built |
+| Identity and personas (section 10) | built (sent with every briefing) |
+| Questions: posture, main effort, continue, intent, fires, risk, enemy plan | built, logged only |
+| Applying answers (section 4.3) | not yet |
+| Courses of action, reserve, intel gap, battle log (section 6) | not yet |
+| Squad contact reports and morale (sections 7, 8) | not yet |
+| Radio voice in his name (section 10) | not yet |
 
 Goal: **Jev is the general.** Not an advisor the formulas consult, but the
 one who makes every command decision for his side: what posture to take,
