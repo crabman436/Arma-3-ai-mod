@@ -91,6 +91,8 @@ User-tunable values are settings, not constants.
 | `AIC_RIDE_ABORT_COOLDOWN` | 600 | issueOrder: no new ride after `"rideAbortTime"` (set by transportCycle) |
 | `AIC_LZ_THREAT_RADIUS`, `AIC_LZ_OFFSET_HELI`, `AIC_DROP_OFFSET_GROUND`, `AIC_DROP_OFFSET_GROUND_THREAT` | 800, 450, 250, 400 | orderTransport drop point stand-offs |
 | `AIC_EH_THROTTLE` | 10 | attachGroupEHs Hit/FiredNear throttle |
+| `AIC_REPLAN_FRESH_CONTACT` | 60 | groupEngaged: a contact is fresh (asks for an early cycle) when the group's previous `"lastEngaged"` is at least this many s old |
+| `AIC_REPLAN_POLL` | 0.5 | commanderLoop: s between checks while waiting for the next cycle |
 | `AIC_BASE_ID` | `"BASE_HQ"` | id of the implicit HQ base objective (createCommander, collectObjectives, updateObjectives, garrisonStatus, garrisonCycle, transportCycle, allocateForces) |
 | `AIC_MARKER_OBJ_PREFIX` | `"aic_obj"` | objective marker prefix (collectObjectives, updateObjectives) |
 | `AIC_MARKER_BASE_PREFIX` | `"aic_base_"` | side base marker prefix, followed by `west` / `east` / `guer` / `civ` (collectObjectives, updateObjectives, createCommander) |
@@ -118,6 +120,8 @@ Created by `AIC_fnc_createCommander`. Keys (all strings):
 | `"ownPower"` | number — summed power of own groups | groups |
 | `"enemyPower"` | number — summed power of known enemies | intel |
 | `"lastPlanTime"` | number (`time`) | core |
+| `"replanRequested"` | bool — an early cycle is wanted (see the replan-on-contact extension) | core: set by `AIC_fnc_requestReplan`, cleared by `AIC_fnc_commanderLoop` at the start of every cycle |
+| `"replanReason"` | string — the first reason given since the last cycle, for the debug log | core |
 | `"lastArtyTime"` | number | support |
 | `"lastAirTime"` | number | support |
 | `"markers"` | array of marker names created for debug | ui |
@@ -210,7 +214,8 @@ HashMap: `"group"`, `"task"`, `"pos"`, `"objective"` (id or `""`).
 - `AIC_fnc_getCommander` — `[side] call` → commander HashMap, or an empty HashMap if none (callers check `count _cmd == 0`).
 - `AIC_fnc_getSetting` — `[commander, key] call` → value (falls back to the default when the key is missing or the value has the wrong type; an empty commander reads the defaults).
 - `AIC_fnc_defaultSettings` — `[] call` → new HashMap of default settings.
-- `AIC_fnc_commanderLoop` — `[commander] spawn`. While `"enabled"`: call `AIC_fnc_commanderCycle`, `sleep loopInterval`.
+- `AIC_fnc_commanderLoop` — `[commander] spawn`. While `"enabled"`: clear `"replanRequested"` / `"replanReason"`, call `AIC_fnc_commanderCycle`, then wait for the rest of `loopInterval`, or less when a replan is requested (see the replan-on-contact extension).
+- `AIC_fnc_requestReplan` — `[commander, reason(optional string)] call` → bool. Asks for an early cycle (see the replan-on-contact extension).
 - `AIC_fnc_commanderCycle` — `[commander] call`. One full think step, in order:
   1. `AIC_fnc_registerGroups` (pick up new groups, drop dead)
   2. `AIC_fnc_updateGroups` (strength/power refresh)
@@ -572,3 +577,40 @@ read into the settings of the same name in lower camel case.
 - `AIC_fnc_createCommander`: initial keys `"objectiveIndex"` (empty HashMap) and `"deadQueue"` (`[]`); clamps the cleanup settings to ≥ 0.
 - `AIC_fnc_dynSimCycle`: recent `"lastEngaged"` (< 120 s) is a wake condition. The hostile-unit proximity check for parked groups stays: a group frozen by dynamic simulation is blind and fires no `EnemyDetected`.
 - Objective lookups by id in `issueOrder`, `monitorOrders`, `allocateForces`, `transportCycle`, `dynSimCycle`, `updateObjectives`, `collectObjectives` and `createCommander` go through `AIC_fnc_getObjective`.
+
+---
+
+# Replan-on-contact extension: early cycles
+
+The event handlers react at once, but every decision that needs the whole
+picture (reinforce, retreat, fire support) waits for the commander cycle.
+This extension lets a handler ask for that cycle to come early, so a group
+that meets the enemy is answered within `replanMinInterval` seconds instead of
+up to `loopInterval`. Decisions are still made only by the cycle; nothing new
+runs in the handlers beyond a few comparisons.
+
+## New settings (in `AIC_fnc_defaultSettings`)
+
+| Key | Default | Meaning |
+|---|---|---|
+| `"replanOnContact"` | true | `AIC_fnc_groupEngaged` asks for an early cycle on a fresh contact or when a group is shot down to `"retreatThreshold"` |
+| `"replanMinInterval"` | 5 | least seconds between the end of one cycle and an early cycle; clamped to ≥ 5 by `createCommander` and by the loop |
+
+`AIC_ModuleCommander` gets a checkbox `ReplanOnContact` (default true), read
+by `AIC_fnc_moduleCommander` into `"replanOnContact"`.
+
+## New commander keys
+
+- `"replanRequested"` (bool, initially false) and `"replanReason"` (string,
+  initially `""`): see the commander state table. Only
+  `AIC_fnc_requestReplan` sets them; only `AIC_fnc_commanderLoop` clears them.
+
+## New functions
+
+- `AIC_fnc_requestReplan` (core) — `[commander, reason(optional string)] call` → bool (true if a request is now pending). Server only; false for an empty or disabled commander. If `"replanRequested"` is already true it changes nothing (the first reason is kept); otherwise sets it to true and `"replanReason"` to the reason. Safe in event handlers (no loops, no scheduling). Does not read `"replanOnContact"`: mission scripts may call it whatever that setting says.
+
+## Changes to existing functions
+
+- `AIC_fnc_commanderLoop`: at the start of every iteration sets `"replanRequested"` false and `"replanReason"` `""`, then calls the cycle. Instead of one `sleep`, it waits with `waitUntil { sleep AIC_REPLAN_POLL; ... }` until the first of: the commander is disabled; `time` reaches the cycle's end + `(loopInterval - elapsed) max 1` (the old wait); `"replanRequested"` is true **and** `time` ≥ the cycle's end + `replanMinInterval max 5`. Both settings are read live. In debug mode the cycle-time log line of an early cycle ends with `(early: <reason>)`.
+- `AIC_fnc_groupEngaged`: reads the record's `"lastEngaged"` before stamping it. Then, if `"replanOnContact"` is true and no request is pending, calls `AIC_fnc_requestReplan` with reason `"contact of <groupId>"` when `time - previous lastEngaged ≥ AIC_REPLAN_FRESH_CONTACT`, else with `"losses of <groupId>"` when all of these hold: type not STATIC / ARTY / NAVAL; task not RETREAT / SUPPORT / TRANSPORT / TRANSPORTED / RTB; the record's `"strength"` (last cycle) is above `"retreatThreshold"`; alive units / `"initialSize"` is at or below it. Vehicle damage is not part of this estimate.
+- `AIC_fnc_createCommander`: initial keys `"replanRequested"` (false) and `"replanReason"` (`""`); clamps `"replanMinInterval"` to ≥ 5.

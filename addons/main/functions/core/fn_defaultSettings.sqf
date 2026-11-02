@@ -4,7 +4,8 @@
     Description:
         Returns a fresh HashMap with the default commander settings
         (see CONTRACT.md, "Settings HashMap" and the logistics extension:
-        dynamic simulation, garrisons and transport; garbage management).
+        dynamic simulation, garrisons and transport; garbage management;
+        the replan-on-contact extension).
 
     Parameters:
         None
@@ -32,6 +33,10 @@ createHashMapFromArray [
     ["artyCooldown", 120],
     ["airCooldown", 180],
     ["casSkill", 0.8],
+
+    // --- reaction: early cycles when groups meet the enemy
+    ["replanOnContact", true],
+    ["replanMinInterval", 5],
 
     // --- logistics: dynamic simulation
     ["manageDynSim", true],

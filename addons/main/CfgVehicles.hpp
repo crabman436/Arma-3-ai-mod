@@ -67,6 +67,14 @@ class CfgVehicles
                 typeName = "NUMBER";
                 defaultValue = "30";
             };
+            class ReplanOnContact: Checkbox
+            {
+                property = "AIC_ModuleCommander_ReplanOnContact";
+                displayName = "Replan on contact";
+                tooltip = "When a group meets the enemy, or is shot down to its retreat threshold, the general thinks again within seconds instead of waiting for the next think interval (never sooner than 5 s after its last cycle ended; setting replanMinInterval).";
+                typeName = "BOOL";
+                defaultValue = "true";
+            };
             class UseArtillery: Checkbox
             {
                 property = "AIC_ModuleCommander_UseArtillery";

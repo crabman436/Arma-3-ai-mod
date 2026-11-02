@@ -15,6 +15,7 @@ class CfgFunctions
             class defaultSettings {};
             class commanderLoop {};
             class commanderCycle {};
+            class requestReplan {};
             class log {};
             class moduleCommander {};
             class moduleObjective {};
