@@ -17,7 +17,10 @@
  *        bearings are the group's sector (its own slice of the place), the
  *        threat's side first when one is known. Sentries get the unit
  *        variable "AIC_sentry"; AIC_fnc_sentryWatch raises the alarm when
- *        one recognises an enemy.
+ *        one recognises an enemy. At night (sunOrMoon below AIC_NIGHT_SUN)
+ *        the count doubles, up to half the group (a 4-man group posts
+ *        two), spread wider around the facing; the count is set when the
+ *        positions are handed out.
  *     3. Buildings. Spread over the group's sector: buildings nearest the
  *        sector's anchor are filled with at most AIC_GARRISON_PER_BUILDING
  *        units each, and a building within 20 m of one already used is
@@ -140,8 +143,21 @@ private _wanted = switch (true) do {
     case (count _free >= 4): {1};
     default {0};
 };
+// the dark: twice the eyes on the edge, never more than half the group
+if (_wanted > 0 && {sunOrMoon < AIC_NIGHT_SUN}) then {
+    _wanted = (2 * _wanted) min (floor ((count _free) / 2));
+};
 if (_wanted > 0) then {
-    private _bearings = if (_wanted == 1) then {[_facing]} else {[_facing - 35, _facing + 35]};
+    private _bearings = switch (_wanted) do {
+        case 1: {[_facing]};
+        case 2: {[_facing - 35, _facing + 35]};
+        default {
+            // spread over 210 degrees around the facing
+            private _list = [];
+            for "_i" from 0 to (_wanted - 1) do {_list pushBack (_facing - 105 + 210 * _i / (_wanted - 1))};
+            _list
+        };
+    };
     if (_hasThreat && {_hasSector}) then {_bearings set [0, _threatDir]};
     private _edge = _buildings select {
         private _d = _x distance2D _c;

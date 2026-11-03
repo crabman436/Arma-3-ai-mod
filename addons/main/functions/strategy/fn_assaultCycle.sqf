@@ -23,6 +23,11 @@
  *   go in. AIC_ASSAULT_ABORT s after GO it is called off: its groups regroup
  *   like an advised abort (below) and the objective's "failedUntil" is set
  *   AIC_ASSAULT_FAIL_COOLDOWN s ahead (no new attack on it until then).
+ *   Order delays (AIC_fnc_queueOrder): groups whose ATTACK order on the
+ *   objective still waits in the commander's "orderQueue" count as members
+ *   on their way: their power counts toward the assault's total (not toward
+ *   what is ready), they hold the short wait like riding groups, and they
+ *   keep an assault without other members alive.
  *   Morale (setting "useMorale"): when the average record "morale" (default
  *   1) of the groups on ATTACK at the objective falls below
  *   AIC_MORALE_SHAKY, the assault is called off as failed the same way, in
@@ -125,6 +130,22 @@ private _fnc_regroupDest = {
     [_dest getOrDefault ["pos", _cmd getOrDefault ["hq", [0, 0, 0]]], _dest getOrDefault ["id", ""]]
 };
 
+// ATTACK orders still waiting for their delay: objective id -> group records
+private _queued = createHashMap;
+private _queue = _cmd getOrDefault ["orderQueue", []];
+if !(_queue isEqualType []) then {_queue = []};
+{
+    if (_x isEqualType [] && {count _x >= 5} && {(_x select 2) isEqualTo "ATTACK"} && {(_x select 4) isEqualType ""}) then {
+        private _g = _x select 1;
+        private _r = if (_g isEqualType grpNull && {!isNull _g}) then {_groupData getOrDefault [hashValue _g, createHashMap]} else {createHashMap};
+        if (count _r > 0) then {
+            private _list = _queued getOrDefault [_x select 4, []];
+            _list pushBack _r;
+            _queued set [_x select 4, _list];
+        };
+    };
+} forEach _queue;
+
 private _started = 0;
 {
     private _id = _x;
@@ -142,9 +163,13 @@ private _started = 0;
     };
     private _obj = [_cmd, _id] call AIC_fnc_getObjective;
     private _members = _attacking + _riding;
+    // ordered there, but the order is still on its way (not yet ATTACK)
+    private _pending = (_queued getOrDefault [_id, []]) select {
+        !((_x getOrDefault ["task", ""]) isEqualTo "ATTACK" && {(_x getOrDefault ["objective", ""]) isEqualTo _id})
+    };
 
     if (count _obj == 0 || {(_obj getOrDefault ["owner", sideUnknown]) isEqualTo _side}
-        || {_members isEqualTo [] && {(time - (_assault get "time")) > 60}}) then {
+        || {_members isEqualTo [] && {_pending isEqualTo []} && {(time - (_assault get "time")) > 60}}) then {
         _obj deleteAt "attackBoost";
         _assaults deleteAt _id;
         continue;
@@ -226,6 +251,11 @@ private _started = 0;
                 if (_engaged isEqualType 0 && {(time - _engaged) < 30}) then {_underFire = true};
             };
         } forEach _members;
+        // groups whose order is still on its way are part of the force too
+        {
+            private _p = _x getOrDefault ["power", 0];
+            if (_p isEqualType 0) then {_power = _power + _p};
+        } forEach _pending;
 
         if (_ready > 0 && {(_assault get "firstArrive") < 0}) then {_assault set ["firstArrive", time]};
         private _first = _assault get "firstArrive";
@@ -253,7 +283,7 @@ private _started = 0;
         if (!_nightWait && {
             _underFire
             || {_ready > 0 && {_ready >= (AIC_ASSAULT_READY * _power)}}
-            || {_first >= 0 && {(time - _first) > AIC_ASSAULT_WAIT} && {_riding isEqualTo []}}
+            || {_first >= 0 && {(time - _first) > AIC_ASSAULT_WAIT} && {_riding isEqualTo []} && {_pending isEqualTo []}}
             || {_first >= 0 && {(time - _first) > AIC_ASSAULT_MAX_WAIT}}
             || {(time - (_assault get "time")) > AIC_ASSAULT_MAX_TOTAL}
             || {_early}

@@ -630,6 +630,30 @@ dies, breaks or is sent elsewhere meanwhile is dropped. Players hear "Attack
 on X: orders issued" when a delayed attack goes out. `orderDelay` scales all
 of it; 0 gives every order at once, as before.
 
+### Reconnaissance, night and weather
+
+**Reconnaissance** (`useRecon`). Before a new attack on an important
+objective (priority 2 or more) that nobody has looked at for 15 minutes, the
+general sends a scout first: the cheapest group that can be spared (a
+motorised group before infantry, never a garrison below strength, never a
+shaken group). It moves to a spot 600-900 m out on high ground at the edge of
+the woods that can see the place, creeps the last stretch in stealth, unloads
+its infantry and watches with weapons tight. The job ends after 4 minutes on
+the spot, as soon as it reports enemies there (the estimate of the defenders
+is updated), or after 15 minutes in any case; a scout that is shot at falls
+back to its rally point - the contact is the report. The attack is planned on
+the next cycle after that. At most two new scouts go out per cycle; with no
+group to spare, the attack goes ahead unscouted.
+
+**Night** (`nightAssaults`). An assault on a town that is ready to go while
+night is less than 30 minutes away waits at the assembly area for the dark
+(the map's sunset for the date, with time acceleration taken into account).
+It goes at once if it is shot at or the staff advises attacking now. At night
+garrisons post twice the sentries at their edge (up to half of each group).
+
+**Weather.** No close air support in fog above 0.4 or rain above 0.6, and no
+helicopter sorties in wind above 12 m/s. Artillery fires in any weather.
+
 ### Mission-maker tip
 
 Place your big armies at bases, not spread across the map. Put an

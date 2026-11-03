@@ -85,7 +85,7 @@
  *   and nobody has scouted ("reconTime", AIC_fnc_monitorOrders) for
  *   AIC_RECON_MAX_AGE s, a RECON assignment is emitted instead of the attack:
  *   the cheapest suitable group (MOTOR before INF, then lowest power, then
- *   nearest) on IDLE / PATROL / DEFEND that may leave its post
+ *   nearest) on IDLE / PATROL / DEFEND, not shaky, that may leave its post
  *   (AIC_fnc_canLeaveGarrison for a garrison), at most AIC_RECON_MAX_JOBS
  *   new jobs per cycle; the objective's "reconGroup" holds its hashValue.
  *   While a scout is on the job (record task RECON, or a RECON order queued)
@@ -642,6 +642,7 @@ private _fnc_reconScout = {
         private _info = _x;
         private _type = _info get "type";
         if (_type in ["MOTOR", "INF"]
+            && {!(_info get "shaky")}
             && {(_info get "task") in ["IDLE", "PATROL", "DEFEND"]}
             && {[_info, _target] call _fnc_mayLeave}) then {
             _order pushBack [

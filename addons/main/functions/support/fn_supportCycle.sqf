@@ -32,6 +32,11 @@
         < 2, i.e. door gunners) are left to the transport system. Clusters
         already being struck by another air group (within 300 m) are skipped.
 
+        Weather: no CAS tasking at all while fog > AIC_CAS_MAX_FOG or
+        rain > AIC_CAS_MAX_RAIN; helicopters are not tasked while the wind
+        is stronger than AIC_HELI_MAX_WIND m/s (planes still are).
+        Artillery is not affected.
+
         Groups owned by the transport system (task "TRANSPORT",
         "TRANSPORTED" or "RTB") are never used for fire support or CAS:
         a helicopter ferrying troops or flying home after a drop is left
@@ -211,9 +216,12 @@ if (_useArty && { (_now - (_cmd getOrDefault ["lastArtyTime", -1e6])) >= _artyCo
 // ======================================================================= AIR
 private _airTasked = false;
 private _useAir = ([_cmd, "useAir"] call AIC_fnc_getSetting) isEqualTo true;
+// no CAS in thick fog or heavy rain; no helicopters in a strong wind
+private _flyWeather = fog <= AIC_CAS_MAX_FOG && {rain <= AIC_CAS_MAX_RAIN};
+private _heliWeather = (vectorMagnitude wind) <= AIC_HELI_MAX_WIND;
 private _airCooldown = [_cmd, "airCooldown"] call AIC_fnc_getSetting;
 
-if (_useAir) then {
+if (_useAir && {_flyWeather}) then {
     private _airGroups = [["HELI", "PLANE"]] call _fnc_groupsOfType;
     if (_airGroups isEqualTo []) exitWith {};
     // with transport on, helicopters armed only with machine guns (door
@@ -260,6 +268,7 @@ if (_useAir) then {
 
         private _veh = objectParent leader _grp;
         if (isNull _veh || { !alive _veh } || { !canMove _veh } || { fuel _veh < 0.25 }) then { continue };
+        if (!_heliWeather && { _veh isKindOf "Helicopter" }) then { continue };
 
         // armed? every turret incl. driver/pilot turret [-1]
         private _armed = ([_veh, false] call AIC_fnc_vehicleWeapons) isNotEqualTo [];
