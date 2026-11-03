@@ -119,7 +119,7 @@ fn probabilities_of(value: Option<&Value>) -> Vec<(String, f64)> {
         .iter()
         .map(|(key, probability)| (key.clone(), probability.as_f64().unwrap_or(0.0)))
         .collect();
-    pairs.sort_by(|left, right| key_order(&left.0).cmp(&key_order(&right.0)));
+    pairs.sort_by_key(|(key, _)| key_order(key));
     pairs
 }
 

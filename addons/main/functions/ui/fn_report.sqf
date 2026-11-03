@@ -24,6 +24,12 @@
             groups that also left by transport are only reported once.
             ("groupState": hashValue group -> [task, home]; groups not in
             the previous baseline are never announced)
+          - Jev advice that changed a decision (AIC_fnc_jevAdvisor hooks):
+            an attack held back ("advice" "hold_target" / "hold_reason":
+            "Attack on X postponed - intel too old", once per hold), an
+            assault called off (commander "adviceAbort" [time, id], once
+            per abort) and the reserve committed ("advice" "commit", once
+            per stretch of commits) ("hold", "abort", "commit")
         At most one message per 20 s ("time"); up to three changes are
         joined into one message. While throttled the old baseline is kept,
         so pending changes are reported on the next allowed call. The first
@@ -83,12 +89,31 @@ private _groupState = createHashMap; // hashValue -> [task, home]
 private _objNames = createHashMap;
 { _objNames set [_x getOrDefault ["id", ""], _x getOrDefault ["name", _x getOrDefault ["id", "?"]]]; } forEach _objectives;
 
+// decisions the Jev staff officer changed this cycle (AIC_fnc_jevAdvisor hooks)
+private _advice = _cmd getOrDefault ["advice", createHashMap];
+if !(_advice isEqualType createHashMap) then { _advice = createHashMap; };
+private _hold = "";
+private _holdTarget = _advice getOrDefault ["hold_target", ""];
+private _holdReason = _advice getOrDefault ["hold_reason", ""];
+if (_holdTarget isEqualType "" && { _holdReason isEqualType "" } && { _holdTarget != "" } && { _holdReason != "" }) then {
+    _hold = format ["Attack on %1 postponed - %2", _holdTarget, _holdReason];
+};
+private _abort = "";
+private _abortRec = _cmd getOrDefault ["adviceAbort", []];
+if (_abortRec isEqualType [] && { count _abortRec >= 2 } && { (_abortRec select 0) isEqualType 0 } && { (_abortRec select 1) isEqualType "" }) then {
+    _abort = format ["%1|%2", _abortRec select 0, _abortRec select 1];
+};
+private _commit = (_advice getOrDefault ["commit", false]) isEqualTo true;
+
 private _fnc_storeBaseline = {
     params ["_last"];
     _last set ["stance", _stance];
     _last set ["owners", _owners];
     _last set ["threatPositions", _majorThreats apply { _x get "pos" }];
     _last set ["groupState", _groupState];
+    _last set ["hold", _hold];
+    _last set ["abort", _abort];
+    _last set ["commit", _commit];
 };
 
 // --- first call: baseline + greeting
@@ -201,6 +226,16 @@ private _moves = createHashMap;   // "from|to"   -> [from, to, count]
     _parts pushBack format ["Moving %1 group%2 from %3 to %4 to reinforce the garrison",
         _n, ["", "s"] select (_n > 1), _from, _to];
 } forEach _moves;
+
+// advice that changed a decision, each announced once
+if (_hold != "" && { _hold != (_last getOrDefault ["hold", ""]) }) then { _parts pushBack _hold; };
+if (_abort != "" && { _abort != (_last getOrDefault ["abort", ""]) }) then {
+    private _abortId = _abortRec select 1;
+    _parts pushBack format ["Assault on %1 called off - the staff judges it failing", _objNames getOrDefault [_abortId, _abortId]];
+};
+if (_commit && { !((_last getOrDefault ["commit", false]) isEqualTo true) }) then {
+    _parts pushBack "Reserve committed to the fight on the staff's advice";
+};
 
 // --- nothing new: keep baseline current (forget vanished threats)
 if (_parts isEqualTo []) exitWith {

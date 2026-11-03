@@ -735,7 +735,8 @@ private _staffedAttackTargets = [];
     // objective it just called off; attacks already being fought for go on
     if (_task == "ATTACK" && {!_holding}) then {
         if (_holdReason != "") then {
-            if (_heldTarget == "") then {_heldTarget = _target get "name"};
+            // the first objective held back names the report; counter-attacks are held quietly
+            if (_isObjAttack && {_heldTarget == ""}) then {_heldTarget = _target get "name"};
             continue;
         };
         if (_isObjAttack && {_abortedId != ""} && {(_target get "id") == _abortedId}) then {continue};

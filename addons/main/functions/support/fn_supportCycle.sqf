@@ -34,6 +34,14 @@
         a helicopter ferrying troops or flying home after a drop is left
         alone.
 
+        Jev advice (commander "advice", AIC_fnc_jevAdvisor; "jevWeight" 0
+        = off): prep_fires p > AIC_ADVICE_YES while the main effort's
+        assault (or, without a main effort, the one staging assault) is in
+        state "STAGE" puts that objective first, like "prepTarget" after
+        GO; with no fresh cluster within 600 m the objective centre itself
+        is shelled with a short mission. Cooldown and danger close apply
+        as always.
+
     Parameters:
         0: HASHMAP - commander
 
@@ -52,7 +60,6 @@ if (!isServer) exitWith { [false, false] };
 if (count _cmd == 0) exitWith { [false, false] };
 
 private _threats = (_cmd getOrDefault ["threats", []]) select { _x isEqualType createHashMap && { count (_x getOrDefault ["pos", []]) >= 2 } };
-if (_threats isEqualTo []) exitWith { [false, false] };
 
 private _groups = _cmd getOrDefault ["groups", []];
 private _groupData = _cmd getOrDefault ["groupData", createHashMap];
@@ -60,6 +67,40 @@ if (_groups isEqualTo []) exitWith { [false, false] };
 
 private _now = time;
 private _retreatThreshold = [_cmd, "retreatThreshold"] call AIC_fnc_getSetting;
+
+// Jev advice (AIC_fnc_jevAdvisor): prep_fires asks for artillery on the main
+// effort while its assault is still forming up (state "STAGE"); without a
+// main effort named, on the one staging assault
+private _prepPos = [];
+private _advice = _cmd getOrDefault ["advice", createHashMap];
+if !(_advice isEqualType createHashMap) then { _advice = createHashMap; };
+if ((([_cmd, "jevWeight"] call AIC_fnc_getSetting) max 0) > 0 && { count _advice > 0 }) then {
+    private _rec = _advice getOrDefault ["prep_fires", createHashMap];
+    if !(_rec isEqualType createHashMap) then { _rec = createHashMap; };
+    private _p = _rec getOrDefault ["value", 0];
+    if !(_p isEqualType 0) then { _p = 0; };
+    if (_p > AIC_ADVICE_YES) then {
+        private _assaults = _cmd getOrDefault ["assaults", createHashMap];
+        if !(_assaults isEqualType createHashMap) then { _assaults = createHashMap; };
+        private _mainEffort = (_advice getOrDefault ["main_effort", createHashMap]) getOrDefault ["value", ""];
+        if !(_mainEffort isEqualType "") then { _mainEffort = ""; };
+        private _staging = (keys _assaults) select {
+            private _a = _assaults get _x;
+            _a isEqualType createHashMap && { (_a getOrDefault ["state", ""]) isEqualTo "STAGE" }
+        };
+        private _target = "";
+        if (_mainEffort != "") then {
+            if (_mainEffort in _staging) then { _target = _mainEffort; };
+        } else {
+            if (count _staging == 1) then { _target = _staging select 0; };
+        };
+        if (_target != "") then {
+            _prepPos = (_assaults get _target) getOrDefault ["pos", []];
+            if !(_prepPos isEqualType []) then { _prepPos = []; };
+        };
+    };
+};
+if (_threats isEqualTo [] && { count _prepPos < 2 }) exitWith { [false, false] };
 
 // newest sighting inside a cluster
 private _fnc_freshness = {
@@ -87,6 +128,7 @@ private _fnc_groupsOfType = {
 // an assault just started (AIC_fnc_assaultCycle, "prepTarget"): the clusters
 // on its objective come first for AIC_PREP_FIRE_TIME seconds
 private _prep = _cmd getOrDefault ["prepTarget", []];
+if (count _prepPos >= 2) then { _prep = [_prepPos, _now]; };
 private _fnc_prepFirst = {
     params ["_list"];
     if (count _prep < 2 || { (_now - (_prep select 1)) > AIC_PREP_FIRE_TIME }) exitWith { _list };
@@ -108,6 +150,11 @@ if (_useArty && { (_now - (_cmd getOrDefault ["lastArtyTime", -1e6])) >= _artyCo
     private _artyTargets = [_threats select {
         (_x getOrDefault ["power", 0]) >= 2 && { ([_x] call _fnc_freshness) <= 120 }
     }] call _fnc_prepFirst;
+    // preparatory fire on advice with no fresh cluster on the objective: the
+    // objective itself, a few rounds (the danger-close check still applies)
+    if (count _prepPos >= 2 && { (_artyTargets findIf { ((_x get "pos") distance2D _prepPos) < 600 }) < 0 }) then {
+        _artyTargets = [createHashMapFromArray [["pos", +_prepPos], ["power", 2], ["count", 0], ["contacts", []]]] + _artyTargets;
+    };
     if (_artyTargets isEqualTo []) exitWith {};
 
     // pre-compute usable guns + candidate magazines per group

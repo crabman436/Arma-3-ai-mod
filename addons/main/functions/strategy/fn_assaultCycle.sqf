@@ -14,6 +14,16 @@
  *   the last infantry is gone. On GO the commander's "prepTarget" is set
  *   to the objective, so the support cycle fires on it first.
  *   An assault ends when the objective is taken or has no members left.
+ *   Jev advice (commander "advice", AIC_fnc_jevAdvisor; "jevWeight" 0 =
+ *   off): break_off p > AIC_ADVICE_YES with confidence >= AIC_ADVICE_SURE
+ *   calls off the assault the staff was asked about ("advice" "_assault"):
+ *   its groups DEFEND their home garrison (or BASE_HQ) with force, riding
+ *   groups get that as their final order, the record is dropped, the
+ *   commander's "adviceAbortTime" and "adviceAbort" [time, id] are set
+ *   (no second abort, and no new attack on that objective, for
+ *   AIC_ADVICE_ABORT_COOLDOWN s) and "advice" "abort" holds the id for
+ *   AIC_fnc_report. attack_now p > AIC_ADVICE_YES advances a staging assault
+ *   as soon as any member is at the assembly area.
  *
  * Parameters:
  *   0: HASHMAP - commander
@@ -42,6 +52,49 @@ private _records = (values _groupData) select {
     && {({alive _x} count (units (_x get "group"))) > 0}
 };
 
+// Jev advice (AIC_fnc_jevAdvisor), weight 0 = ignore: break_off aborts the
+// assault the staff was asked about (once per AIC_ADVICE_ABORT_COOLDOWN),
+// attack_now lets a staging assault go as soon as a group is in place
+private _advice = _cmd getOrDefault ["advice", createHashMap];
+if !(_advice isEqualType createHashMap) then {_advice = createHashMap};
+private _attackNow = false;
+private _breakOff = false;
+private _adviceAssault = "";
+if ((([_cmd, "jevWeight"] call AIC_fnc_getSetting) max 0) > 0 && {count _advice > 0}) then {
+    private _fnc_adviceP = {
+        params ["_qid"];
+        private _rec = _advice getOrDefault [_qid, createHashMap];
+        if !(_rec isEqualType createHashMap) exitWith {[-1, 0]};
+        private _p = _rec getOrDefault ["value", -1];
+        if !(_p isEqualType 0) then {_p = -1};
+        private _c = _rec getOrDefault ["confidence", 0];
+        if !(_c isEqualType 0) then {_c = 0};
+        [_p, _c]
+    };
+    _attackNow = ((["attack_now"] call _fnc_adviceP) select 0) > AIC_ADVICE_YES;
+    (["break_off"] call _fnc_adviceP) params ["_pBreak", "_cBreak"];
+    _breakOff = _pBreak > AIC_ADVICE_YES && {_cBreak >= AIC_ADVICE_SURE}
+        && {(time - (_cmd getOrDefault ["adviceAbortTime", -1e6])) >= AIC_ADVICE_ABORT_COOLDOWN};
+    _adviceAssault = _advice getOrDefault ["_assault", ""];
+    if !(_adviceAssault isEqualType "") then {_adviceAssault = ""};
+};
+
+// where a group regroups after an aborted assault: its home garrison if we
+// still hold it, else the HQ base
+private _fnc_regroupDest = {
+    params ["_rec"];
+    private _home = _rec getOrDefault ["home", ""];
+    if !(_home isEqualType "") then {_home = ""};
+    private _dest = createHashMap;
+    if (_home != "") then {
+        _dest = [_cmd, _home] call AIC_fnc_getObjective;
+        if (count _dest > 0 && {!((_dest getOrDefault ["owner", sideUnknown]) isEqualTo _side)}) then {_dest = createHashMap};
+    };
+    if (count _dest == 0) then {_dest = [_cmd, AIC_BASE_ID] call AIC_fnc_getObjective};
+    if (count _dest == 0) exitWith {[_cmd getOrDefault ["hq", [0, 0, 0]], ""]};
+    [_dest getOrDefault ["pos", _cmd getOrDefault ["hq", [0, 0, 0]]], _dest getOrDefault ["id", ""]]
+};
+
 private _started = 0;
 {
     private _id = _x;
@@ -62,6 +115,33 @@ private _started = 0;
 
     if (count _obj == 0 || {(_obj getOrDefault ["owner", sideUnknown]) isEqualTo _side}
         || {_members isEqualTo [] && {(time - (_assault get "time")) > 60}}) then {
+        _assaults deleteAt _id;
+        continue;
+    };
+
+    // the staff calls the assault off: everybody regroups at home, the way a
+    // released attack ends (AIC_fnc_allocateForces leftovers), and the
+    // objective is left alone for the cooldown
+    if (_breakOff && {_id isEqualTo _adviceAssault}) then {
+        _breakOff = false;
+        _cmd set ["adviceAbortTime", time];
+        _cmd set ["adviceAbort", [time, _id]];
+        _advice set ["abort", _id];
+        ["%1: assault on '%2' called off on the staff's advice, %3 groups regroup", [_side, _id, count _members]] call AIC_fnc_log;
+        {
+            ([_x] call _fnc_regroupDest) params ["_dPos", "_dId"];
+            [_cmd, _x get "group", "DEFEND", _dPos, _dId, true] call AIC_fnc_issueOrder;
+        } forEach _attacking;
+        {
+            // still riding: the transport cycle issues the final order on arrival
+            ([_x] call _fnc_regroupDest) params ["_dPos", "_dId"];
+            private _final = _x getOrDefault ["final", createHashMap];
+            if (_final isEqualType createHashMap) then {
+                _final set ["task", "DEFEND"];
+                _final set ["pos", _dPos];
+                _final set ["objective", _dId];
+            };
+        } forEach _riding;
         _assaults deleteAt _id;
         continue;
     };
@@ -87,11 +167,15 @@ private _started = 0;
         if (_ready > 0 && {(_assault get "firstArrive") < 0}) then {_assault set ["firstArrive", time]};
         private _first = _assault get "firstArrive";
 
+        // the staff says attack now: the first groups in place go without
+        // waiting for the rest
+        private _early = _attackNow && {_ready > 0} && {!_underFire};
         if (
             _underFire
             || {_ready > 0 && {_ready >= (AIC_ASSAULT_READY * _power)}}
             || {_first >= 0 && {(time - _first) > AIC_ASSAULT_WAIT}}
             || {(time - (_assault get "time")) > AIC_ASSAULT_MAX_WAIT}
+            || {_early}
         ) then {
             _assault set ["state", "GO"];
             _assault set ["hasInf", _hasInf];
@@ -100,8 +184,13 @@ private _started = 0;
             // defenders first for a while (AIC_fnc_supportCycle)
             _cmd set ["prepTarget", [_assault get "pos", time]];
             _started = _started + 1;
+            private _note = switch (true) do {
+                case (_underFire): {" (under fire)"};
+                case (_early && {_ready < (AIC_ASSAULT_READY * _power)}): {" (early, on the staff's advice)"};
+                default {""};
+            };
             ["%1: assault on '%2' starts, %3 groups, %4 of %5 power in place%6", [
-                _side, _id, count _members, round _ready, round _power, ["", " (under fire)"] select _underFire
+                _side, _id, count _members, round _ready, round _power, _note
             ]] call AIC_fnc_log;
             {
                 [_cmd, _x get "group", "ATTACK", _assault get "pos", _id, true] call AIC_fnc_issueOrder;
