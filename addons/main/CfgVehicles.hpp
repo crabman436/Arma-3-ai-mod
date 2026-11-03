@@ -195,6 +195,22 @@ class CfgVehicles
                 typeName = "BOOL";
                 defaultValue = "true";
             };
+            class UseJev: Checkbox
+            {
+                property = "AIC_ModuleCommander_UseJev";
+                displayName = "Use Jev decision model";
+                tooltip = "Ask the Jev decision model for judgment calls (needs the aic_jev extension and a TypeSafe API key). Without them the general uses its scripted heuristics alone.";
+                typeName = "BOOL";
+                defaultValue = "true";
+            };
+            class JevWeight: Edit
+            {
+                property = "AIC_ModuleCommander_JevWeight";
+                displayName = "Jev weight";
+                tooltip = "0..1 - how far the general follows the model's advice: 0 = ignore, 1 = follow fully.";
+                typeName = "NUMBER";
+                defaultValue = "0.6";
+            };
             class ModuleDescription: ModuleDescription {};
         };
 

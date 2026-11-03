@@ -184,3 +184,31 @@
 #define AIC_EH_THROTTLE 10
 // min seconds between two side-chat reports of one commander
 #define AIC_REPORT_THROTTLE 20
+
+// ---------------------------------------------------------------- jev decision model
+// name of the native extension (aic_jev_x64.dll / .so next to mod.cpp)
+#define AIC_JEV_EXT "aic_jev"
+// s between presence re-probes while the extension is unavailable, between
+// two failure log lines, and before an unanswered request counts as failed
+#define AIC_JEV_REPROBE 60
+#define AIC_JEV_LOG_THROTTLE 60
+#define AIC_JEV_PENDING_TIMEOUT 60
+// default age (s) past which stored answers are stale for AIC_fnc_jevAnswers
+#define AIC_JEV_ANSWER_MAX_AGE 120
+
+// ---------------------------------------------------------------- Jev advice (AIC_fnc_jevAdvisor and its hooks)
+// a noul answer counts as "yes" above / "no" below these probabilities
+// (allocateForces, assaultCycle, supportCycle)
+#define AIC_ADVICE_YES 0.6
+#define AIC_ADVICE_NO 0.4
+// confidence needed before advice stops or aborts an attack (allocateForces, assaultCycle)
+#define AIC_ADVICE_SURE 0.4
+// risk score (0 safe .. 3 reckless) from which no new attack starts
+#define AIC_ADVICE_RISKY 2.5
+// s after an assault was called off on advice before advice may abort again,
+// and before the planner may attack that objective again (assaultCycle, allocateForces)
+#define AIC_ADVICE_ABORT_COOLDOWN 300
+// casualty log kept for the Jev state: window (s) reported, and the most
+// entries the handlers keep (attachGroupEHs, jevState)
+#define AIC_LOSS_WINDOW 600
+#define AIC_LOSS_LOG_MAX 400

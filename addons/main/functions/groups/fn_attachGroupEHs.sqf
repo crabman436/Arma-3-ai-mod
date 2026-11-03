@@ -19,6 +19,11 @@
             group still has a record, queues the body in the commander's
             "deadQueue" for AIC_fnc_cleanupCycle (if "manageCleanup") and
             calls AIC_fnc_groupEngaged.
+          The UnitKilled, Empty and vehicle MPKilled handlers also append
+          [time, kind, hashValue group] to the commander's "lossLog" (kind
+          "U" unit, "G" group wiped out, "V" vehicle destroyed; at most
+          AIC_LOSS_LOG_MAX entries), the casualty count AIC_fnc_jevState
+          reports to the Jev decision model.
           - "Empty": deletes the record's "lz" / "pickupLz" helipads, marks
             the record "removed" and takes the group out of "groups" (a new
             array), then deletes the group (AIC_fnc_deleteGroup) if
@@ -94,6 +99,11 @@ private _fnc_attachVehicle = {
         _veh setVariable ["AIC_killedAt", time];
         private _cmd = [_veh getVariable ["AIC_side", sideUnknown]] call AIC_fnc_getCommander;
         if (count _cmd == 0) exitWith {};
+        // casualty log for the Jev state (AIC_fnc_jevState): [time, kind, group hash]
+        private _log = _cmd getOrDefault ["lossLog", []];
+        _log pushBack [time, "V", ""];
+        if (count _log > AIC_LOSS_LOG_MAX) then { _log deleteRange [0, count _log - AIC_LOSS_LOG_MAX]; };
+        _cmd set ["lossLog", _log];
         if !(([_cmd, "manageCleanup"] call AIC_fnc_getSetting) isEqualTo true) exitWith {};
         private _queue = _cmd getOrDefault ["deadQueue", []];
         _queue pushBack _veh;
@@ -169,6 +179,11 @@ _group addEventHandler ["UnitKilled", {
     if !(_gd isEqualType createHashMap) exitWith {};
     private _rec = _gd getOrDefault [hashValue _group, createHashMap];
     if (!(_rec isEqualType createHashMap) || { count _rec == 0 }) exitWith {};
+    // casualty log for the Jev state (AIC_fnc_jevState): [time, kind, group hash]
+    private _log = _cmd getOrDefault ["lossLog", []];
+    _log pushBack [time, "U", hashValue _group];
+    if (count _log > AIC_LOSS_LOG_MAX) then { _log deleteRange [0, count _log - AIC_LOSS_LOG_MAX]; };
+    _cmd set ["lossLog", _log];
     if (!isPlayer _unit && { ([_cmd, "manageCleanup"] call AIC_fnc_getSetting) isEqualTo true }) then {
         private _queue = _cmd getOrDefault ["deadQueue", []];
         _queue pushBack _unit;
@@ -189,6 +204,11 @@ _group addEventHandler ["Empty", {
     if (!(_rec isEqualType createHashMap) || { count _rec == 0 }) exitWith {};
 
     [_rec] call AIC_fnc_deleteHelipads;
+    // casualty log for the Jev state (AIC_fnc_jevState): [time, kind, group hash]
+    private _log = _cmd getOrDefault ["lossLog", []];
+    _log pushBack [time, "G", hashValue _group];
+    if (count _log > AIC_LOSS_LOG_MAX) then { _log deleteRange [0, count _log - AIC_LOSS_LOG_MAX]; };
+    _cmd set ["lossLog", _log];
     // a ride ending with everybody dead would otherwise leave no trace in the log
     if ((_rec getOrDefault ["task", ""]) in ["TRANSPORT", "TRANSPORTED"]) then {
         ["%1: group %2 wiped out during a ride (%3)", [side _group, groupId _group, _rec get "task"]] call AIC_fnc_log;

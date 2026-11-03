@@ -4,7 +4,8 @@
     Description:
         One full think step of a commander, in contract order:
         register groups, update groups, gather intel, cluster threats,
-        update objectives, determine stance, score objectives, garrison
+        update objectives, determine stance, score objectives, Jev advice
+        (AIC_fnc_jevAdvisor), garrison
         homes (AIC_fnc_garrisonCycle homes only), allocate forces and issue
         orders, garrison distribution, transports, supply trucks,
         monitor orders, assaults, squad merges, garbage cleanup, dynamic simulation (park / wake), support, debug
@@ -38,6 +39,9 @@ if !(_cmd getOrDefault ["enabled", false]) exitWith {};
 // 6-7. strategy
 [_cmd] call AIC_fnc_determineStance;
 [_cmd] call AIC_fnc_scoreObjectives;
+// 7a. the staff officer: last cycle's Jev answers become "advice", the next
+// batch of questions goes out (answers arrive asynchronously)
+[_cmd] call AIC_fnc_jevAdvisor;
 
 // 8. plan and orders. Garrison homes first (homes only, no orders), so the
 // planner sees which groups hold a garrison even on the very first cycle

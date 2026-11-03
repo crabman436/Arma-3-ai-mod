@@ -125,6 +125,18 @@ class CfgFunctions
             class deleteGroup {};
         };
 
+        class jev
+        {
+            file = "\z\aic\addons\main\functions\jev";
+            class jevInit {};
+            class jevToJSON {};
+            class jevAsk {};
+            class jevCallback {};
+            class jevAnswers {};
+            class jevState {};
+            class jevAdvisor {};
+        };
+
         class ui
         {
             file = "\z\aic\addons\main\functions\ui";

@@ -4,7 +4,8 @@
     Description:
         Returns a fresh HashMap with the default commander settings
         (see CONTRACT.md, "Settings HashMap" and the logistics extension:
-        dynamic simulation, garrisons and transport; garbage management).
+        dynamic simulation, garrisons and transport; garbage management;
+        the Jev decision model).
 
     Parameters:
         None
@@ -60,5 +61,13 @@ createHashMapFromArray [
     ["manageCleanup", true],
     ["cleanupDelay", 300],
     ["cleanupPlayerDistance", 500],
-    ["cleanupMaxPerCycle", 20]
+    ["cleanupMaxPerCycle", 20],
+
+    // --- Jev decision model (CONTRACT.md, "Jev extension")
+    ["jevEnabled", true],
+    ["jevWeight", 0.6],
+    ["jevMinConfidence", 0.3],
+    ["jevInterval", 0],
+    ["jevModel", "jev-latest"],
+    ["jevMaxPerMinute", 30]
 ]

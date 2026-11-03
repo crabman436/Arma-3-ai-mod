@@ -8,7 +8,9 @@
         "BASE_HQ" at the HQ (isBase = true, owner = own side) and starts
         the commander loop. If "manageDynSim" is on, the engine's dynamic
         simulation system is enabled (and the group activation distance is
-        set from "dynSimDistance" when > 0).
+        set from "dynSimDistance" when > 0). If "jevEnabled" is on, the
+        Jev decision-model extension is probed (AIC_fnc_jevInit) and its
+        availability logged.
         If the side already has a commander, that commander is returned
         unchanged.
         HQ: the base marker of the side (aic_base_<side>*, case-insensitive)
@@ -88,6 +90,10 @@ _settings set ["transportSearchRadius", (_settings get "transportSearchRadius") 
 _settings set ["cleanupDelay", (_settings get "cleanupDelay") max 0];
 _settings set ["cleanupPlayerDistance", (_settings get "cleanupPlayerDistance") max 0];
 _settings set ["cleanupMaxPerCycle", (round (_settings get "cleanupMaxPerCycle")) max 0];
+_settings set ["jevWeight", ((_settings get "jevWeight") max 0) min 1];
+_settings set ["jevMinConfidence", ((_settings get "jevMinConfidence") max 0) min 1];
+_settings set ["jevInterval", (_settings get "jevInterval") max 0];
+_settings set ["jevMaxPerMinute", (round (_settings get "jevMaxPerMinute")) max 1];
 
 // --- commander state
 private _cmd = createHashMapFromArray [
@@ -195,6 +201,18 @@ if (([_cmd, "manageDynSim"] call AIC_fnc_getSetting) isEqualTo true) then {
         "Group" setDynamicSimulationDistance _dsDist;
     };
     ["createCommander: dynamic simulation managed for %1 (group distance %2)", [_side, dynamicSimulationDistance "Group"]] call AIC_fnc_log;
+};
+
+// --- Jev decision model: probe the extension once (idempotent); the advisor
+// falls back to the scripted heuristics while it is unavailable
+if (([_cmd, "jevEnabled"] call AIC_fnc_getSetting) isEqualTo true) then {
+    private _jevOk = [] call AIC_fnc_jevInit;
+    private _jevReason = (AIC_ns getOrDefault ["jev", createHashMap]) getOrDefault ["reason", ""];
+    ["createCommander: Jev advisor for %1 %2 (%3)", [
+        _side,
+        ["unavailable, scripted heuristics only", "available"] select _jevOk,
+        _jevReason
+    ]] call AIC_fnc_log;
 };
 
 // --- start thinking

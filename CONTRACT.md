@@ -681,3 +681,30 @@ private _id = ["myTag", createHashMapFromArray [["road","narrow valley road, for
 private _a = ["myTag"] call AIC_fnc_jevAnswers;   // {} until answered
 if (count _a > 0) then { diag_log ((_a get "ambush") get "value") };
 ```
+
+### SQF client implementation notes (where the code adds to the above)
+
+- `jevInit` also calls `["status", []]`: `"nokey"` makes Jev unavailable
+  (`reason` says so) even though the extension is loaded. Every call
+  re-probes; `jevAsk` re-probes at most every `AIC_JEV_REPROBE` (60) s while
+  unavailable, so a key set at runtime is picked up. A change in
+  availability is logged once.
+- Extra keys in `AIC_ns "jev"`: `"probeTime"` (last probe), `"askTimes"`
+  (request times of the last minute, the rate guard), `"failLogTime"`
+  (log throttle), `"lastError"` (`[time, id, tag, message]` of the last
+  failed request).
+- `pending` is keyed by the numeric id; records older than
+  `AIC_JEV_PENDING_TIMEOUT` (60) s are dropped by the next `jevAsk` and
+  counted as failed. `stats "tokens"` is an estimate: a quarter of the
+  request body's characters (the extension reports no usage).
+- `jevAsk` reads `jevMaxPerMinute` and the default `jevModel` from the
+  defaults (`[createHashMap, key] call AIC_fnc_getSetting`): the guard is
+  per server, not per commander; a commander's own `jevModel` is passed as
+  the optional 4th parameter.
+- `jevCallback` stores a new HashMap per answer (never edits the previous
+  one) and leaves `"_time"` / `"_latency"` beside the qid keys: readers
+  skip keys starting with `_`. A `callExtension` error on `ask` marks Jev
+  unavailable until the next re-probe.
+- Constants in `script_component.hpp`: `AIC_JEV_EXT`, `AIC_JEV_REPROBE`,
+  `AIC_JEV_LOG_THROTTLE`, `AIC_JEV_PENDING_TIMEOUT`,
+  `AIC_JEV_ANSWER_MAX_AGE` (120, the `jevAnswers` default).
