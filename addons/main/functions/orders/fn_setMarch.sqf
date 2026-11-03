@@ -51,7 +51,8 @@ if (_vehicles isEqualTo []) exitWith {_on};
 
 {
     _x forceFollowRoad _on;
-    _x limitSpeed -1;
+    // documented reset: a negative value does not clear the cap (it caps at 1 km/h)
+    _x limitSpeed (2 * getNumber (configOf _x >> "maxSpeed"));
     if (_on) then {_x setConvoySeparation AIC_CONVOY_SEPARATION};
 } forEach _vehicles;
 if (_on && {count _vehicles > 1}) then {(vehicle (leader _group)) limitSpeed AIC_CONVOY_SPEED};
