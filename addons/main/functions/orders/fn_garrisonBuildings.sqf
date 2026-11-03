@@ -105,9 +105,13 @@ private _fnc_claim = {
 private _guns = 0;
 if (_manStatics) then {
     private _maxGuns = floor (_total / 2);
+    // static weapons are entities: the spatial query, nearest first (the
+    // group mans the guns of its own ground before those farther out)
+    private _statics = (_c nearEntities [["StaticWeapon"], _radius]) apply {[_x distance2D _c, _x]};
+    _statics sort true;
     {
         if (_guns >= _maxGuns) exitWith {};
-        private _static = _x;
+        private _static = _x select 1;
         private _owner = _static getVariable ["AIC_gunner", objNull];
         if (
             alive _static
@@ -126,7 +130,7 @@ if (_manStatics) then {
             _static setVariable ["AIC_gunner", _unit];
             _guns = _guns + 1;
         };
-    } forEach (nearestObjects [_c, ["StaticWeapon"], _radius]);
+    } forEach _statics;
 };
 
 // --- 2. sentries at the edge ---------------------------------------------------
