@@ -816,3 +816,59 @@ if (count _a > 0) then { diag_log ((_a get "ambush") get "value") };
 - Constants in `script_component.hpp`: `AIC_JEV_EXT`, `AIC_JEV_REPROBE`,
   `AIC_JEV_LOG_THROTTLE`, `AIC_JEV_PENDING_TIMEOUT`,
   `AIC_JEV_ANSWER_MAX_AGE` (120, the `jevAnswers` default).
+
+---
+
+# Realism extension: recon, morale, tempo, rally points, weather, phased assaults, QRF
+
+Builds on the belief-state intel already in place (objective `estPower`/`estTime`/`prevOwner`, ownership only changes when observed). All of it is optional per setting; with a setting off the previous behaviour is unchanged.
+
+## A. Reconnaissance (owner: strategy/orders)
+
+- Setting `"useRecon"` (true). Module attribute `UseRecon` (checkbox).
+- Objective keys: `"reconTime"` (time of the last completed recon, -1e6 default), `"reconGroup"` (hashValue of the group on the job or "").
+- `allocateForces`: before creating a NEW attack on an objective with priority ≥ `AIC_RECON_MIN_PRIORITY` (2) whose `estTime` is older than `AIC_RECON_MAX_AGE` (900 s) and `reconTime` older than the same, it emits a `RECON` assignment instead of the attack (one per objective, at most `AIC_RECON_MAX_JOBS` (2) per cycle): the cheapest suitable group (MOTOR preferred, else the smallest INF, never a garrison below its desired strength — `canLeaveGarrison`), not already on a job. The attack is created on a later cycle once the recon has refreshed `estTime`/`reconTime` (or `reconTime` is set by timeout).
+- New task value `"RECON"`. `issueOrder` dispatches it to `AIC_fnc_orderRecon [group, objectivePos, radius]`: pick an overwatch point `AIC_RECON_STANDOFF_MIN..MAX` (600–900 m) from the objective with line of sight using `selectBestPlaces` (hills + forest edge, as `orderAssault` does), MOVE there in STEALTH/AWARE, then HOLD. Infantry dismount at the overwatch point.
+- `monitorOrders`: RECON completes when the group has been at its point for `AIC_RECON_DWELL` (240 s) or when `gatherIntel` has refreshed the objective's `estTime` since the job started; on completion set `reconTime = time`, clear `reconGroup`, task → IDLE. Timeout `AIC_RECON_TIMEOUT` (900 s) also sets `reconTime`. A RECON group that gets engaged (`lastEngaged`) falls back to the rally point (see C) and the job completes (the contact itself is the intel).
+- `gatherIntel`: contacts observed by a RECON group count as a confirmation of the objective they are within `radius + 500` of (refresh `estTime`, update `estPower`).
+- `availableGroups` excludes `RECON`.
+
+## B. Morale (owner: groups)
+
+- Setting `"useMorale"` (true). Module attribute `UseMorale`.
+- Group record keys: `"morale"` (0..1, starts 1), `"moraleTime"`, `"leaderLost"` (bool, set by the UnitKilled handler when the killed unit was the leader at registration), `"brokenUntil"` (time).
+- `updateGroups` recomputes morale each cycle: starts from `strength`; −0.15 if `leaderLost` (cleared after `AIC_MORALE_LEADER_RECOVER` 600 s); −0.1 per 10 % of strength lost within the last `AIC_LOSS_WINDOW` (from `lossLog`); recovers +0.05 per cycle when not engaged (`lastEngaged` older than 120 s) and within an owned objective; capped 0..1. Veteran skill: +0.1 × average `skill` of the group.
+- Consequences:
+  - `morale < AIC_MORALE_BREAK` (0.35): the group is **broken**: `brokenUntil = time + AIC_MORALE_BROKEN_TIME` (600 s), `allowFleeing 0.6`, it gets a RETREAT to its rally point (see C) through `issueOrder` with force, and `availableGroups`/`canLeaveGarrison` exclude it until `brokenUntil`.
+  - `morale < AIC_MORALE_SHAKY` (0.6): `allowFleeing 0.3`, excluded from NEW attack assignments (still defends/patrols).
+  - otherwise `allowFleeing 0`.
+- The assault abort rule in `assaultCycle` also counts: if the average morale of the attackers < `AIC_MORALE_SHAKY`, abort as a failed assault.
+
+## C. Rally points and retreat routes (owner: orders)
+
+- `AIC_fnc_rallyPoint` — `[cmd, group, threatPos(optional)] call` → position. The nearest OWN objective or held base that is not contested and is "behind" the group: if a threat position is given (or the nearest threat cluster within 1500 m), candidates whose bearing from the group is within ±60° of the threat bearing are rejected unless nothing else exists; falls back to `hq`. Never returns the objective the group is currently retreating from.
+- `orderRetreat` gains an optional 4th param `fromPos`: when given, the waypoint path avoids known threats — the first waypoint is a point 300 m away from the group opposite to `fromPos`, then the rally point. On arrival, behaviour AWARE and the group is handed back to the garrison system (`home` = that objective).
+- `allocateForces` and the morale break use `AIC_fnc_rallyPoint` for every RETREAT it issues instead of `hq`.
+
+## D. Tempo: order delays and planning cadence (owner: core/orders)
+
+- Setting `"orderDelay"` (1.0; a multiplier, 0 = instant, as before).
+- `AIC_fnc_queueOrder` — `[cmd, group, task, pos, objectiveId, force] call`. Computes a delay and stores the order in commander `"orderQueue"` (array of `[dueTime, group, task, pos, objectiveId, force]`), replacing any queued order for the same group. Delay = `orderDelay × (base + distance factor)`:
+  - DEFEND/PATROL of the group's own home, RETREAT, RTB, any forced order: 0 s
+  - DEFEND/REINFORCE elsewhere: `AIC_DELAY_MOVE` (30 s) + 10 s per km from the HQ
+  - ATTACK / RECON: `AIC_DELAY_ATTACK` (90 s) + 10 s per km; SUPPORT: 20 s
+  - The group's current task continues until the order is due.
+- `AIC_fnc_drainOrders` — `[cmd] call`, from `commanderCycle` right after the plan is issued (and also at the start of the cycle so orders due during the sleep go out promptly): issues every due order through `issueOrder`.
+- `commanderCycle`: the plan loop calls `queueOrder` instead of `issueOrder`; everything else (garrison, transport, assault) still calls `issueOrder` directly (those are reactions, not new plans).
+- `report` tells players when a delayed attack order goes out ("Attack on X: orders issued").
+
+## E. Weather and night (owner: support/strategy)
+
+- `supportCycle`: no CAS tasking when `fog > AIC_CAS_MAX_FOG` (0.4) or `rain > AIC_CAS_MAX_RAIN` (0.6); helicopters not tasked when `wind` magnitude > `AIC_HELI_MAX_WIND` (12 m/s). Artillery unaffected.
+- `assaultFor`/`assaultCycle`: an assault on an urban objective (`urban` flag already on targets) prefers to GO at night (`sunOrMoon < 0.5`) when `"nightAssaults"` (true) is set and night is less than `AIC_NIGHT_WAIT_MAX` (1800 s) away (`[] call AIC_fnc_timeToNight` helper → seconds, using `daytime` and the map's sunrise/sunset via `date`/`BIS_fnc_sunriseSunsetTime` if available, else 06:00/20:00); the staged assault holds at the assembly area until then unless the Jev `attack_now` advice says go. Garrisons double their sentries at night (`garrisonBuildings` already places sentries; multiply the count by 2 after dark).
+
+## F. Phased assaults, reserve and QRF (owner: strategy/logistics; built AFTER A–E)
+
+- Assault record gains `"roles"`: HashMap hashValue → `"SBF"` (support by fire: vehicles and one MG-heavy INF team, on overwatch), `"ASSAULT"` (two thirds of the infantry), `"RESERVE"` (the rest, held at the assembly area). Roles are assigned when the assault goes GO. `orderAssault` keeps the SBF on its overwatch position, sends ASSAULT in, and holds RESERVE at the stage.
+- `assaultCycle` commits the RESERVE when: the assault has been in GO for `AIC_RESERVE_COMMIT_TIME` (240 s) without capture, or the ASSAULT members' power dropped below 60 % of their GO power, or the Jev `commit_reserve` advice says so. A committed reserve gets the ATTACK order.
+- QRF: setting `"useQRF"` (true). `garrisonCycle` marks, per held base, the best available MOTOR/MECH group as `"role" = "QRF"` (group record); QRF groups are excluded from transfers, patrols and new attack assignments. `allocateForces` prefers the QRF as the REINFORCE candidate for any DEFEND target within `AIC_QRF_RANGE` (5 km) of its base; after the target is no longer threatened for 300 s it RTBs and becomes QRF again.
