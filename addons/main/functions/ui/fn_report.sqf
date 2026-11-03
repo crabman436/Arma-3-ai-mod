@@ -22,7 +22,7 @@
             to another (set by the garrison system), grouped by from/to
             ("Moving 2 groups from Base to X to reinforce the garrison");
             groups that also left by transport are only reported once.
-            ("groupState": hashValue group -> [task, home]; groups not in
+            ("groupState": hashValue group -> [task, home, broken]; groups not in
             the previous baseline are never announced)
           - Jev advice that changed a decision (AIC_fnc_jevAdvisor hooks):
             an attack held back ("advice" "hold_target" / "hold_reason":

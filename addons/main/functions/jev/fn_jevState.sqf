@@ -33,9 +33,10 @@
             while attacking it)} since it was planned, "riding",
             "night_hold" (it waits at the assembly area for the night,
             assault "nightHold"), "staging_reason" (why a STAGE assault
-            still waits: assault "stagingReason" when set, else "night",
-            "riding", "approaching" (nobody at the assembly area yet) or
-            "forming"; "" in GO), "roles" {"sbf", "assault", "reserve"}
+            still waits: assault "stagingReason" (AIC_fnc_assaultCycle:
+            "night", "prep fire", "riding", "approaching", "forming", "")
+            when set, else derived the same way without "prep fire";
+            "" in GO), "roles" {"sbf", "assault", "reserve"}
             (group counts, assault "roles" handed out at GO), "reserve"
             ("none", "held", or "committed", assault "reserveCommitted")},
             or "none"

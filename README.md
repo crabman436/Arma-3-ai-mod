@@ -46,9 +46,13 @@ side to let two AI generals fight each other.
   threat clusters, then return to loiter near HQ. Air tasking also has a
   cooldown.
 - **Player reports**: short HQ messages in side chat about posture changes,
-  objectives captured or lost, new major enemy forces, fire missions and CAS.
-  Only players on the commander's side receive them, at most one situation
-  report per 20 s.
+  objectives captured or lost, new major enemy forces, fire missions and CAS,
+  delayed attack orders going out, reserves committed, failed or called-off
+  assaults, waits for darkness, recon results and groups that broke ("An
+  infantry group broke and fell back"). An OFFENSIVE posture is announced as
+  "we take the initiative, garrisons hold". Only players on the commander's
+  side receive them, at most one situation report per 20 s, three items per
+  message; the rest follow in the next ones ("(N more to follow)").
 - **Debug map**: optional markers show HQ, objectives (coloured by owner, with
   their score), threat clusters, each group's task and a line to its target.
 
@@ -368,7 +372,18 @@ one by one. They gather in an **assembly area** about 750 m out, on the side
 the first group comes from. Each group goes to its own lane there, with vehicles behind the infantry,
 and transports drop their troops there. The assault starts when 70 % of its
 power has arrived, three minutes after the first group got there, after eight
-minutes in any case, or at once if a waiting group comes under fire.
+minutes in any case, or at once if a waiting group comes under fire. When the
+side has artillery, the guns shell the objective once half the force is at
+the assembly area, and the assault waits 90 s for that fire before it goes in
+(not when it is under fire or the staff says attack now). An assault that has
+waited 30 minutes since it was planned goes anyway, unless its groups are
+still making their way there (then the 30 minutes count from the first
+arrival). The clocks of a running assault (reserve, escalation, abort) start
+when its first assault group comes within 300 m of the objective's edge, at
+the latest 15 minutes after it went in. A failed or called-off assault cancels
+the attack orders still waiting for that objective, and HQ says so ("Assault
+on X failed - the troops regroup", "... called off - the attackers are
+shaken"); the place is then left alone for a while.
 
 Infantry then comes in at a walk, in line, on a broad front. A built-up place is
 taken by infantry: the planner picks infantry first, and vehicles stop about
@@ -639,7 +654,8 @@ changed its mind, held the attack or released the group), and an attack order
 when its objective has been taken, its last assault failed or was called off,
 or the staff holds new attacks there. Garrison routine (defend, patrol) does
 not cancel a waiting order, and a group with an order waiting is not used as
-a garrison transfer or a ride. Players hear "Attack
+a garrison transfer or a ride. A quick-reaction force is called like a
+support job: 20 s, whatever the distance. Players hear "Attack
 on X: orders issued" when a delayed attack goes out. `orderDelay` scales all
 of it; 0 gives every order at once, as before.
 
@@ -652,12 +668,18 @@ motorised group before infantry, never a garrison below strength, never a
 shaken group). It moves to a spot 600-900 m out on high ground at the edge of
 the woods that can see the place, creeps the last stretch in stealth, unloads
 its infantry and watches with weapons tight. The job ends after 4 minutes on
-the spot, as soon as it reports enemies it has seen there itself (the
-estimate of the defenders is updated), or after 15 minutes in any case; a
+the spot, or as soon as it reports enemies it has seen there itself (the
+estimate of the defenders is updated); HQ reports "Recon of X: N contacts",
+"no contacts" or "the scouts were lost". A scout that has not reached its spot
+within 15 minutes plus about 1.2 s per metre of the way gives up without a
+report, and another may be sent. Scouts within 2 km are preferred, and a
+scout whose way would pass close by the place makes a detour around it; a
 scout that is shot at (not merely one that spots the enemy) falls back to its
 rally point - the contact is the report. A scout killed on the job also
 counts as a look at the place, so no second scout walks into the same fire
-at once. The attack is planned on
+at once. A recon is sent even to a place the general cannot attack yet, or
+while the staff holds new attacks: scouting is how a wrong guess about its
+defenders is corrected. The attack is planned on
 the next cycle after that. At most two new scouts go out per cycle; with no
 group to spare, the attack goes ahead unscouted.
 
@@ -690,10 +712,12 @@ infantry goes in, every group gets a job:
   infantry groups there is no reserve (in practice it takes four: one is the
   machine-gun team and two thirds of two rounds up to two).
 
-The reserve is committed when the place has not fallen ten minutes after
-the assault groups reached it, when the assaulting groups are down to 60 % of their
-strength, or when the Jev staff advises committing the reserve; HQ reports
-"Reserve committed on X". A stalling assault sends in the reserve before it
+The reserve is committed when the assaulting groups (every attacking group
+that is not support by fire or reserve, split fireteams included) are down to
+60 % of their strength, when one of them gets inside the objective (to exploit
+it), when the Jev staff advises committing the reserve, or when the place has
+not fallen ten minutes after the assault groups reached it; HQ reports
+"Reserve committed on X" (with "on the staff's advice" when it was). A stalling assault sends in the reserve before it
 sends the vehicles on overwatch in. Groups that arrive later simply attack.
 
 **Quick-reaction forces** (`useQRF`, with `manageGarrisons`). Every base the
@@ -702,9 +726,11 @@ base, at 70 % strength or more and not shaken as its quick-reaction force
 (QRF). The QRF does not patrol, is never moved to another garrison, never
 gives rides and never joins an attack or a recon. It comes on top of the
 base's guard: the base keeps its full guard whether the QRF is home or out. When a place of ours within
-5 km of its base is threatened, it is the first group sent to reinforce it.
-Five minutes after the last enemy force near that place was seen (at once if
-the enemy took it) it drives back to its base and is the QRF again. A QRF
+5 km of its base is threatened, it is the first group sent to reinforce it,
+and it leaves after 20 s instead of the usual order delay. It stays while the
+place is contested; five minutes after the last enemy force near that place
+was seen (at once if the enemy took it) it drives back to its base and is the
+QRF again. A QRF
 that breaks, retreats or gets a new home loses the role, and the base picks a
 new one.
 
@@ -773,16 +799,22 @@ fully) and only answers with confidence of at least `jevMinConfidence` count
   middle. The hysteresis stays.
 - **Main effort**: that objective's score is multiplied by (1 + w·c), so the
   planner staffs it first and the assault forms there.
-- **Commit the reserve** (p > 0.5): the share kept back shrinks by
-  w·(2p − 1)·0.75 (never below 5 %); with garrisons on, the bases' guard
-  shrinks by the same share for that planning step.
+- **Commit the reserve**: in a running assault, p > 0.6 with confidence ≥
+  0.4 sends the assault's own reserve groups in (HQ: "Reserve committed on X
+  on the staff's advice", only when a group actually went). Besides, p > 0.5
+  shrinks the share the planner keeps back by w·(2p − 1)·0.75 (never below
+  5 %; with garrisons on, the bases' guard shrinks by the same share for that
+  planning step); that cut announces nothing.
 - **Hold**: `attack_now` below 0.4, `intel_stale` above 0.6, or `risk` of at
   least 2.5 with confidence 0.4 means no *new* attack is started that cycle.
-  Attacks already under way continue.
+  Attacks already under way continue, and scouts still go out. When the
+  reason is old intel, scouts go to any objective whatever its priority, and
+  a place scouted within the last 15 minutes is not held.
 - **Break off** (p > 0.6, confidence ≥ 0.4): the assault the staff was asked
   about is called off the way a failed one ends: its groups regroup at their
   home garrison, the objective is left alone for 300 s, and no second abort
-  happens within those 300 s. `attack_now` above 0.6 lets a staging assault
+  happens within those 300 s (the place is then left alone for the usual
+  failed-assault cooldown too). `attack_now` above 0.6 lets a staging assault
   go as soon as the first group is at the assembly area.
 - **Preparatory fires** (p > 0.6): while the main effort's assault is still
   forming up, the artillery shells its defenders (or the objective centre
@@ -790,8 +822,8 @@ fully) and only answers with confidence of at least `jevMinConfidence` count
   danger-close checks.
 - **Reports**: when advice changes a decision the HQ message says so:
   "Attack on Agia Marina postponed - intel too old", "Assault on X called off
-  - the staff judges it failing", "Reserve committed to the fight on the
-  staff's advice".
+  - the staff judges it failing", "Reserve committed on X on the staff's
+  advice".
 
 ### Installing the extension and the key
 
