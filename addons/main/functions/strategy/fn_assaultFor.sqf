@@ -15,6 +15,9 @@
  *     "urban"       - the objective is built up
  *     "hasInf"      - infantry is part of the assault
  *     "slots"       - lanes handed out so far
+ *     "nightHold"   - the assault waits at the assembly area for the night
+ *                     (setting "nightAssaults", urban objectives only;
+ *                     AIC_fnc_assaultCycle sets it)
  *   The assembly area is objective radius / 2 + 600 m out, on the first
  *   group's side (the HQ's side if that group is already close), or up to 90
  *   degrees around if that spot is wet or has an enemy known within 300 m,
@@ -108,7 +111,8 @@ private _assault = createHashMapFromArray [
     ["firstArrive", -1],
     ["urban", _urban],
     ["hasInf", true],
-    ["slots", 0]
+    ["slots", 0],
+    ["nightHold", false]
 ];
 _assaults set [_objective, _assault];
 

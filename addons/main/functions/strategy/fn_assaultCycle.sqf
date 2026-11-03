@@ -23,8 +23,19 @@
  *   go in. AIC_ASSAULT_ABORT s after GO it is called off: its groups regroup
  *   like an advised abort (below) and the objective's "failedUntil" is set
  *   AIC_ASSAULT_FAIL_COOLDOWN s ahead (no new attack on it until then).
+ *   Morale (setting "useMorale"): when the average record "morale" (default
+ *   1) of the groups on ATTACK at the objective falls below
+ *   AIC_MORALE_SHAKY, the assault is called off as failed the same way, in
+ *   either state.
  *   An assault ends when the objective is taken or has no members left;
  *   its "attackBoost" is then cleared.
+ *   Night (setting "nightAssaults"): a staging assault on a built-up
+ *   objective ("urban") holds at the assembly area while night
+ *   (AIC_fnc_timeToNight) is less than AIC_NIGHT_WAIT_MAX s away, then goes
+ *   by the usual rules once it is dark (assault "nightHold" is true while it
+ *   waits). It goes at once all the same when a waiting group comes under
+ *   fire or the staff advises attack_now, and in any case once it has
+ *   existed for AIC_ASSAULT_MAX_TOTAL + AIC_NIGHT_WAIT_MAX s.
  *   Jev advice (commander "advice", AIC_fnc_jevAdvisor; "jevWeight" 0 =
  *   off): break_off p > AIC_ADVICE_YES with confidence >= AIC_ADVICE_SURE
  *   calls off the assault the staff was asked about ("advice" "_assault"):
@@ -57,6 +68,9 @@ private _assaults = _cmd getOrDefault ["assaults", createHashMap];
 if (count _assaults == 0) exitWith {0};
 
 private _side = _cmd getOrDefault ["side", sideUnknown];
+private _useMorale = ([_cmd, "useMorale"] call AIC_fnc_getSetting) isEqualTo true;
+private _nightAssaults = ([_cmd, "nightAssaults"] call AIC_fnc_getSetting) isEqualTo true;
+private _toNight = -1; // AIC_fnc_timeToNight, asked once per cycle when needed
 private _groupData = _cmd getOrDefault ["groupData", createHashMap];
 private _records = (values _groupData) select {
     _x isEqualType createHashMap
@@ -139,6 +153,18 @@ private _started = 0;
     // GO for too long without a capture: a siege that goes nowhere is called off
     private _goAge = time - (_assault getOrDefault ["goTime", time]);
     private _failed = (_assault get "state") isEqualTo "GO" && {_goAge > AIC_ASSAULT_ABORT};
+    // the attackers have lost heart (AIC_fnc_updateGroups "morale")
+    private _shaken = false;
+    if (_useMorale && {_attacking isNotEqualTo []}) then {
+        private _sum = 0;
+        {
+            private _m = _x getOrDefault ["morale", 1];
+            if !(_m isEqualType 0) then {_m = 1};
+            _sum = _sum + _m;
+        } forEach _attacking;
+        _shaken = (_sum / (count _attacking)) < AIC_MORALE_SHAKY;
+    };
+    if (_shaken) then {_failed = true};
 
     // the staff calls the assault off (or it failed): everybody regroups at
     // home, the way a released attack ends (AIC_fnc_allocateForces
@@ -146,7 +172,11 @@ private _started = 0;
     if (_failed || {_breakOff && {_id isEqualTo _adviceAssault}}) then {
         if (_failed) then {
             _obj set ["failedUntil", time + AIC_ASSAULT_FAIL_COOLDOWN];
-            ["%1: assault on '%2' has failed after %3 s, %4 groups regroup", [_side, _id, round _goAge, count _members]] call AIC_fnc_log;
+            if (_shaken) then {
+                ["%1: assault on '%2' is called off, the attackers are shaken, %3 groups regroup", [_side, _id, count _members]] call AIC_fnc_log;
+            } else {
+                ["%1: assault on '%2' has failed after %3 s, %4 groups regroup", [_side, _id, round _goAge, count _members]] call AIC_fnc_log;
+            };
         } else {
             _breakOff = false;
             _cmd set ["adviceAbortTime", time];
@@ -203,17 +233,31 @@ private _started = 0;
         // the staff says attack now: the first groups in place go without
         // waiting for the rest
         private _early = _attackNow && {_ready > 0} && {!_underFire};
+        // a town is taken in the dark: wait for the night when it is close
+        private _nightWait = _nightAssaults && {(_assault getOrDefault ["urban", false]) isEqualTo true}
+            && {!_attackNow} && {!_underFire}
+            && {(time - (_assault get "time")) < (AIC_ASSAULT_MAX_TOTAL + AIC_NIGHT_WAIT_MAX)}
+            && {
+                if (_toNight < 0) then {_toNight = [] call AIC_fnc_timeToNight};
+                _toNight > 0 && {_toNight < AIC_NIGHT_WAIT_MAX}
+            };
+        if (_nightWait isNotEqualTo ((_assault getOrDefault ["nightHold", false]) isEqualTo true)) then {
+            _assault set ["nightHold", _nightWait];
+            if (_nightWait) then {
+                ["%1: assault on '%2' waits for the night (%3 s)", [_side, _id, round _toNight]] call AIC_fnc_log;
+            };
+        };
         // the clocks run from the first arrival, not from the planning: a
         // long ride does not make the assault go with nobody in place; and
         // while members still ride there the short wait holds
-        if (
+        if (!_nightWait && {
             _underFire
             || {_ready > 0 && {_ready >= (AIC_ASSAULT_READY * _power)}}
             || {_first >= 0 && {(time - _first) > AIC_ASSAULT_WAIT} && {_riding isEqualTo []}}
             || {_first >= 0 && {(time - _first) > AIC_ASSAULT_MAX_WAIT}}
             || {(time - (_assault get "time")) > AIC_ASSAULT_MAX_TOTAL}
             || {_early}
-        ) then {
+        }) then {
             _assault set ["state", "GO"];
             _assault set ["hasInf", _hasInf];
             _assault set ["goTime", time];
