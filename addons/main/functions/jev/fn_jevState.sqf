@@ -28,7 +28,7 @@
             BASE_HQ and base objectives; without garrisons, groups within
             400 m of HQ on DEFEND / IDLE / PATROL)
           "transit": groups riding a transport
-          "clock", "light" (sunOrMoon %), "night", "fog", "rain" (0..100)
+          "clock" ("HH:MM", zero-padded), "light" (sunOrMoon %), "night", "fog", "rain" (0..100)
           "intel": {"contacts", "newest", "oldest" (s), "types"}
           "prev_advice": what the general did with the last advice
             (commander key "adviceLast", written by AIC_fnc_jevAdvisor)
@@ -320,6 +320,10 @@ private _enemyPower = [_cmd getOrDefault ["enemyPower", 0], 0] call _fnc_num;
 private _light = sunOrMoon;
 private _prev = _cmd getOrDefault ["adviceLast", createHashMap];
 if !(_prev isEqualType createHashMap) then { _prev = createHashMap; };
+// "HH:MM", zero-padded
+private _hours = floor daytime;
+private _minutes = floor ((daytime - _hours) * 60) min 59;
+private _clock = format ["%1%2:%3%4", ["", "0"] select (_hours < 10), _hours, ["", "0"] select (_minutes < 10), _minutes];
 
 createHashMapFromArray [
     ["side", str _side],
@@ -338,7 +342,7 @@ createHashMapFromArray [
     ["assault_id", _assaultId],
     ["reserve", round _reserve],
     ["transit", _transit],
-    ["clock", format ["%1:%2", floor daytime, (floor ((daytime - floor daytime) * 60)) toFixed 0]],
+    ["clock", _clock],
     ["light", round (_light * 100)],
     ["night", _light < 0.5],
     ["fog", round (fog * 100)],

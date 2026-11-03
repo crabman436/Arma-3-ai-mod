@@ -11,13 +11,18 @@
         [qid, type, value, confidence, probsArray] entries that are stored
         in AIC_ns "jev" "answered" under the tag as a HashMap
             qid -> {"type", "value", "confidence", "probs" (HashMap key -> p)}
-        plus "_time" (time of the answer) and "_latency" (s since asked).
+        plus "_time" (time of the answer), "_latency" (s since asked) and
+        "_assault" (the "assault_id" of the request's state when that is a
+        HashMap, else "").
         A new HashMap replaces the previous answers of the tag, so a reader
         holding the old one is never changed under its feet. On failure
         payload is the error message; it is kept in "lastError"
         ([time, id, tag, message]) and logged at most once per
         AIC_JEV_LOG_THROTTLE s. Malformed data is dropped (and counted as
-        failed) without throwing. Stats: "answered" / "failed".
+        failed) without throwing. Stats: "answered" / "failed" /
+        "failStreak" (failures in a row: reset by a stored answer; at
+        AIC_JEV_FAIL_STREAK Jev is marked unavailable until the next
+        re-probe, see AIC_fnc_jevAsk).
 
     Parameters:
         0: STRING - extension name (only "aic_jev" is handled)
@@ -48,12 +53,26 @@ private _logFailure = {
         [_msg, _args] call AIC_fnc_log;
     };
 };
+// a failed request: counted, and after AIC_JEV_FAIL_STREAK in a row Jev is
+// marked unavailable until the next re-probe (same rule as in AIC_fnc_jevAsk)
+private _fnc_failed = {
+    params ["_why"];
+    _stats set ["failed", (_stats getOrDefault ["failed", 0]) + 1];
+    private _streak = (_stats getOrDefault ["failStreak", 0]) + 1;
+    _stats set ["failStreak", _streak];
+    if (_streak >= AIC_JEV_FAIL_STREAK && { (_jev getOrDefault ["available", false]) isEqualTo true }) then {
+        _jev set ["available", false];
+        _jev set ["reason", format ["%1 failed requests in a row, last: %2", _streak, _why]];
+        _jev set ["probeTime", time];
+        ["Jev unavailable: %1", [_jev get "reason"]] call AIC_fnc_log;
+    };
+};
 
 // --- parse: anything but [id, bool, payload] is malformed
 private _parsed = [];
 if (_data isNotEqualTo "") then { _parsed = parseSimpleArray _data; };
 if (!(_parsed isEqualType []) || { count _parsed < 3 }) exitWith {
-    _stats set ["failed", (_stats getOrDefault ["failed", 0]) + 1];
+    ["malformed callback data"] call _fnc_failed;
     ["Jev: malformed callback data (%1 chars)", [count _data]] call _logFailure;
     false
 };
@@ -74,7 +93,7 @@ private _asked = _req getOrDefault ["time", time];
 // --- failure: the extension passes the HTTP status and detail as the payload
 if (!_ok || { isNil "_payload" } || { !(_payload isEqualType []) }) exitWith {
     private _msg = if (!isNil "_payload" && { _payload isEqualType "" }) then { _payload } else { "no payload" };
-    _stats set ["failed", (_stats getOrDefault ["failed", 0]) + 1];
+    [_msg] call _fnc_failed;
     _jev set ["lastError", [time, _id, _tag, _msg]];
     ["Jev: request %1 (%2) failed: %3", [_id, _tag, _msg]] call _logFailure;
     false
@@ -104,14 +123,24 @@ private _answers = createHashMap;
 } forEach _payload;
 
 if (count _answers == 0) exitWith {
-    _stats set ["failed", (_stats getOrDefault ["failed", 0]) + 1];
+    ["answer without usable answers"] call _fnc_failed;
     ["Jev: request %1 (%2) answered without usable answers", [_id, _tag]] call _logFailure;
     false
 };
 
 _answers set ["_time", time];
 _answers set ["_latency", time - _asked];
+// the assault the questions were about travels with the request (jevAsk keeps
+// the state in the pending record), so a late answer names the right assault
+private _reqState = _req getOrDefault ["state", createHashMap];
+private _assault = "";
+if (_reqState isEqualType createHashMap) then {
+    _assault = _reqState getOrDefault ["assault_id", ""];
+    if !(_assault isEqualType "") then { _assault = ""; };
+};
+_answers set ["_assault", _assault];
 (_jev getOrDefault ["answered", createHashMap]) set [_tag, _answers];
 _stats set ["answered", (_stats getOrDefault ["answered", 0]) + 1];
+_stats set ["failStreak", 0];
 
 true

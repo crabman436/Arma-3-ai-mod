@@ -10,7 +10,9 @@
  *   The probes (AIC_fnc_findTransport with a seat count and the vehicles
  *   already taken) pick from the candidate list the caller's first call
  *   built (commander key "transportPool"), so trying 2 + 3 teams costs no
- *   further scan of "groupData".
+ *   further scan of "groupData". The probes reserve nothing: the vehicles
+ *   already taken count against their home's garrison surplus together, and
+ *   AIC_fnc_orderTransport reserves each ride once it is set up.
  *
  * Parameters:
  *   0: HASHMAP - commander

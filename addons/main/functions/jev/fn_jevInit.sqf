@@ -81,7 +81,6 @@ if (_version isEqualTo "") then {
             };
         };
     };
-
 };
 
 _jev set ["available", _available];

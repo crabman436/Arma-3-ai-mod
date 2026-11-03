@@ -3,11 +3,14 @@
 
     Description:
         The commander's staff officer (server only): commander cycle step
-        right after AIC_fnc_scoreObjectives and before AIC_fnc_allocateForces.
+        before AIC_fnc_determineStance (and so before AIC_fnc_scoreObjectives
+        and AIC_fnc_allocateForces, which read its advice).
         1. With "jevEnabled" off, the jev functions missing, or Jev
            unavailable (no extension / key, AIC_ns "jev" "available"), the
            commander's "advice" is cleared and nothing is asked: every hook
-           then runs its scripted heuristics unchanged.
+           then runs its scripted heuristics unchanged. While unavailable,
+           AIC_fnc_jevInit re-probes at most every AIC_JEV_REPROBE s, so a
+           key set later ("setKey") or a late-loaded extension is picked up.
         2. Before the old advice is replaced, what the general did with it
            is kept in "adviceLast" (posture advised and stance taken, main
            effort advised and whether it was attacked, hold / commit / abort
@@ -17,7 +20,9 @@
            a HashMap qid -> {"type", "value", "confidence", "probs"}, only
            entries with confidence >= "jevMinConfidence" (nouls use
            abs(2p - 1)); plus "_time" (answer time) and "_assault" (the
-           assault id the questions were about). "adviceTime" is set.
+           assault id the questions were about, carried with the request
+           and read from the answers, see AIC_fnc_jevCallback).
+           "adviceTime" is set.
            Hooks add "hold_reason" / "hold_target" (allocateForces),
            "commit" (allocateForces) and "abort" (assaultCycle) to it.
         4. Every "jevInterval" s (0 = "loopInterval") the next batch is
@@ -25,7 +30,8 @@
            attack_now, break_off, commit_reserve, prep_fires, intel_stale
            (nouls), risk (score 0..3) and, with at least two candidate
            objectives, main_effort (choice over the best five objective ids).
-           "lastAdviceAsked" and "adviceAssault" are set.
+           "lastAdviceAsked" and "adviceAssault" (informational: the
+           assault id of the last batch asked) are set.
         The answers are never waited for: they are consumed on the next
         cycle. With AIC_ns "debug" one line per new batch is logged.
 
@@ -56,6 +62,17 @@ if (isNil "AIC_ns") exitWith { call _fnc_clear };
 private _jev = AIC_ns getOrDefault ["jev", createHashMap];
 if (!(_jev isEqualType createHashMap) || { count _jev == 0 }) then {
     if (!isNil "AIC_fnc_jevInit") then { call AIC_fnc_jevInit; };
+    _jev = AIC_ns getOrDefault ["jev", createHashMap];
+};
+// while unavailable, re-probe at most every AIC_JEV_REPROBE s, so a key set
+// later (setKey) or a late-loaded extension is picked up
+if (
+    _jev isEqualType createHashMap
+    && { !((_jev getOrDefault ["available", false]) isEqualTo true) }
+    && { time - (_jev getOrDefault ["probeTime", -1e6]) >= AIC_JEV_REPROBE }
+    && { !isNil "AIC_fnc_jevInit" }
+) then {
+    call AIC_fnc_jevInit;
     _jev = AIC_ns getOrDefault ["jev", createHashMap];
 };
 if (!(_jev isEqualType createHashMap) || { !((_jev getOrDefault ["available", false]) isEqualTo true) }) exitWith { call _fnc_clear };
@@ -122,7 +139,11 @@ if (count _answers > 0) then {
     private _answerTime = _answers getOrDefault ["_time", time];
     _isNew = _answerTime isNotEqualTo (_old getOrDefault ["_time", -1]);
     _advice set ["_time", _answerTime];
-    _advice set ["_assault", _cmd getOrDefault ["adviceAssault", ""]];
+    // the assault id travels with the request (jevCallback), so an answer
+    // consumed a cycle late still names the assault it was about
+    private _assault = _answers getOrDefault ["_assault", ""];
+    if !(_assault isEqualType "") then { _assault = ""; };
+    _advice set ["_assault", _assault];
     _cmd set ["adviceTime", _answerTime];
 };
 _cmd set ["advice", _advice];

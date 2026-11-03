@@ -133,6 +133,13 @@ All mod-wide state lives in one global HashMap, `AIC_ns`, created by
 | `"objectiveModules"` | array | `AIC_ModuleObjective` logics, picked up by commanders created later |
 | `"debug"` | bool, default false | also echo `[AIC]` log lines to `systemChat` |
 | `"version"` | string | mod version, `"1.0.0"` |
+| `"defaultSettings"` | HashMap | the default settings, read only by `AIC_fnc_getSetting` |
+| `"jev"` | HashMap | the Jev client state (extension availability, pending requests) |
+
+Further keys are per-class caches that functions fill lazily and never clear
+(`"vehicleTypeClasses"`, `"turretWeaponsClasses"`, `"armamentClasses"`,
+`"antiAirClasses"`, `"supplyRolesClasses"`, `"aaLauncherClasses"`,
+`"airfields"` / `"airfieldsRead"`); `CONTRACT.md` lists their owners.
 
 Read it with the accessor functions (`AIC_fnc_getCommander`, ...) or with
 `AIC_ns getOrDefault [key, default]`. Type `AIC_ns` in the debug console to
@@ -536,7 +543,7 @@ attack. The rest of the army stays parked and costs nothing.
 | `dynSimWakeRange` | 1000 | A parked group wakes if an enemy is within this many metres of its leader |
 | `dynSimDistance` | 0 | If greater than 0, sets `"Group" setDynamicSimulationDistance` at commander start (the engine default otherwise) |
 | `manageGarrisons` | true | Distribute groups between owned objectives and bases |
-| `garrisonPerPriority` | 8 | Desired garrison power per point of objective priority (a base's guard size) |
+| `garrisonPerPriority` | 8 | Desired garrison power per point of objective priority (a base's guard is twice this) |
 | `garrisonMovesPerCycle` | 2 | Maximum garrison transfers ordered per cycle |
 | `garrisonManStatics` | true | Infantry garrisons man empty static weapons in their area |
 | `dynamicSquads` | true | Squads split into teams to fit vehicles and to flank attacks, then merge again |
@@ -687,9 +694,9 @@ through the engine's `ExtensionCallback` event.
    - a file `aic_jev.key` (one line) in the game's working directory,
    - at runtime: `"aic_jev" callExtension ["setKey", ["<key>"]]`.
    The key is never logged.
-4. Start the server. The RPT shows `[AIC] Jev available` once a commander
-   starts, or `Jev unavailable: <reason>` when the extension or key is
-   missing (the general then runs without advice).
+4. Start the server. The RPT shows `[AIC] Jev available: <reason>` once a
+   commander starts, or `[AIC] Jev unavailable: <reason>` when the extension
+   or key is missing (the general then runs without advice).
 
 Only the server needs the extension; clients need nothing.
 

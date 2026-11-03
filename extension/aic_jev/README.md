@@ -85,7 +85,7 @@ Arma loads an extension only from a mod folder that was passed with `-mod=` /
 `mod.cpp`:
 
 ```
-@AICommander/
+@aic/
 ├── mod.cpp
 ├── addons/
 ├── aic_jev_x64.dll      (Windows client and server)
@@ -100,6 +100,16 @@ Ready-made binaries live in `dist/` and are also produced by the
 `build-extension` GitHub Actions workflow (artifacts `aic_jev-windows` and
 `aic_jev-linux`).
 
+glibc: the committed `dist/aic_jev_x64.so` was built on a newer distribution
+and needs glibc >= 2.34 (Ubuntu 22.04, Debian 12 or later). The `aic_jev-linux`
+CI artifact is built inside an `ubuntu:20.04` container and needs only glibc
+>= 2.31, so it also runs on Ubuntu 20.04 / Debian 11 servers; use it there. A
+server whose glibc is too old cannot load the `.so`: `callExtension "version"`
+returns `""` and the RPT says `Jev unavailable: extension not loaded`. Check
+with `ldd --version` on the server, and
+`objdump -T aic_jev_x64.so | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -n 1`
+for the binary.
+
 ## Building
 
 Requires a stable Rust toolchain (`rustup`). No OpenSSL or other native
@@ -110,6 +120,8 @@ cd extension/aic_jev
 cargo test                 # unit tests (no network)
 cargo build --release
 # Linux:   target/release/libaic_jev.so            -> dist/aic_jev_x64.so
+#          (links against the build machine's glibc; build on an old
+#          distribution, as CI does, for older servers)
 # Windows: target/release/aic_jev.dll              -> dist/aic_jev_x64.dll
 ```
 

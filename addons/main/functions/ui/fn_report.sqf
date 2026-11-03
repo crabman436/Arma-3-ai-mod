@@ -26,10 +26,12 @@
             the previous baseline are never announced)
           - Jev advice that changed a decision (AIC_fnc_jevAdvisor hooks):
             an attack held back ("advice" "hold_target" / "hold_reason":
-            "Attack on X postponed - intel too old", once per hold), an
+            "Attack on X postponed - intel too old"; the last hold text and
+            "holdTime" are kept, the same text is announced again only
+            after AIC_REPORT_HOLD_REPEAT s without it), an
             assault called off (commander "adviceAbort" [time, id], once
             per abort) and the reserve committed ("advice" "commit", once
-            per stretch of commits) ("hold", "abort", "commit")
+            per stretch of commits) ("hold", "holdTime", "abort", "commit")
         At most one message per 20 s ("time"); up to three changes are
         joined into one message. While throttled the old baseline is kept,
         so pending changes are reported on the next allowed call. The first
@@ -111,7 +113,13 @@ private _fnc_storeBaseline = {
     _last set ["owners", _owners];
     _last set ["threatPositions", _majorThreats apply { _x get "pos" }];
     _last set ["groupState", _groupState];
-    _last set ["hold", _hold];
+    // the last hold text is kept while no hold is advised, and "holdTime" is
+    // the last time it was seen: a hold that flickers off and on with the
+    // same text is not announced again within AIC_REPORT_HOLD_REPEAT s
+    if (_hold != "") then {
+        _last set ["hold", _hold];
+        _last set ["holdTime", _now];
+    };
     _last set ["abort", _abort];
     _last set ["commit", _commit];
 };
@@ -228,7 +236,10 @@ private _moves = createHashMap;   // "from|to"   -> [from, to, count]
 } forEach _moves;
 
 // advice that changed a decision, each announced once
-if (_hold != "" && { _hold != (_last getOrDefault ["hold", ""]) }) then { _parts pushBack _hold; };
+if (_hold != "" && {
+    _hold != (_last getOrDefault ["hold", ""])
+    || { (_now - (_last getOrDefault ["holdTime", -1e6])) >= AIC_REPORT_HOLD_REPEAT }
+}) then { _parts pushBack _hold; };
 if (_abort != "" && { _abort != (_last getOrDefault ["abort", ""]) }) then {
     private _abortId = _abortRec select 1;
     _parts pushBack format ["Assault on %1 called off - the staff judges it failing", _objNames getOrDefault [_abortId, _abortId]];

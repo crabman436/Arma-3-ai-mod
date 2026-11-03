@@ -11,9 +11,11 @@
             crew: its home garrison is not threatened (no threat cluster near
             it, "threat" of its "garrisons" entry is 0), so a town under attack
             never lends out its vehicles, and its surplus (minus what other
-            groups were already released for this cycle) covers it. This is
-            only a check: the surplus is reserved by AIC_fnc_orderTransport
-            once the ride is really set up (AIC_fnc_canLeaveGarrison);
+            groups were already released for this cycle, and minus the
+            transports of the same home in the exclude list, which a split
+            already counts on) covers it. This is only a check: the surplus
+            is reserved by AIC_fnc_orderTransport once the ride is really set
+            up (AIC_fnc_canLeaveGarrison);
           - the group crews a vehicle (driver / pilot is an alive member of
             the group) that is alive, canMove, has AIC_RIDE_MIN_FUEL and is
             not locked;
@@ -212,6 +214,20 @@ private _fnc_mayLeave = {
     if ((hashValue _grp) in _released) exitWith { true };
     private _spare = _entry getOrDefault ["surplus", 0];
     { _spare = _spare - _y; } forEach _released;
+    // the transports a split already counted on (AIC_fnc_splitForRide's
+    // "_taken") will each reserve their power too: the teams of one squad
+    // either all ride or none, so their rides must fit the surplus together
+    {
+        private _xRec = _groupData getOrDefault [hashValue _x, createHashMap];
+        if (
+            (_xRec getOrDefault ["home", ""]) isEqualTo _home
+            && { !((hashValue _x) in _released) }
+            && { !((_xRec getOrDefault ["transportOnly", false]) isEqualTo true) }
+        ) then {
+            private _xPower = _xRec getOrDefault ["power", 0];
+            if (_xPower isEqualType 0) then { _spare = _spare - _xPower; };
+        };
+    } forEach _exclude;
     private _power = _rec getOrDefault ["power", 0];
     if !(_power isEqualType 0) then { _power = 0; };
     _spare >= _power

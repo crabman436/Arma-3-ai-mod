@@ -17,9 +17,18 @@
         Pending requests older than AIC_JEV_PENDING_TIMEOUT s (the
         extension itself times out after 10 s plus one retry) are dropped
         and counted as failed here, so a lost callback can't leak records.
-        Stats ("asked", "failed", "tokens" - an estimate of a quarter of
-        the body's characters) live in AIC_ns "jev" "stats". Failures are
-        logged at most once per AIC_JEV_LOG_THROTTLE s.
+        The send counts as failed unless the array form of callExtension
+        ([result, extension return code, engine error code]) gives exactly
+        "queued" with both codes 0; a non-zero code also marks Jev
+        unavailable (both codes in "reason"). Backoff: every failure
+        (unsent, unanswered, or failed in AIC_fnc_jevCallback) adds to
+        "failStreak", a success resets it; after AIC_JEV_FAIL_STREAK
+        failures in a row Jev is marked unavailable ("reason", "probeTime"),
+        so the re-probe retries once per AIC_JEV_REPROBE s instead of every
+        cycle. Stats ("asked", "failed", "failStreak", "tokens" - an
+        estimate of a quarter of the body's characters) live in AIC_ns
+        "jev" "stats". Failures are logged at most once per
+        AIC_JEV_LOG_THROTTLE s.
 
     Parameters:
         0: STRING  - tag the answers are stored under, e.g. "advisor_EAST"
@@ -75,16 +84,34 @@ private _logFailure = {
         [_msg, _args] call AIC_fnc_log;
     };
 };
+// a failed request: counted, and after AIC_JEV_FAIL_STREAK in a row Jev is
+// marked unavailable until the next re-probe (same rule in AIC_fnc_jevCallback;
+// the streak is only reset by a success, so after a re-probe one more failure
+// backs off again)
+private _fnc_failed = {
+    params ["_why"];
+    _stats set ["failed", (_stats getOrDefault ["failed", 0]) + 1];
+    private _streak = (_stats getOrDefault ["failStreak", 0]) + 1;
+    _stats set ["failStreak", _streak];
+    if (_streak >= AIC_JEV_FAIL_STREAK && { (_jev getOrDefault ["available", false]) isEqualTo true }) then {
+        _jev set ["available", false];
+        _jev set ["reason", format ["%1 failed requests in a row, last: %2", _streak, _why]];
+        _jev set ["probeTime", time];
+        ["Jev unavailable: %1", [_jev get "reason"]] call AIC_fnc_log;
+    };
+};
 
 // --- requests the extension never answered (keys snapshot: the callback deletes too)
 {
     private _rec = _pending get _x;
     if (!isNil "_rec" && { time - (_rec getOrDefault ["time", time]) > AIC_JEV_PENDING_TIMEOUT }) then {
         _pending deleteAt _x;
-        _stats set ["failed", (_stats getOrDefault ["failed", 0]) + 1];
+        [format ["no answer within %1 s", AIC_JEV_PENDING_TIMEOUT]] call _fnc_failed;
         ["Jev: request %1 (%2) got no answer within %3 s", [_x, _rec getOrDefault ["tag", "?"], AIC_JEV_PENDING_TIMEOUT]] call _logFailure;
     };
 } forEach keys _pending;
+// a streak of timeouts may just have marked Jev unavailable
+if !((_jev getOrDefault ["available", false]) isEqualTo true) exitWith { -1 };
 
 // --- rate guard: timestamps of the last minute's requests
 private _maxPerMinute = ([createHashMap, "jevMaxPerMinute"] call AIC_fnc_getSetting) max 1;
@@ -108,25 +135,29 @@ private _id = _jev getOrDefault ["nextId", 1];
 if (!(_id isEqualType 0) || { _id < 1 }) then { _id = 1; };
 _jev set ["nextId", _id + 1];
 
-// --- send: the extension answers "queued" at once and posts in the background
+// --- send: the extension answers "queued" at once and posts in the background;
+// the array form returns [result, extension return code, engine error code]
 private _result = AIC_JEV_EXT callExtension ["ask", [str _id, _model, _json]];
 private _text = "";
-private _code = -1;
+private _retCode = -1;
+private _errCode = -1;
 if (_result isEqualType []) then {
-    _result params [["_resText", "", [""]], ["_resCode", 0, [0]]];
+    _result params [["_resText", "", [""]], ["_resRet", 0, [0]], ["_resErr", 0, [0]]];
     _text = _resText;
-    _code = _resCode;
+    _retCode = _resRet;
+    _errCode = _resErr;
 };
 
-if (_code != 0 || { _text isNotEqualTo "queued" }) exitWith {
-    _stats set ["failed", (_stats getOrDefault ["failed", 0]) + 1];
-    if (_code != 0) then {
-        // the extension went away: the next ask re-probes after AIC_JEV_REPROBE s
+if (_errCode != 0 || { _retCode != 0 } || { _text isNotEqualTo "queued" }) exitWith {
+    private _why = format ["'ask' answered '%1' (callExtension error %2, extension return code %3)", _text, _errCode, _retCode];
+    [_why] call _fnc_failed;
+    if (_errCode != 0 || { _retCode != 0 }) then {
+        // the extension went away or refused the call: the next ask re-probes after AIC_JEV_REPROBE s
         _jev set ["available", false];
-        _jev set ["reason", format ["callExtension error %1 on 'ask'", _code]];
+        _jev set ["reason", _why];
         _jev set ["probeTime", time];
     };
-    ["Jev: request %1 (%2) not sent: %3", [_id, _tag, [_text, format ["callExtension error %1", _code]] select (_code != 0)]] call _logFailure;
+    ["Jev: request %1 (%2) not sent: %3", [_id, _tag, _why]] call _logFailure;
     -1
 };
 
