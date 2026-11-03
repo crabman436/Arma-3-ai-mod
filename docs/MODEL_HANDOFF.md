@@ -53,7 +53,7 @@ For every attempt:
 
 Improvements can have documentation/build-specific acceptance checks instead of gameplay checks. For NOT_A_BUG/DUPLICATE/DEFERRED, leave fix fields and implementation checkboxes unset unless a real change landed; put the resolution and supporting evidence in history. Acceptance boxes describe completed checks, not plans.
 
-## Current handoff — 2026-11-03
+## Initial documentation handoff — 2026-11-03
 
 - **Author:** Codex.
 - **Work completed:** Imported 9 source-supported bugs, 5 improvement proposals, and 2 unconfirmed runtime investigations; preserved the original review and added this workflow.
@@ -134,3 +134,13 @@ Use the next unused ID and add an index row in REVIEW_TRACKER.md. Replace placeh
 ## Historical review policy
 
 The [dated initial review](reviews/2026-11-03-initial-review.md) records what was known then. Keep it as a historical snapshot; record later fixes, corrections, dismissals, and regressions in the live tracker with evidence. Add dated reviews under `docs/reviews/` for future audits and link their findings to existing IDs. Do not rewrite the snapshot to make old findings look verified or fixed.
+
+## Second review handoff — 2026-11-03 (Codex)
+
+- **Authorized scope:** Additional review and documentation of new findings; no mod fixes.
+- **Assessed branch/commit:** `claude/arma3-ai-coordination-qilgd4` at `564dd8ce56e7ca1840fde15871d0ccb9cc415985`.
+- **Added records:** F10–F13 and I06–I07; all OPEN, found on 2026-11-03. Prior record statuses and histories are preserved.
+- **Evidence:** [Dated second review](reviews/2026-11-03-second-review.md), source traces, addon blob comparison, and small arithmetic counterexamples.
+- **Validation not run:** HEMTT/PBO, Arma gameplay, multiplayer, and performance checks.
+- **Claims:** None active; ownership remains Unassigned.
+- **Next step if fixes are authorized:** Revalidate the relevant record at the latest commit, then claim it. F10/I06 share release/restoration code; F13/I07 share objective/base concerns. Existing P1 findings F01/F02 remain higher priority.

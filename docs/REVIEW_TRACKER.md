@@ -6,6 +6,8 @@ This is the live record of bugs, improvement work, and unresolved investigations
 
 Each record's metadata below is authoritative for its current status and owner. The index intentionally contains no duplicate status fields. A checked implementation box means a change landed on the recorded target branch; a checked verification box means the recorded verification actually ran and passed. Dates use `YYYY-MM-DD` in America/Chicago; exact claim times and expiries use ISO 8601 UTC.
 
+**Second review (2026-11-03):** Added F10–F13 and I06–I07 from [the follow-up snapshot](reviews/2026-11-03-second-review.md), assessed at `564dd8ce56e7ca1840fde15871d0ccb9cc415985`. The tracker now contains 13 bugs, 7 improvements, and 2 unconfirmed investigations at this review checkpoint. All six new entries are OPEN; no fixes or verification results were added.
+
 ## Index
 
 | ID | Type | Priority | Finding |
@@ -26,6 +28,12 @@ Each record's metadata below is authoritative for its current status and owner. 
 | [I05](#i05) | IMPROVEMENT | P3 | Support per-vehicle loadout changes in weapon caches |
 | [R01](#r01) | INVESTIGATION | UNTRIAGED | Combat-ammunition exhaustion versus remaining countermeasures |
 | [R02](#r02) | INVESTIGATION | UNTRIAGED | Report-only contacts, stale sightings, and artillery precision |
+| [F10](#f10) | BUG | P2 | Released marching groups retain disabled automatic combat and road constraints |
+| [F11](#f11) | BUG | P2 | Passenger and vehicle splitting discard group preservation and simulation opt-out flags |
+| [F12](#f12) | BUG | P2 | An active supply job can service a helicopter after takeoff |
+| [F13](#f13) | BUG | P2 | Late markers inside an existing objective radius are silently missed |
+| [I06](#i06) | IMPROVEMENT | P3 | Restore pre-existing mission AI and vehicle settings after a march |
+| [I07](#i07) | IMPROVEMENT | P3 | Consolidate reserve accounting for a base marker co-located with implicit HQ |
 
 ## Status and completion rules
 
@@ -701,6 +709,270 @@ Intel substitutes current time for a nonpositive last-seen timestamp. Fire-suppo
 |---|---|---|---|
 | 2026-11-03 | Codex | Created → NEEDS_REPRO | Imported as an unconfirmed runtime investigation. Baseline `01e0eed`; [historical review](reviews/2026-11-03-initial-review.md). |
 
+<a id="f10"></a>
+
+### F10 · P2 · Released marching groups retain disabled automatic combat and road constraints
+
+| Field | Value |
+|---|---|
+| Type | BUG |
+| Status | OPEN |
+| Found on / reported by | 2026-11-03 / Codex (second review) |
+| Last updated | 2026-11-03 |
+| Confidence | Source-supported; gameplay reproduction pending |
+| Owner / claim token | Unassigned / — |
+| Claimed at / expires at (UTC) | — / — |
+| Target branch | `claude/arma3-ai-coordination-qilgd4` |
+| Last assessed code | [`564dd8ce56e7ca1840fde15871d0ccb9cc415985`](https://github.com/crabman436/Arma-3-ai-mod/commit/564dd8ce56e7ca1840fde15871d0ccb9cc415985) |
+| Work branch / PR | — |
+| Fixed on / by | — / — |
+| Fix commit / PR | — |
+| Verified on / by | — / — |
+| Verified commit / environment / evidence | — / — / — |
+| Related records | I02, I06 |
+
+- [ ] Implementation or resolution landed and is linked.
+- [ ] Acceptance checks passed and verification evidence is linked.
+
+**Evidence:** [fn_registerGroups.sqf:100–126](https://github.com/crabman436/Arma-3-ai-mod/blob/564dd8ce56e7ca1840fde15871d0ccb9cc415985/addons/main/functions/groups/fn_registerGroups.sqf#L100-L126); [fn_setMarch.sqf:35–57](https://github.com/crabman436/Arma-3-ai-mod/blob/564dd8ce56e7ca1840fde15871d0ccb9cc415985/addons/main/functions/orders/fn_setMarch.sqf#L35-L57); [fn_removeCommander.sqf:66–69](https://github.com/crabman436/Arma-3-ai-mod/blob/564dd8ce56e7ca1840fde15871d0ccb9cc415985/addons/main/functions/core/fn_removeCommander.sqf#L66-L69).
+
+The registration sweep releases groups when a player joins, AIC_exclude is set, ownership leaves the server, or the side changes. It wakes simulation and deletes helipads, then removes the record, but never ends AIC_marching. setMarch previously disabled AUTOCOMBAT and applied vehicle road/speed constraints; monitorOrders can no longer restore these after the group disappears from the commander's records. Whole-commander removal does explicitly call setMarch(false), so the per-group release path is inconsistent.
+
+**Reproduction / validation to run:** Give a server-local vehicle or infantry group a move longer than 600 m and confirm AIC_marching=true. Set AIC_exclude=true before arrival and run the registration sweep. Trace shows its record is removed without a setMarch(false) call; inspect AUTOCOMBAT, road following, and speed limits in Arma. Repeat with a player joining. The source path was traced; engine steps were not run.
+
+**Suggested change:** Use a common release helper that ends AIC-owned march state before dropping the record. Handle locality changes on the machine that owns the affected units and vehicles.
+
+**Acceptance checks for closure:**
+
+- [ ] Exclusion and player-join release end march state and restore eligible AI/vehicle settings.
+- [ ] A locality-transfer case restores state on the owner without ordering excluded groups afterward.
+
+**Activity and decision history** — append entries.
+
+| Date/time | Actor | Change | Reference / result |
+|---|---|---|---|
+| 2026-11-03 | Codex | Created → OPEN | [Second review](reviews/2026-11-03-second-review.md), assessed `564dd8c`; no implementation or engine run. |
+
+<a id="f11"></a>
+
+### F11 · P2 · Passenger and vehicle splitting discard group preservation and simulation opt-out flags
+
+| Field | Value |
+|---|---|
+| Type | BUG |
+| Status | OPEN |
+| Found on / reported by | 2026-11-03 / Codex (second review) |
+| Last updated | 2026-11-03 |
+| Confidence | Source-supported; gameplay reproduction pending |
+| Owner / claim token | Unassigned / — |
+| Claimed at / expires at (UTC) | — / — |
+| Target branch | `claude/arma3-ai-coordination-qilgd4` |
+| Last assessed code | [`564dd8ce56e7ca1840fde15871d0ccb9cc415985`](https://github.com/crabman436/Arma-3-ai-mod/commit/564dd8ce56e7ca1840fde15871d0ccb9cc415985) |
+| Work branch / PR | — |
+| Fixed on / by | — / — |
+| Fix commit / PR | — |
+| Verified on / by | — / — |
+| Verified commit / environment / evidence | — / — / — |
+| Related records | I02 |
+
+- [ ] Implementation or resolution landed and is linked.
+- [ ] Acceptance checks passed and verification evidence is linked.
+
+**Evidence:** [fn_splitPassengers.sqf:87–97](https://github.com/crabman436/Arma-3-ai-mod/blob/564dd8ce56e7ca1840fde15871d0ccb9cc415985/addons/main/functions/groups/fn_splitPassengers.sqf#L87-L97); [fn_splitPassengers.sqf:121–134](https://github.com/crabman436/Arma-3-ai-mod/blob/564dd8ce56e7ca1840fde15871d0ccb9cc415985/addons/main/functions/groups/fn_splitPassengers.sqf#L121-L134); [fn_splitGroup.sqf:84–94](https://github.com/crabman436/Arma-3-ai-mod/blob/564dd8ce56e7ca1840fde15871d0ccb9cc415985/addons/main/functions/groups/fn_splitGroup.sqf#L84-L94).
+
+Both createGroup paths in splitPassengers move units into fresh groups without copying AIC_noDynSim or AIC_keep. The original group keeps those variables; the new groups read their absent values as false. Consequently a protected passenger group or separated transport crew can be parked or have its empty group deleted despite the original configuration. The separate infantry splitGroup path already copies both flags, establishing the intended inheritance policy.
+
+**Reproduction / validation to run:** Set AIC_noDynSim=true and AIC_keep=true on an AI transport crew grouped with at least two passengers. Run splitPassengers and inspect the resulting passenger group's variables; neither is set. Repeat with an eligible multi-vehicle transport group for the second creation path. The missing assignments are source-confirmed; runtime parking/deletion has not been executed.
+
+**Suggested change:** Apply a shared, explicit policy for inheriting group flags at every split path; copy the supported preservation and simulation settings before registering the new group.
+
+**Acceptance checks for closure:**
+
+- [ ] Passenger and single-vehicle child groups retain AIC_noDynSim and AIC_keep when set on their parent.
+- [ ] Unflagged groups retain normal default behavior; player/exclusion/no-split guards still hold.
+
+**Activity and decision history** — append entries.
+
+| Date/time | Actor | Change | Reference / result |
+|---|---|---|---|
+| 2026-11-03 | Codex | Created → OPEN | [Second review](reviews/2026-11-03-second-review.md), assessed `564dd8c`; no implementation or engine run. |
+
+<a id="f12"></a>
+
+### F12 · P2 · An active supply job can service a helicopter after takeoff
+
+| Field | Value |
+|---|---|
+| Type | BUG |
+| Status | OPEN |
+| Found on / reported by | 2026-11-03 / Codex (second review) |
+| Last updated | 2026-11-03 |
+| Confidence | Source-supported; gameplay reproduction pending |
+| Owner / claim token | Unassigned / — |
+| Claimed at / expires at (UTC) | — / — |
+| Target branch | `claude/arma3-ai-coordination-qilgd4` |
+| Last assessed code | [`564dd8ce56e7ca1840fde15871d0ccb9cc415985`](https://github.com/crabman436/Arma-3-ai-mod/commit/564dd8ce56e7ca1840fde15871d0ccb9cc415985) |
+| Work branch / PR | — |
+| Fixed on / by | — / — |
+| Fix commit / PR | — |
+| Verified on / by | — / — |
+| Verified commit / environment / evidence | — / — / — |
+| Related records | R01 |
+
+- [ ] Implementation or resolution landed and is linked.
+- [ ] Acceptance checks passed and verification evidence is linked.
+
+**Evidence:** [fn_supplyCycle.sqf:103–158](https://github.com/crabman436/Arma-3-ai-mod/blob/564dd8ce56e7ca1840fde15871d0ccb9cc415985/addons/main/functions/logistics/fn_supplyCycle.sqf#L103-L158); [fn_supplyCycle.sqf:187–195](https://github.com/crabman436/Arma-3-ai-mod/blob/564dd8ce56e7ca1840fde15871d0ccb9cc415985/addons/main/functions/logistics/fn_supplyCycle.sqf#L187-L195).
+
+The new-target filter requires a helicopter to touch the ground and rejects a player effective commander. Running jobs only recheck whether the target is alive, still needs stock, is outside enemy danger, and has not timed out. Their reach check uses distance2D. A helicopter that takes off vertically remains within that horizontal radius, so the job can complete and instantly repair/refuel/rearm it far above the truck. The player-eligibility guard also is not reapplied if a player takes control after dispatch.
+
+**Reproduction / validation to run:** Dispatch a stocked fuel/repair truck to an eligible landed helicopter and start its supplyArrive timer. Before the next servicing cycle, fly the helicopter vertically above the truck while keeping horizontal separation below 30 m and fuel/damage in need. The running-job conditions still permit service after 20 s. A second scenario has a player become effective commander before completion. These are proposed engine checks, not executed gameplay tests.
+
+**Suggested change:** Revalidate target eligibility on every active-job cycle and immediately before applying service. Require an appropriate physical servicing distance and grounded helicopter; pause/reset or cancel the timer when eligibility is lost.
+
+**Acceptance checks for closure:**
+
+- [ ] Takeoff or excessive vertical separation prevents service and resets/cancels the work timer.
+- [ ] Player takeover is handled consistently with the initial eligibility policy; grounded eligible targets still receive service.
+
+**Activity and decision history** — append entries.
+
+| Date/time | Actor | Change | Reference / result |
+|---|---|---|---|
+| 2026-11-03 | Codex | Created → OPEN | [Second review](reviews/2026-11-03-second-review.md), assessed `564dd8c`; no implementation or engine run. |
+
+<a id="f13"></a>
+
+### F13 · P2 · Late markers inside an existing objective radius are silently missed
+
+| Field | Value |
+|---|---|
+| Type | BUG |
+| Status | OPEN |
+| Found on / reported by | 2026-11-03 / Codex (second review) |
+| Last updated | 2026-11-03 |
+| Confidence | Source-supported; gameplay reproduction pending |
+| Owner / claim token | Unassigned / — |
+| Claimed at / expires at (UTC) | — / — |
+| Target branch | `claude/arma3-ai-coordination-qilgd4` |
+| Last assessed code | [`564dd8ce56e7ca1840fde15871d0ccb9cc415985`](https://github.com/crabman436/Arma-3-ai-mod/commit/564dd8ce56e7ca1840fde15871d0ccb9cc415985) |
+| Work branch / PR | — |
+| Fixed on / by | — / — |
+| Fix commit / PR | — |
+| Verified on / by | — / — |
+| Verified commit / environment / evidence | — / — / — |
+| Related records | I07 |
+
+- [ ] Implementation or resolution landed and is linked.
+- [ ] Acceptance checks passed and verification evidence is linked.
+
+**Evidence:** [fn_updateObjectives.sqf:48–72](https://github.com/crabman436/Arma-3-ai-mod/blob/564dd8ce56e7ca1840fde15871d0ccb9cc415985/addons/main/functions/intel/fn_updateObjectives.sqf#L48-L72); [fn_collectObjectives.sqf:105–117](https://github.com/crabman436/Arma-3-ai-mod/blob/564dd8ce56e7ca1840fde15871d0ccb9cc415985/addons/main/functions/intel/fn_collectObjectives.sqf#L105-L117); [fn_addObjective.sqf:105–138](https://github.com/crabman436/Arma-3-ai-mod/blob/564dd8ce56e7ca1840fde15871d0ccb9cc415985/addons/main/functions/intel/fn_addObjective.sqf#L105-L138).
+
+Late-marker detection tests whether any existing objective of the same source covers the marker position, rather than whether that marker's objective ID already exists. Collection at startup instead enumerates all matching markers and addObjective deduplicates by source/name and place. Thus a distinct marker with a distinct name can be collected at startup but omitted when created later inside another objective's radius. If BASE_HQ already exists and no unrelated marker triggers recollection, the missing objective persists.
+
+**Reproduction / validation to run:** Start with an aic_obj_A marker of radius 300 m and let collection finish. Add aic_obj_B with a distinct marker text 100 m away, with no other new markers. The late-marker predicate returns false because A covers B, so B is not collected. Place both before startup as a control: both distinct IDs are added. The predicate and collection paths were traced; mission execution remains pending.
+
+**Suggested change:** Track marker identity or calculate the same canonical IDs/deduplication rule in late detection and collection. Preserve intentional co-located markers while avoiding repeated full collection.
+
+**Acceptance checks for closure:**
+
+- [ ] Distinct same-source markers created within an existing radius are collected once with their own IDs.
+- [ ] Repeated updates do not create duplicates; startup and late-created versions produce equivalent objective records.
+
+**Activity and decision history** — append entries.
+
+| Date/time | Actor | Change | Reference / result |
+|---|---|---|---|
+| 2026-11-03 | Codex | Created → OPEN | [Second review](reviews/2026-11-03-second-review.md), assessed `564dd8c`; no implementation or engine run. |
+
+<a id="i06"></a>
+
+### I06 · P3 · Restore pre-existing mission AI and vehicle settings after a march
+
+| Field | Value |
+|---|---|
+| Type | IMPROVEMENT |
+| Status | OPEN |
+| Found on / reported by | 2026-11-03 / Codex (second review) |
+| Last updated | 2026-11-03 |
+| Confidence | Review recommendation; implementation not started |
+| Owner / claim token | Unassigned / — |
+| Claimed at / expires at (UTC) | — / — |
+| Target branch | `claude/arma3-ai-coordination-qilgd4` |
+| Last assessed code | [`564dd8ce56e7ca1840fde15871d0ccb9cc415985`](https://github.com/crabman436/Arma-3-ai-mod/commit/564dd8ce56e7ca1840fde15871d0ccb9cc415985) |
+| Work branch / PR | — |
+| Fixed on / by | — / — |
+| Fix commit / PR | — |
+| Verified on / by | — / — |
+| Verified commit / environment / evidence | — / — / — |
+| Related records | F10, I02 |
+
+- [ ] Implementation or resolution landed and is linked.
+- [ ] Acceptance checks passed and verification evidence is linked.
+
+**Evidence:** [fn_setMarch.sqf:35–57](https://github.com/crabman436/Arma-3-ai-mod/blob/564dd8ce56e7ca1840fde15871d0ccb9cc415985/addons/main/functions/orders/fn_setMarch.sqf#L35-L57).
+
+setMarch(false) always enables AUTOCOMBAT, disables forced road following, and removes vehicle speed limits; it does not restore the values that existed before AIC started the march. A mission that intentionally disabled automatic combat or imposed a speed limit loses that configuration. This is distinct from F10: F10 concerns release paths that never invoke cleanup, while this improvement concerns what cleanup restores when invoked.
+
+**Reproduction / validation to run:** Configure a custom vehicle speed limit and disabled AUTOCOMBAT before a march, then end the march and compare the resulting settings to the initial values. Source inspection establishes unconditional default-setting calls; in-engine compatibility testing remains pending.
+
+**Suggested change:** Capture the AIC-owned overrides and restore the prior settings where supported. Document ownership and restoration behavior when mission scripts change a setting during the march.
+
+**Acceptance checks for closure:**
+
+- [ ] Custom pre-march settings survive a completed or canceled march.
+- [ ] The policy for concurrent mission-script changes is documented and checked.
+
+**Activity and decision history** — append entries.
+
+| Date/time | Actor | Change | Reference / result |
+|---|---|---|---|
+| 2026-11-03 | Codex | Created → OPEN | [Second review](reviews/2026-11-03-second-review.md), assessed `564dd8c`; no implementation or engine run. |
+
+<a id="i07"></a>
+
+### I07 · P3 · Consolidate reserve accounting for a base marker co-located with implicit HQ
+
+| Field | Value |
+|---|---|
+| Type | IMPROVEMENT |
+| Status | OPEN |
+| Found on / reported by | 2026-11-03 / Codex (second review) |
+| Last updated | 2026-11-03 |
+| Confidence | Review recommendation; implementation not started |
+| Owner / claim token | Unassigned / — |
+| Claimed at / expires at (UTC) | — / — |
+| Target branch | `claude/arma3-ai-coordination-qilgd4` |
+| Last assessed code | [`564dd8ce56e7ca1840fde15871d0ccb9cc415985`](https://github.com/crabman436/Arma-3-ai-mod/commit/564dd8ce56e7ca1840fde15871d0ccb9cc415985) |
+| Work branch / PR | — |
+| Fixed on / by | — / — |
+| Fix commit / PR | — |
+| Verified on / by | — / — |
+| Verified commit / environment / evidence | — / — / — |
+| Related records | F06, F13 |
+
+- [ ] Implementation or resolution landed and is linked.
+- [ ] Acceptance checks passed and verification evidence is linked.
+
+**Evidence:** [fn_collectObjectives.sqf:119–135](https://github.com/crabman436/Arma-3-ai-mod/blob/564dd8ce56e7ca1840fde15871d0ccb9cc415985/addons/main/functions/intel/fn_collectObjectives.sqf#L119-L135); [fn_createCommander.sqf:157–190](https://github.com/crabman436/Arma-3-ai-mod/blob/564dd8ce56e7ca1840fde15871d0ccb9cc415985/addons/main/functions/core/fn_createCommander.sqf#L157-L190); [fn_garrisonStatus.sqf:76–103](https://github.com/crabman436/Arma-3-ai-mod/blob/564dd8ce56e7ca1840fde15871d0ccb9cc415985/addons/main/functions/logistics/fn_garrisonStatus.sqf#L76-L103).
+
+The nearest own base marker becomes HQ, but the explicit BASE_<marker-name> objective and implicit BASE_HQ are both retained. Their IDs differ, so each gets its own base desired strength. With default garrisonPerPriority=8, both records request 16 power, totaling 32 at one physical base before threat additions. Groups have one home ID, so their power is not shared across those two budgets. A single-base mission can reserve substantially more force than its author expects.
+
+**Reproduction / validation to run:** Place one aic_base_east marker and start an east commander. Inspect objectives and garrison status: both the marker base and BASE_HQ occupy the selected HQ point and each requests its own base guard. The separate records and budget formula were source-traced; mission execution remains pending.
+
+**Suggested change:** Alias the implicit HQ to the selected physical base or share its reserve accounting. Keep distinct tactical areas separate when intentional, and document that policy.
+
+**Acceptance checks for closure:**
+
+- [ ] One physical marker base used as HQ has one intended reserve budget.
+- [ ] Distinct bases and deliberately separate overlapping town objectives continue to work.
+
+**Activity and decision history** — append entries.
+
+| Date/time | Actor | Change | Reference / result |
+|---|---|---|---|
+| 2026-11-03 | Codex | Created → OPEN | [Second review](reviews/2026-11-03-second-review.md), assessed `564dd8c`; no implementation or engine run. |
+
 ## Adding future findings
 
-Copy the record template in [MODEL_HANDOFF.md](MODEL_HANDOFF.md#new-record-template), allocate the next unused ID (F10, I06, or R03 at import time), and add it to the index. Check the latest tracker first: those numbers are examples, not reservations. Never renumber existing entries. If an R entry is confirmed as a bug, retain its ID and change its type/priority with a history entry. Link dependent work rather than merging unrelated bugs into one record.
+Copy the record template in [MODEL_HANDOFF.md](MODEL_HANDOFF.md#new-record-template), allocate the next unused ID (F14, I08, or R03 after the second review), and add it to the index. Check the latest tracker first: those numbers are examples, not reservations. Never renumber existing entries. If an R entry is confirmed as a bug, retain its ID and change its type/priority with a history entry. Link dependent work rather than merging unrelated bugs into one record.
