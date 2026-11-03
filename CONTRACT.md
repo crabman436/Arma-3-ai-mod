@@ -95,6 +95,11 @@ User-tunable values are settings, not constants.
 | `AIC_MARKER_OBJ_PREFIX` | `"aic_obj"` | objective marker prefix (collectObjectives, updateObjectives) |
 | `AIC_MARKER_BASE_PREFIX` | `"aic_base_"` | side base marker prefix, followed by `west` / `east` / `guer` / `civ` (collectObjectives, updateObjectives, createCommander) |
 | `AIC_REPORT_THROTTLE` | 20 | report: min seconds between messages |
+| `AIC_ADVICE_YES`, `AIC_ADVICE_NO` | 0.6, 0.4 | Jev noul answers count as yes / no from these probabilities (allocateForces, assaultCycle, supportCycle) |
+| `AIC_ADVICE_SURE` | 0.4 | confidence needed before advice holds or aborts an attack (allocateForces, assaultCycle) |
+| `AIC_ADVICE_RISKY` | 2.5 | risk score from which no new attack starts (allocateForces) |
+| `AIC_ADVICE_ABORT_COOLDOWN` | 300 | s after an advised abort before the next one, and before that objective is attacked again (assaultCycle, allocateForces) |
+| `AIC_LOSS_WINDOW`, `AIC_LOSS_LOG_MAX` | 600, 400 | casualty log: window (s) reported to Jev, most entries kept (attachGroupEHs, jevState) |
 
 ## Commander state (HashMap)
 
@@ -668,6 +673,43 @@ Globals (inside `AIC_ns`): `"jev"` → HashMap `{"available"(bool), "reason"(str
 | `jevInterval` | 0 (= loopInterval) | — |
 | `jevModel` | "jev-latest" | — |
 | `jevMaxPerMinute` | 30 | — |
+
+### Implementation notes (advisor and hooks, as built)
+
+Commander keys added by the advisor and its hooks:
+
+| Key | Type | Written by |
+|---|---|---|
+| `"advice"` | HashMap qid → `{"type","value","confidence","probs"}` (confidence ≥ `jevMinConfidence`), plus `"_time"` (answer time), `"_assault"` (assault id the batch was about); hooks add `"hold_reason"`, `"hold_target"` (allocateForces), `"commit"` (allocateForces), `"abort"` (assaultCycle). Empty when Jev is off / unavailable / unanswered. | jevAdvisor, rebuilt every cycle |
+| `"adviceTime"`, `"lastAdviceAsked"` | number (`time`) | jevAdvisor |
+| `"adviceAssault"` | assault (objective) id described in the last batch, `""` if none | jevAdvisor |
+| `"adviceLast"` | HashMap `{"posture","stance","main_effort","main_effort_attacked","held","reserve_committed","aborted"}`: what became of the previous advice, reported back in the state as `"prev_advice"` | jevAdvisor |
+| `"adviceAbortTime"`, `"adviceAbort"` | number; `[time, objective id]` of the last assault called off on advice | assaultCycle |
+| `"lossLog"` | array of `[time, kind, hashValue group]`, kind `"U"` (unit killed), `"G"` (group wiped out), `"V"` (vehicle destroyed, hash `""`), appended by the UnitKilled / Empty / MPKilled handlers of `attachGroupEHs` (at most `AIC_LOSS_LOG_MAX`, oldest dropped), trimmed to `AIC_LOSS_WINDOW` s by `jevState` | groups / jev |
+
+Behaviour details that go beyond the section above:
+- Advice is used only while `jevWeight` > 0 (the gates in `allocateForces`,
+  `assaultCycle` and `supportCycle` are on/off with the weight; the
+  thresholds themselves are the constants above).
+- `commit_reserve` lowers the reserve ratio **multiplicatively**:
+  `ratio × (1 − w·(p − 0.5)·2·0.75)`, floor 0.05. With `manageGarrisons` the
+  planner's reserve is the bases' guard, so the `"desired"` of `BASE_HQ` and
+  base objectives in `"garrisons"` is cut by the same share (and `"surplus"`
+  raised) for that planner step only; `garrisonCycle` recomputes it.
+- The hold gate skips every ATTACK target that is not already being fought
+  for (objective attacks and DEFENSIVE counter-attacks); `"hold_reason"` /
+  `"hold_target"` are only stored when an objective attack was actually held.
+- `break_off` only aborts the assault the batch described (`"_assault"`),
+  which `jevState` picks as the GO assault, else the one with most member
+  power. Riding members get DEFEND home as their `"final"` order.
+- `attack_now` advances a staging assault only once at least one member is at
+  the assembly area (`_ready > 0`).
+- `prep_fires` fires only while the main effort's assault is in state
+  `"STAGE"` (without a `main_effort` answer: the single staging assault); with
+  no fresh cluster within 600 m of the objective a 2-round mission is fired on
+  the objective centre.
+- `report` announces a hold once per target/reason, an abort once per abort,
+  and a commit once per unbroken stretch of commit advice.
 
 ### Public API for mission makers
 

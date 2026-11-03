@@ -604,6 +604,157 @@ infantry around. You can put several bases near the front lines to shorten
 the trips. Keep player-led groups and scripted set pieces out with
 `AIC_exclude` or `AIC_noDynSim`.
 
+## Jev: a decision model as the general's staff officer
+
+[Jev](https://docs.typesafe.ai) (TypeSafe AI) is a *System One* decision
+model: it writes no text, it answers typed questions about a situation with
+calibrated probabilities in well under a second. The general uses it as a
+staff officer. Every cycle it hands Jev a short summary of the battle and asks
+for judgment calls; the answers arrive asynchronously and shape the next
+cycle's decisions. The scripted heuristics stay in charge: the advice is
+blended in with a weight, and without the extension, a key or a network the
+general simply plays as before.
+
+### What the general asks
+
+The situation summary (`AIC_fnc_jevState`, about 1.5k tokens) holds: side,
+stance and aggression; own and known enemy power and their ratio; groups by
+type with average strength; losses in the last 10 minutes (units, vehicles,
+groups); the eight best-scored objectives (owner, priority, distance and
+bearing from HQ, our power inside and on the way, enemy power nearby); the
+five strongest threat clusters (power, types, distance to HQ and to the
+nearest own objective, age of the sighting); the main assault (stage, time in
+stage, attackers against defenders, losses since it was planned); the reserve
+holding the bases; groups in transit; time of day, light, fog and rain; the age
+of the intel; and what the general did with the previous advice.
+
+The questions, with the rubric each answer is judged by:
+
+| Id | Type | Question |
+|---|---|---|
+| `posture` | choice | Which posture should the commander adopt now? (`offensive` / `balanced` / `defensive`) |
+| `attack_now` | yes/no | Given the odds, intel freshness, daylight and reserves, should the planned main attack be launched or continued now rather than waiting? |
+| `break_off` | yes/no | Is the current attack failing badly enough that a competent commander would call it off and regroup? |
+| `commit_reserve` | yes/no | Should the reserve at base be committed to the fight now? |
+| `main_effort` | choice | Which objective should be the main effort? (over the five best-scored objectives; only asked with at least two candidates) |
+| `risk` | score 0..3 | How risky is the current plan for this force? (Safe, Acceptable, Risky, Reckless) |
+| `prep_fires` | yes/no | Should artillery prepare the main objective before the assault goes in? |
+| `intel_stale` | yes/no | Is the picture of the enemy too stale or thin to commit forces on? |
+
+### How the answers change its behaviour
+
+Every use is scaled by `jevWeight` (0 = ignore the advice, 1 = follow it
+fully) and only answers with confidence of at least `jevMinConfidence` count
+(for yes/no questions the confidence is `abs(2p - 1)`).
+
+- **Posture** shifts the stance value before the usual thresholds: offensive
+  ×(1 + 0.5·w·c), defensive ×(1 − 0.5·w·c), balanced pulled toward the
+  middle. The hysteresis stays.
+- **Main effort**: that objective's score is multiplied by (1 + w·c), so the
+  planner staffs it first and the assault forms there.
+- **Commit the reserve** (p > 0.5): the share kept back shrinks by
+  w·(2p − 1)·0.75 (never below 5 %); with garrisons on, the bases' guard
+  shrinks by the same share for that planning step.
+- **Hold**: `attack_now` below 0.4, `intel_stale` above 0.6, or `risk` of at
+  least 2.5 with confidence 0.4 means no *new* attack is started that cycle.
+  Attacks already under way continue.
+- **Break off** (p > 0.6, confidence ≥ 0.4): the assault the staff was asked
+  about is called off the way a failed one ends: its groups regroup at their
+  home garrison, the objective is left alone for 300 s, and no second abort
+  happens within those 300 s. `attack_now` above 0.6 lets a staging assault
+  go as soon as the first group is at the assembly area.
+- **Preparatory fires** (p > 0.6): while the main effort's assault is still
+  forming up, the artillery shells its defenders (or the objective centre
+  when no fresh contact is known there), with the usual cooldown and
+  danger-close checks.
+- **Reports**: when advice changes a decision the HQ message says so:
+  "Attack on Agia Marina postponed - intel too old", "Assault on X called off
+  - the staff judges it failing", "Reserve committed to the fight on the
+  staff's advice".
+
+### Installing the extension and the key
+
+Arma cannot do HTTP from SQF, so a tiny native extension (`extension/aic_jev`,
+Rust) posts the request on a background thread and hands the answer back
+through the engine's `ExtensionCallback` event.
+
+1. Build it with `cargo build --release` in `extension/aic_jev` (or take the
+   binaries from the `build-extension` workflow): `aic_jev_x64.dll` for Windows
+   and `aic_jev_x64.so` for a Linux server.
+2. Put the binary in the mod folder root, next to `mod.cpp` (`@aic/`).
+3. Give the server a TypeSafe API key, one of:
+   - the environment variable `TYPESAFE_API_KEY`,
+   - a file `aic_jev.key` (one line) in the game's working directory,
+   - at runtime: `"aic_jev" callExtension ["setKey", ["<key>"]]`.
+   The key is never logged.
+4. Start the server. The RPT shows `[AIC] Jev available` once a commander
+   starts, or `Jev unavailable: <reason>` when the extension or key is
+   missing (the general then runs without advice).
+
+Only the server needs the extension; clients need nothing.
+
+### Settings
+
+| Key | Default | Meaning |
+|---|---|---|
+| `jevEnabled` | true | Ask the Jev decision model for judgment calls (module checkbox `UseJev`) |
+| `jevWeight` | 0.6 | 0..1, how far the general follows the advice: 0 = ignore, 1 = follow fully (module attribute `JevWeight`) |
+| `jevMinConfidence` | 0.3 | Answers below this confidence are ignored |
+| `jevInterval` | 0 | Seconds between batches of questions (0 = every commander cycle, `loopInterval`) |
+| `jevModel` | `jev-latest` | Model name sent to the API |
+| `jevMaxPerMinute` | 30 | Rate guard: requests per minute on the whole server, all commanders together |
+
+### Public API for mission makers
+
+Anything can be asked about any state; answers arrive asynchronously, so a
+script asks in one place and reads the answer later (next frame or later,
+never by waiting on the call):
+
+```sqf
+// a yes/no question about an ambush site
+private _q = createHashMapFromArray [
+    ["ambush", createHashMapFromArray [
+        ["type", "noul"],
+        ["instructions", "Is this a good ambush site for a squad with two machine guns?"],
+        ["criteria", createHashMapFromArray [
+            ["true", "Covered firing positions, a single approach and an exit the enemy can't see"],
+            ["false", "Open ground, several approaches or no way out"]
+        ]]
+    ]]
+];
+private _state = createHashMapFromArray [["road", "narrow valley road, forest both sides, 60 m to the treeline"]];
+private _id = ["myTag", _state, _q] call AIC_fnc_jevAsk;   // request id, or -1 if Jev is unavailable
+
+// later (next frame or later):
+private _a = ["myTag"] call AIC_fnc_jevAnswers;             // {} until answered (or older than 120 s)
+if (count _a > 0) then {
+    private _p = (_a get "ambush") get "value";              // probability 0..1
+    diag_log format ["ambush site: %1 (confidence %2)", _p, (_a get "ambush") get "confidence"];
+};
+```
+
+`AIC_fnc_jevAsk [tag, state, questions, model(optional)]` takes a string, an
+array of strings or a HashMap as the state and a HashMap of question id →
+question in the API shape (`noul`, `choice` with `criteria` key → description,
+`score` with `criteria` as a list of levels). `AIC_fnc_jevAnswers [tag,
+maxAge(optional, 120)]` returns a HashMap question id → `{"type", "value",
+"confidence", "probs"}` plus `"_time"` and `"_latency"`, or an empty HashMap.
+A commander's current advice is in its HashMap under `"advice"`.
+
+### Cost and privacy
+
+One commander request is about 1.5k tokens, and Jev charges $0.042 per
+million input tokens (output is free): about **$0.0001 per cycle**, so a
+general asking every 30 s costs roughly a cent per hour. `jevInterval` spaces
+the requests out, `jevMaxPerMinute` caps them for the whole server.
+
+The situation summary is sent to TypeSafe's API: unit counts and types, power
+estimates, losses, objective names and their positions relative to the HQ
+(distance and bearing, never map coordinates), threat clusters, time of day and
+weather. No player names, no chat, nothing about the mission beyond that.
+Set `jevEnabled` to false (or leave the extension out) if that is not
+acceptable for your server.
+
 ## Building the PBO
 
 The source layout:
@@ -664,6 +815,7 @@ spawns `AIC_fnc_commanderLoop`. The loop calls `AIC_fnc_commanderCycle` every
 | 5 | Objectives | `updateObjectives` | Owner of each objective from units in its radius |
 | 6 | Stance | `determineStance` | Power ratio × aggression gives OFFENSIVE, BALANCED or DEFENSIVE |
 | 7 | Score | `scoreObjectives` | Priority, enemy ownership, distance and local threat |
+| 7a | Advice | `jevAdvisor` (`jevState`, `jevAsk`, `jevAnswers`) | Last cycle's Jev answers become `advice`, the next batch of questions goes out (if `jevEnabled` and the extension is available) |
 | 8 | Plan + orders | `garrisonCycle` (homes only), `allocateForces` then `issueOrder` | Assignments (ATTACK, DEFEND, PATROL, RETREAT, ...) turned into waypoints by the `order*` functions |
 | 9 | Garrisons | `garrisonCycle` (`garrisonStatus`, `canLeaveGarrison`) | Homes for groups and garrison refills from bases and surplus towns (if `manageGarrisons`) |
 | 10 | Transport | `transportCycle` (`findTransport`, `orderTransport`) | Dismounted cargo gets its final order, and empty transports return home |
@@ -683,6 +835,7 @@ Subsystems are split by folder, and each one owns the commander keys listed in
 - **orders**: waypoint construction and monitoring.
 - **support**: artillery and CAS.
 - **logistics**: dynamic simulation parking, garrisons and transport.
+- **jev**: the Jev decision-model client (extension calls, JSON, the advisor).
 - **ui**: reports, debug markers and colours.
 
 Fixed values that several functions share (stuck timeout, re-issue
