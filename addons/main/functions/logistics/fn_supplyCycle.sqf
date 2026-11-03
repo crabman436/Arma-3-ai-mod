@@ -5,15 +5,19 @@
  *   (server only, setting "useSupplyTrucks"). AI crews rarely use a supply
  *   truck by themselves, so the work is done here.
  *   A vehicle needs service with damage above 0.3 or unable to move (repair),
- *   fuel below 0.25 (fuel), or fewer than 40 % of its magazines holding rounds
- *   (ammo; unarmed vehicles never). Ground vehicles and landed helicopters
+ *   fuel below 0.25 (fuel), or ammunition (unarmed vehicles never): only the
+ *   magazines of the turrets with real weapons (AIC_fnc_vehicleWeapons;
+ *   smoke, flare and chaff magazines left out) count, per turret the share
+ *   of magazines still holding rounds, the first armed turret (the main
+ *   gun) weighted twice; ammo is needed when an armed turret has nothing
+ *   left or the weighted share is below AIC_SUPPLY_AMMO_LOW. Ground vehicles and landed helicopters
  *   count, static weapons and player vehicles do not. Crews that bailed out
  *   of an immobile vehicle still count through their assigned vehicle.
  *   A truck is free with task IDLE or DEFEND, crewed by a transport-only
  *   group, able to move, with fuel, and not at a threatened home. Each cycle up to
  *   AIC_SUPPLY_JOBS_PER_CYCLE free trucks go to the nearest vehicle they can
  *   help within AIC_SUPPLY_RADIUS: task "SUPPLY", record keys "supplyTarget",
- *   "supplyRoles", "supplyWp", "supplyArrive". Vehicles with an enemy known
+ *   "supplyWp", "supplyArrive". Vehicles with an enemy known
  *   within AIC_SUPPLY_DANGER_RADIUS are left until the area is clear.
  *   Within AIC_SUPPLY_REACH of a vehicle, after AIC_SUPPLY_WORK_TIME seconds,
  *   the truck does all it can: setDamage 0, setFuel 1, setVehicleAmmo 1, each
@@ -60,9 +64,30 @@ private _fnc_needs = {
     if ((damage _v) > 0.3 || {!canMove _v}) then {_needs pushBack "repair"};
     if ((fuel _v) < 0.25) then {_needs pushBack "fuel"};
     if (([_v, false] call AIC_fnc_vehicleWeapons) isNotEqualTo []) then {
-        private _mags = magazinesAllTurrets _v;
-        private _loaded = {(_x select 2) > 0} count _mags;
-        if (_mags isEqualTo [] || {(_loaded / (count _mags)) < 0.4}) then {_needs pushBack "ammo"};
+        // the turrets with real weapons (AIC_fnc_vehicleWeapons' per-class cache)
+        private _armedPaths = ((AIC_ns getOrDefault ["turretWeaponsClasses", createHashMap]) getOrDefault [typeOf _v, []]) apply {_x select 0};
+        private _mags = (magazinesAllTurrets _v) select {
+            private _m = toLowerANSI (_x select 0);
+            (_x select 1) in _armedPaths
+            && {(["smoke", "flare", "chaff", "laserbatteries"] findIf {(_m find _x) >= 0}) < 0}
+        };
+        if (_mags isEqualTo []) exitWith {_needs pushBack "ammo"};
+        private _sum = 0;
+        private _weights = 0;
+        private _empty = false;
+        {
+            private _path = _x;
+            private _tm = _mags select {(_x select 1) isEqualTo _path};
+            if (_tm isNotEqualTo []) then {
+                private _share = ({(_x select 2) > 0} count _tm) / (count _tm);
+                if (_share <= 0) then {_empty = true};
+                // the first armed turret is the main gun
+                private _w = [1, 2] select (_forEachIndex == 0);
+                _sum = _sum + _share * _w;
+                _weights = _weights + _w;
+            };
+        } forEach _armedPaths;
+        if (_empty || {_weights > 0 && {(_sum / _weights) < AIC_SUPPLY_AMMO_LOW}}) then {_needs pushBack "ammo"};
     };
     _needs
 };

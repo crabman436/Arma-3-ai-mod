@@ -13,8 +13,19 @@
  *   Task -> function:
  *     "ATTACK"    -> ground groups at an objective: AIC_fnc_orderAssault
  *                    (a staged assault, AIC_fnc_assaultFor); otherwise
- *                    AIC_fnc_orderAttack (radius = objective radius)
- *     "DEFEND"    -> AIC_fnc_orderDefend    (radius = objective radius, max 200)
+ *                    AIC_fnc_orderAttack (radius = objective radius). A
+ *                    group whose leader is already inside the objective
+ *                    radius fights where it is (AIC_fnc_orderAttack): it
+ *                    is never sent out to an assembly area
+ *     "DEFEND"    -> AIC_fnc_orderDefend    (radius = objective radius, max 200).
+ *                    Infantry gets a sector of the objective
+ *                    ("defendSector"): the slice the other defenders cover
+ *                    least, read from the objective's "sectors" map
+ *                    (hashValue group -> [group, bearing], stale entries
+ *                    dropped on read). The sector is kept while the group
+ *                    goes on defending the same objective, and chosen anew
+ *                    when it comes from another task or another defender
+ *                    holds a sector within AIC_SECTOR_MIN_GAP degrees.
  *     "PATROL"    -> AIC_fnc_orderPatrol    (radius = objective radius, or
  *                                            setting "objectiveRadius")
  *     "RETREAT"   -> AIC_fnc_orderRetreat   (empty pos -> commander "hq")
@@ -228,10 +239,16 @@ if (_curTask isEqualTo "TRANSPORT") then {
     _record set ["transport", grpNull];
 };
 
+// --- Already inside the objective ------------------------------------------------
+// (a garrison whose town became contested, attackers inside a town that
+// flipped back): no assembly area, the group fights where it is
+private _inside = _task == "ATTACK" && {count _objRec > 0}
+    && {((getPosATL (leader _group)) distance2D _pos) < _radius};
+
 // --- Where a ride ends ---------------------------------------------------------
 // an assault's troops are carried to its assembly area, not to the objective
 private _rideDest = +_pos;
-if (_task == "ATTACK" && {_type == "INF"}) then {
+if (_task == "ATTACK" && {_type == "INF"} && {!_inside}) then {
     private _stage = ([_cmd, _group, _pos, _objective] call AIC_fnc_assaultFor) getOrDefault ["stage", []];
     if (_stage isNotEqualTo []) then {_rideDest = +_stage};
 };
@@ -324,7 +341,7 @@ private _ok = switch (_task) do {
         private _via = _group getVariable ["AIC_attackVia", []];
         _group setVariable ["AIC_attackVia", nil];
         // objectives are taken by a staged assault, everything else directly
-        private _assault = if (_type in ["INF", "MOTOR", "MECH", "ARMOR"]) then {
+        private _assault = if (_type in ["INF", "MOTOR", "MECH", "ARMOR"] && {!_inside}) then {
             [_cmd, _group, _pos, _objective] call AIC_fnc_assaultFor
         } else {
             createHashMap
@@ -346,19 +363,38 @@ private _ok = switch (_task) do {
         // infantry: a sector of its own, the slice of the place the other
         // defenders cover least (kept while it defends this objective)
         private _sector = -1;
-        if (_type == "INF" && {_objective isNotEqualTo ""}) then {
+        if (_type == "INF" && {_objective isNotEqualTo ""} && {count _objRec > 0}) then {
             _sector = _record getOrDefault ["defendSector", -1];
-            if ((_record getOrDefault ["defendSectorObj", ""]) isNotEqualTo _objective || {_sector < 0}) then {
-                private _others = [];
-                {
-                    if (_y isEqualType createHashMap && {(_y getOrDefault ["group", grpNull]) isNotEqualTo _group}
-                        && {(_y getOrDefault ["task", ""]) isEqualTo "DEFEND"}
-                        && {(_y getOrDefault ["objective", ""]) isEqualTo _objective}
-                        && {(_y getOrDefault ["defendSectorObj", ""]) isEqualTo _objective}
-                        && {(_y getOrDefault ["defendSector", -1]) >= 0}) then {
-                        _others pushBack (_y get "defendSector");
-                    };
-                } forEach _groupData;
+            // the sectors the other defenders of this objective hold, from
+            // the objective's own map (no scan over every group record);
+            // entries of groups that no longer defend it are dropped
+            private _sectors = _objRec getOrDefault ["sectors", createHashMap];
+            if !(_sectors isEqualType createHashMap) then {_sectors = createHashMap};
+            _objRec set ["sectors", _sectors];
+            private _others = [];
+            {
+                private _entry = _sectors get _x;
+                private _g = if (_entry isEqualType [] && {count _entry >= 2}) then {_entry select 0} else {grpNull};
+                private _r = if (_g isEqualType grpNull && {!isNull _g}) then {_groupData getOrDefault [hashValue _g, createHashMap]} else {createHashMap};
+                if (
+                    count _r == 0
+                    || {({alive _x} count (units _g)) == 0}
+                    || {(_r getOrDefault ["task", ""]) isNotEqualTo "DEFEND"}
+                    || {(_r getOrDefault ["objective", ""]) isNotEqualTo _objective}
+                    || {(_r getOrDefault ["defendSectorObj", ""]) isNotEqualTo _objective}
+                ) then {
+                    _sectors deleteAt _x;
+                } else {
+                    if (_g isNotEqualTo _group) then {_others pushBack (_entry select 1)};
+                };
+            } forEach (keys _sectors);
+            // keep the sector while defending on; choose again when coming
+            // from another task or when another defender holds the same slice
+            if (
+                (_record getOrDefault ["defendSectorObj", ""]) isNotEqualTo _objective || {_sector < 0}
+                || {_curTask isNotEqualTo "DEFEND"}
+                || {(_others findIf {(abs ((_sector - _x + 540) % 360 - 180)) < AIC_SECTOR_MIN_GAP}) >= 0}
+            ) then {
                 _sector = if (_others isEqualTo []) then {
                     // the first defender takes the threatened side, else any
                     if (_threatPos isNotEqualTo []) then {_pos getDir _threatPos} else {random 360}
@@ -375,6 +411,7 @@ private _ok = switch (_task) do {
                 _record set ["defendSector", _sector];
                 _record set ["defendSectorObj", _objective];
             };
+            _sectors set [hashValue _group, [_group, _sector]];
         };
         // at a quiet base vehicles wait in the motor pool
         private _park = if (!_antiAir && {_threatPos isEqualTo []} && {_type in ["MOTOR", "MECH", "ARMOR"]}) then {

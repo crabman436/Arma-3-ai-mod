@@ -18,6 +18,9 @@
         left goes straight on; no strike with own troops within
         AIC_CAS_DANGER_CLOSE of the target, none on a cluster with an
         anti-air vehicle, no helicopter where a shoulder launcher was seen;
+        danger close counts every alive unit of the own and allied sides,
+        vehicle crews included, within AIC_CAS_DANGER_CLOSE plus the
+        cluster's spread of its centre (engine nearEntities query);
         planes are sent at armour, gunships at infantry; AIC_fnc_airDefence):
         walks the threat clusters strongest first and tasks the nearest
         available armed HELI/PLANE group within reach (helis 6 km, planes
@@ -37,8 +40,9 @@
         Jev advice (commander "advice", AIC_fnc_jevAdvisor; "jevWeight" 0
         = off): prep_fires p > AIC_ADVICE_YES while the main effort's
         assault (or, without a main effort, the one staging assault) is in
-        state "STAGE" puts that objective first, like "prepTarget" after
-        GO; with no fresh cluster within 600 m the objective centre itself
+        state "STAGE" puts that objective first for the artillery only
+        (the commander's "prepTarget" and the CAS order are left as they
+        are); with no fresh cluster within 600 m the objective centre itself
         is shelled with a short mission. Cooldown and danger close apply
         as always.
 
@@ -128,13 +132,14 @@ private _fnc_groupsOfType = {
 // an assault just started (AIC_fnc_assaultCycle, "prepTarget"): the clusters
 // on its objective come first for AIC_PREP_FIRE_TIME seconds
 private _prep = _cmd getOrDefault ["prepTarget", []];
-if (count _prepPos >= 2) then { _prep = [_prepPos, _now]; };
 private _fnc_prepFirst = {
-    params ["_list"];
-    if (count _prep < 2 || { (_now - (_prep select 1)) > AIC_PREP_FIRE_TIME }) exitWith { _list };
-    private _pPos = _prep select 0;
+    params ["_list", ["_p", _prep]];
+    if (count _p < 2 || { (_now - (_p select 1)) > AIC_PREP_FIRE_TIME }) exitWith { _list };
+    private _pPos = _p select 0;
     (_list select { ((_x get "pos") distance2D _pPos) < 600 }) + (_list select { ((_x get "pos") distance2D _pPos) >= 600 })
 };
+// the staff's prep_fires puts its objective first for the guns only
+private _artyPrep = if (count _prepPos >= 2) then { [_prepPos, _now] } else { _prep };
 
 // ======================================================================= ARTILLERY
 private _artyFired = false;
@@ -149,7 +154,7 @@ if (_useArty && { (_now - (_cmd getOrDefault ["lastArtyTime", -1e6])) >= _artyCo
     // before any gun's magazines are scanned
     private _artyTargets = [_threats select {
         (_x getOrDefault ["power", 0]) >= 2 && { ([_x] call _fnc_freshness) <= 120 }
-    }] call _fnc_prepFirst;
+    }, _artyPrep] call _fnc_prepFirst;
     // preparatory fire on advice with no fresh cluster on the objective: the
     // objective itself, a few rounds (the danger-close check still applies)
     if (count _prepPos >= 2 && { (_artyTargets findIf { ((_x get "pos") distance2D _prepPos) < 600 }) < 0 }) then {
@@ -266,17 +271,33 @@ if (_useAir) then {
 
     if (_available isEqualTo []) exitWith {};
 
-    // own troops: no strike on top of them
-    private _ownPositions = ((_cmd getOrDefault ["groups", []]) select { !isNull _x && { alive leader _x } }) apply { getPosATL leader _x };
+    // own and allied troops: no strike on top of them. Every unit counts, not
+    // only group leaders (spread squads, sentries, dismounted crews)
+    private _side = _cmd getOrDefault ["side", sideUnknown];
+    private _fnc_friendly = {
+        params ["_s"];
+        _s isEqualTo _side
+        || { _s in [west, east, independent] && { (_side getFriend _s) >= AIC_HOSTILE_FRIEND } }
+    };
 
     {
         private _cluster = _x;
         private _cPos = _cluster get "pos";
         if (_busyTargets findIf { (_x distance2D _cPos) < 300 } >= 0) then { continue };
-        if (_ownPositions findIf { (_x distance2D _cPos) < AIC_CAS_DANGER_CLOSE } >= 0) then { continue };
 
         // what is down there: its air defence, and how much of it is armour
         private _contacts = (_cluster getOrDefault ["contacts", []]) select { _x isEqualType createHashMap };
+        // danger close: friendly units within the cluster's spread plus the margin
+        private _spread = 0;
+        { _spread = _spread max (((_x getOrDefault ["pos", _cPos]) distance2D _cPos)); } forEach _contacts;
+        private _close = ([_cPos select 0, _cPos select 1, 0] nearEntities [["CAManBase", "LandVehicle", "Ship", "StaticWeapon"], AIC_CAS_DANGER_CLOSE + _spread]) findIf {
+            if (_x isKindOf "CAManBase") then {
+                alive _x && { [side group _x] call _fnc_friendly }
+            } else {
+                ((crew _x) findIf { alive _x && { [side group _x] call _fnc_friendly } }) >= 0
+            }
+        };
+        if (_close >= 0) then { continue };
         private _airDefence = 0;
         private _armour = 0;
         {

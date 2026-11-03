@@ -15,13 +15,21 @@
             "lastEngaged", stamped by the event handlers of
             AIC_fnc_attachGroupEHs, which also wake it the moment it
             happens);
-          - (parked groups) a hostile unit is within "dynSimWakeRange" of
-            its leader. Parked groups are blind, so this is how they notice
-            an enemy coming. The hostile positions are collected once per
-            cycle (alive, not captive units of hostile sides, vehicle crews
-            included) and shared by every group.
+          - (parked groups) a hostile unit is within the wake radius of
+            its leader: "dynSimWakeRange" plus the distance an enemy moving
+            at AIC_WAKE_SPEED covers in one "loopInterval", so a fast column
+            cannot reach a frozen garrison between two checks. Parked groups
+            are blind, so this is how they notice an enemy coming. The
+            hostile positions are collected once per cycle (alive, not
+            captive units of hostile sides, vehicle crews included) into a
+            grid of wake-radius cells, so each group only tests the 3 x 3
+            cells around it;
+          - it is the picket of its objective: of the PATROL groups of an
+            objective one (an awake one if there is) is never parked, so
+            every patrolled place keeps eyes open.
         A group is PARKED if all of these hold:
           - its task is IDLE, DEFEND or PATROL;
+          - it is not its objective's picket (above);
           - it has arrived: leader within 100 m of "taskPos", or within
             1.5 x the objective radius (min 100 m) of "taskPos" with no
             waypoint left or the task older than 120 s. Without a taskPos:
@@ -34,7 +42,7 @@
             the current order), or the task is older than 1100 s, so units
             never freeze halfway to their building positions;
           - no wake condition applies, and no hostile unit is within
-            "dynSimWakeRange" (the same proximity test as for parked
+            the wake radius (the same proximity test as for parked
             groups, so a group is not parked only to be woken by the same
             enemy on the next cycle).
         Everything else is left as it is.
@@ -93,20 +101,63 @@ private _enemyPositions = (((_cmd getOrDefault ["knownEnemies", []]) + (_cmd get
 
 // --- every hostile unit, once per cycle (parked groups are blind, and a
 // group must not be parked next to an enemy). Crews of vehicles are units
-// too; captives (surrendered / captured) do not count.
-private _hostilePositions = (allUnits select {
-    alive _x && { !captive _x } && {
+// too; captives (surrendered / captured) do not count. The wake radius
+// covers what a fast enemy drives in one cycle; the positions go into a
+// grid of cells one wake radius wide, so a group tests only the 3 x 3 cells
+// around it instead of every hostile unit on the map.
+private _interval = [_cmd, "loopInterval"] call AIC_fnc_getSetting;
+private _wakeRange = _range + (_interval max 0) * AIC_WAKE_SPEED;
+private _cells = createHashMap;
+{
+    if (alive _x && { !captive _x } && {
         private _eSide = side group _x;
         _eSide in [west, east, independent, civilian]
         && { _eSide isNotEqualTo _side }
         && { (_side getFriend _eSide) < AIC_HOSTILE_FRIEND }
-    }
-}) apply { getPosATL _x };
-// is a hostile unit within range of a position?
+    }) then {
+        private _p = getPosATL _x;
+        private _key = [floor ((_p select 0) / _wakeRange), floor ((_p select 1) / _wakeRange)];
+        private _cell = _cells getOrDefault [_key, []];
+        if (_cell isEqualTo []) then { _cells set [_key, _cell]; };
+        _cell pushBack _p;
+    };
+} forEach allUnits;
+// is a hostile unit within the wake radius of a position?
 private _fnc_hostileNear = {
     params ["_p"];
-    (_hostilePositions findIf { (_x distance2D _p) < _range }) > -1
+    if (count _cells == 0) exitWith { false };
+    private _cx = floor ((_p select 0) / _wakeRange);
+    private _cy = floor ((_p select 1) / _wakeRange);
+    private _found = false;
+    for "_i" from -1 to 1 do {
+        for "_j" from -1 to 1 do {
+            private _cell = _cells getOrDefault [[_cx + _i, _cy + _j], []];
+            if ((_cell findIf { (_x distance2D _p) < _wakeRange }) > -1) exitWith { _found = true; };
+        };
+        if (_found) exitWith {};
+    };
+    _found
 };
+
+// --- one picket per patrolled objective stays awake (an awake patrol first)
+private _pickets = createHashMap; // objective id -> [hashValue group, awake]
+{
+    private _grp = _x getOrDefault ["group", grpNull];
+    private _obj = _x getOrDefault ["objective", ""];
+    if (
+        (_x getOrDefault ["task", ""]) isEqualTo "PATROL"
+        && { _obj isEqualType "" } && { _obj isNotEqualTo "" }
+        && { _grp isEqualType grpNull } && { !isNull _grp }
+        && { !(_grp getVariable ["AIC_noDynSim", false]) }
+        && { ({ alive _x } count (units _grp)) > 0 }
+    ) then {
+        private _awake = !dynamicSimulationEnabled _grp;
+        private _cur = _pickets getOrDefault [_obj, []];
+        if (_cur isEqualTo [] || { _awake && { !(_cur select 1) } }) then {
+            _pickets set [_obj, [hashValue _grp, _awake]];
+        };
+    };
+} forEach _records;
 
 private _parked = 0;
 private _woken = 0;
@@ -148,6 +199,11 @@ private _woken = 0;
     // parked groups can't see: hostile units close to the leader
     if (!_wake && { _isParked }) then {
         _wake = [_lpos] call _fnc_hostileNear;
+    };
+
+    // the picket of a patrolled objective keeps its eyes open
+    if (!_wake && { _task isEqualTo "PATROL" }) then {
+        _wake = ((_pickets getOrDefault [_rec getOrDefault ["objective", ""], [""]]) select 0) isEqualTo (hashValue _grp);
     };
 
     if (_wake) then {

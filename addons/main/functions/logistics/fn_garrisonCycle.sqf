@@ -8,14 +8,26 @@
         large army can sit in towns and bases without costing server time
         and be pulled out when needed.
           1. Homes. Ground groups (not HELI / PLANE / NAVAL) with task
-             IDLE / DEFEND / PATROL:
+             IDLE / DEFEND / PATROL. Homes are the objectives the side
+             holds, "BASE_HQ" only while it holds it; the base of last
+             resort ("BASE_HQ", or with it lost the owned base nearest to
+             the commander's "hq", see AIC_fnc_updateObjectives) is called
+             the HQ base below:
                - a home that is lost to another side or no longer exists is
                  cleared (contested objectives keep their garrison);
                - a group DEFENDing an owned objective that is not its home
                  (e.g. sent there by AIC_fnc_allocateForces) now belongs to
                  that objective;
+               - on the very first run (commander key "homesAssigned" not
+                 yet set) an INF / MOTOR / MECH / ARMOR group (not a
+                 transport-only crew) with no owned objective within 1000 m
+                 holds where the mission maker placed it: record "outpost"
+                 (its position), home "", DEFEND there with objective "" once
+                 IDLE. It keeps that post while it is at it (leader or task
+                 position within AIC_OUTPOST_RANGE); a group that has gone
+                 elsewhere loses the post and is treated as below;
                - a group without home gets the nearest owned objective or
-                 base within 1000 m of its leader, else "BASE_HQ";
+                 base within 1000 m of its leader, else the HQ base;
                - an IDLE group away from its home (e.g. after an attack)
                  joins an owned objective within 1000 m;
                - an IDLE INF / MOTOR / MECH / ARMOR group that (still) is
@@ -28,7 +40,9 @@
                  and never with another group's troops aboard.
           2. AIC_fnc_garrisonStatus is recomputed.
           3. Transfers. Objectives whose deficit (desired - present -
-             incoming) is more than 2 power are served first by
+             incoming) is more than 2 power for AIC_DEFICIT_CYCLES cycles in
+             a row (objective key "deficitCycles", so a threat cluster that
+             flickers in and out of sight does not move garrisons) are served first by
              deficit * priority. Donors: INF / MOTOR / MECH / ARMOR groups,
              task IDLE / DEFEND / PATROL, strength above "retreatThreshold",
              settled at their home, not moved to a new home in the last
@@ -47,7 +61,10 @@
              patrols.
           5. Stand-to. With a threat cluster within AIC_STANDTO_RANGE of a
              home's edge, or a sentry's alarm (objective "alarmTime" within
-             AIC_ALARM_TIME), its patrols come in and DEFEND (infantry into
+             AIC_ALARM_TIME; the alert is held AIC_STANDTO_HOLD s after it
+             was last raised, objective key "alertTime", so the garrison
+             does not flip between standing to and standing down while a
+             threat flickers), its patrols come in and DEFEND (infantry into
              positions facing the threat, record "standTo"), and armed
              vehicles that are parked or hold the wrong side of the town (more
              than 60 degrees off, at most every 120 s) move to the threatened
@@ -104,13 +121,27 @@ private _objectives = (_cmd getOrDefault ["objectives", []]) select {
 private _objById = createHashMap;
 { _objById set [_x get "id", _x]; } forEach _objectives;
 
-// owned objectives and bases a group may call home (BASE_HQ always)
-private _homes = _objectives select {
-    ((_x get "id") isEqualTo AIC_BASE_ID) || { (_x getOrDefault ["owner", sideUnknown]) isEqualTo _side }
-};
+// owned objectives and bases a group may call home ("BASE_HQ" only while held)
+private _homes = _objectives select { (_x getOrDefault ["owner", sideUnknown]) isEqualTo _side };
 if (_homes isEqualTo []) exitWith { 0 };
 private _homeIds = _homes apply { _x get "id" };
-private _hqId = if (AIC_BASE_ID in _homeIds) then { AIC_BASE_ID } else { "" };
+// the home of last resort: BASE_HQ, or with it lost the owned base the HQ
+// moved to (AIC_fnc_updateObjectives), else the owned objective nearest the HQ
+private _hqId = AIC_BASE_ID;
+if !(AIC_BASE_ID in _homeIds) then {
+    private _hqPos = _cmd getOrDefault ["hq", []];
+    if (!(_hqPos isEqualType []) || { count _hqPos < 2 }) then { _hqPos = (_homes select 0) get "pos"; };
+    _hqId = [_cmd, _hqPos] call AIC_fnc_nearestBase;
+    if (_hqId isEqualTo "") then {
+        private _bestD = 1e12;
+        {
+            private _d = _hqPos distance2D (_x get "pos");
+            if (_d < _bestD) then { _bestD = _d; _hqId = _x get "id"; };
+        } forEach _homes;
+    };
+};
+// the first run leaves groups far from every garrison where they were placed
+private _firstRun = !((_cmd getOrDefault ["homesAssigned", false]) isEqualTo true);
 
 private _settleTasks = ["IDLE", "DEFEND", "PATROL"];
 private _COOLDOWN = 600; // s a group must stay at a new home before it can be moved again
@@ -130,12 +161,16 @@ private _fnc_atObjective = {
     ((getPosATL leader _grp) distance2D (_obj get "pos")) <= (([_obj] call _fnc_radius) * 1.5)
 };
 
-// is a threat cluster close enough for this garrison to stand to?
+// is a threat cluster close enough for this garrison to stand to? An alert
+// is held AIC_STANDTO_HOLD s (objective "alertTime", stamped here) so a
+// cluster flickering in and out of sight does not flip the garrison
 private _fnc_alert = {
     params ["_obj", "_entry"];
-    (_entry getOrDefault ["threatDist", 1e6]) <= (([_obj] call _fnc_radius) + AIC_STANDTO_RANGE)
-    // or the sentries have raised the alarm (AIC_fnc_sentryWatch)
-    || { (time - (_obj getOrDefault ["alarmTime", -1e6])) < AIC_ALARM_TIME }
+    private _alert = (_entry getOrDefault ["threatDist", 1e6]) <= (([_obj] call _fnc_radius) + AIC_STANDTO_RANGE)
+        // or the sentries have raised the alarm (AIC_fnc_sentryWatch)
+        || { (time - (_obj getOrDefault ["alarmTime", -1e6])) < AIC_ALARM_TIME };
+    if (_alert) then { _obj set ["alertTime", time]; };
+    _alert || { (time - (_obj getOrDefault ["alertTime", -1e6])) < AIC_STANDTO_HOLD }
 };
 
 // does this group's vehicle carry somebody else's troops?
@@ -190,6 +225,33 @@ private _sentHome = 0;
         private _leaderPos = getPosATL leader _grp;
         // trucks and other transport-only crews live at a base, never in a town
         private _depot = (_rec getOrDefault ["transportOnly", false]) isEqualTo true;
+
+        // a post the mission maker placed the group on, away from every
+        // garrison: it holds there instead of marching to the HQ base
+        private _outpost = _rec getOrDefault ["outpost", []];
+        if (!(_outpost isEqualType []) || { count _outpost < 2 }) then { _outpost = []; };
+        if (
+            _firstRun && { _outpost isEqualTo [] } && { _home isEqualTo "" } && { !_depot }
+            && { (_rec getOrDefault ["type", ""]) in _donorTypes }
+            && { ([_leaderPos] call _fnc_nearestHome) isEqualTo "" }
+        ) then {
+            _outpost = [_leaderPos select 0, _leaderPos select 1, 0];
+            _rec set ["outpost", _outpost];
+            ["garrisonCycle: %1 group %2 holds its post at %3 (no garrison within 1000 m)", [_side, groupId _grp, _outpost apply { round _x }]] call AIC_fnc_log;
+        };
+        if (_outpost isNotEqualTo [] && { _home isEqualTo "" }) then {
+            private _tp = _rec getOrDefault ["taskPos", []];
+            private _atPost = (_leaderPos distance2D _outpost) <= AIC_OUTPOST_RANGE
+                || { _task isNotEqualTo "IDLE" && { _tp isEqualType [] } && { count _tp >= 2 } && { (_tp distance2D _outpost) <= AIC_OUTPOST_RANGE } };
+            if (_atPost) then {
+                if (!_homesOnly && { _task isEqualTo "IDLE" }) then {
+                    [_cmd, _grp, "DEFEND", _outpost, ""] call AIC_fnc_issueOrder;
+                };
+                continue;
+            };
+            // it has been sent elsewhere: no post any more, a home as usual
+            _rec deleteAt "outpost";
+        };
 
         // lost to another side or removed -> homeless (contested keeps it)
         if (_home isNotEqualTo "" && { !(_home in _homeIds) }) then {
@@ -258,6 +320,7 @@ private _sentHome = 0;
         };
     };
 } forEach _entries;
+_cmd set ["homesAssigned", true];
 
 // ------------------------------------------------------------ 2. status
 // (homes only: AIC_fnc_allocateForces computes it right after this)
@@ -271,8 +334,12 @@ private _moves = 0;
 private _deficits = [];
 {
     private _need = (_y get "desired") - (_y get "present") - (_y getOrDefault ["incoming", 0]);
-    if (_need > 2) then {
-        private _prio = (_objById getOrDefault [_x, createHashMap]) getOrDefault ["priority", 1];
+    private _obj = _objById getOrDefault [_x, createHashMap];
+    // a deficit must last a few cycles before groups are moved for it
+    private _cycles = if (_need > 2) then { (_obj getOrDefault ["deficitCycles", 0]) + 1 } else { 0 };
+    if (count _obj > 0) then { _obj set ["deficitCycles", _cycles]; };
+    if (_cycles >= AIC_DEFICIT_CYCLES) then {
+        private _prio = _obj getOrDefault ["priority", 1];
         if !(_prio isEqualType 0) then { _prio = 1; };
         _deficits pushBack [-(_need * (_prio max 0.1)), _x, _need];
     };

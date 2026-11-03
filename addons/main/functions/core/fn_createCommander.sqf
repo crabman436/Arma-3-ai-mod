@@ -5,7 +5,8 @@
         Creates the AI general for a side (server only). Merges the given
         settings with the defaults, stores the commander in AIC_ns "commanders",
         registers the side's groups, sets the HQ, collects objectives, adds the implicit base objective
-        "BASE_HQ" at the HQ (isBase = true, owner = own side) and starts
+        "BASE_HQ" at the HQ (isBase = true, owner = own side; a base marker
+        the HQ stands on becomes BASE_HQ, no second base there) and starts
         the commander loop. If "manageDynSim" is on, the engine's dynamic
         simulation system is enabled (and the group activation distance is
         set from "dynSimDistance" when > 0). If "jevEnabled" is on, the
@@ -183,6 +184,8 @@ _cmd set ["hq", _hq];
 // --- implicit base objective at the HQ (garrison system home of last
 // resort). AIC_fnc_collectObjectives has already added BASE_HQ at this very
 // "hq", so addObjective returns that record (it dedupes by id and place).
+// When the HQ was taken from an "aic_base_<side>" marker, that marker IS
+// BASE_HQ (collectObjectives adds no second "BASE_<marker>" base there).
 private _baseRadius = ([_cmd, "objectiveRadius"] call AIC_fnc_getSetting) min 300;
 private _base = [_cmd, _hq, "HQ", _baseRadius, 1, "BASE", true, 0] call AIC_fnc_addObjective;
 if (count _base == 0) then {

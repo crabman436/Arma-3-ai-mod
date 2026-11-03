@@ -251,8 +251,10 @@
 #define AIC_REORG_CALM 300
 
 // ---------------------------------------------------------------- aircraft
-// a plane counts as down at its airfield within this (m) of it (rearmCycle)
-#define AIC_AIRFIELD_TURNAROUND_RANGE 300
+// a plane counts as down at its airfield within this (m) of its reference
+// point, the "ilsPosition" at one end of the runway: a plane rolls out and
+// taxis up to a runway length away (rearmCycle)
+#define AIC_AIRFIELD_TURNAROUND_RANGE 3000
 // an idle helicopter that failed to land at its pad this often lands where it is (monitorOrders)
 #define AIC_HELI_LAND_ATTEMPTS 2
 
@@ -264,3 +266,26 @@
 #define AIC_JEV_FAIL_STREAK 5
 // s before the same "attack postponed" hold text is announced again (report)
 #define AIC_REPORT_HOLD_REPEAT 300
+
+// ---------------------------------------------------------------- gameplay review fixes (planner / garrisons)
+// share of priority x "garrisonPerPriority" assumed to hold an enemy objective
+// nobody has looked at for AIC_EST_HALF_LIFE s (allocateForces attack sizing)
+#define AIC_EST_PRIOR_SHARE 0.5
+// a stalled assault (AIC_ASSAULT_STALL) asks for this much more force
+// (objective key "attackBoost", assaultCycle -> allocateForces)
+#define AIC_ASSAULT_BOOST 1.5
+// a crew of unarmed vehicles with at most this many extra men aboard is still
+// a transport-only crew (updateGroups)
+#define AIC_TRANSPORT_MAX_RIDERS 3
+// degrees: an infantry defend sector this close to another defender's is
+// chosen again (issueOrder)
+#define AIC_SECTOR_MIN_GAP 30
+// m: a group left where the mission maker placed it (record "outpost") is at
+// its post within this distance (garrisonCycle, allocateForces)
+#define AIC_OUTPOST_RANGE 150
+// cycles a garrison deficit must last before a transfer is ordered
+// (objective key "deficitCycles", garrisonCycle)
+#define AIC_DEFICIT_CYCLES 2
+// below this share of loaded magazines on a real weapon's turret a vehicle
+// asks for the ammo truck (supplyCycle)
+#define AIC_SUPPLY_AMMO_LOW 0.4

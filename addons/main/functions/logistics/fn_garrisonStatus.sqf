@@ -3,7 +3,9 @@
 
     Description:
         Computes the garrison state of every objective the commander's side
-        owns, plus the implicit base "BASE_HQ" (always included).
+        owns, the implicit base "BASE_HQ" included only while the side holds
+        it (a base the enemy took is no garrison: nobody is sent there as a
+        defender).
         Per objective:
           - "desired": the objective's "garrison" override if > 0, otherwise
             priority * "garrisonPerPriority" (villages have priority 1, cities
@@ -80,7 +82,7 @@ private _objById = createHashMap; // id -> objective record (only the garrisoned
         if (
             _id isNotEqualTo ""
             && { _pos isEqualType [] && { count _pos >= 2 } }
-            && { (_id isEqualTo AIC_BASE_ID) || { (_obj getOrDefault ["owner", sideUnknown]) isEqualTo _side } }
+            && { (_obj getOrDefault ["owner", sideUnknown]) isEqualTo _side }
             && { !(_id in _status) }
         ) then {
             private _priority = _obj getOrDefault ["priority", 1];

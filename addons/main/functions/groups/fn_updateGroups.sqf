@@ -8,10 +8,19 @@
  *                  while they still crew such weapons
  *     - "strength" = (alive units / initialSize) * average health of the
  *                    vehicles the group crews, clamped to 0..1
- *     - "transportOnly" = true when every alive unit crews an unarmed
- *                    vehicle (AIC_fnc_vehicleArmament 0): a truck or
- *                    transport helicopter crew, which carries others and
- *                    never fights
+ *     - "transportOnly" = true when the group drives only unarmed vehicles
+ *                    (AIC_fnc_vehicleArmament 0) and has at most
+ *                    AIC_TRANSPORT_MAX_RIDERS men besides their crews: a
+ *                    truck or transport helicopter crew, which carries
+ *                    others and never fights (a few passengers the
+ *                    mission maker put aboard do not make it an attack group)
+ *     - reorganisation: a group at or below "retreatThreshold" that has
+ *                    held a base it owns (task DEFEND there) for
+ *                    AIC_REORG_TIME s without being engaged for
+ *                    AIC_REORG_CALM s is reorganised: "initialSize" becomes
+ *                    its alive count ("reorgTime" = time), so a remnant that
+ *                    retreated fights again instead of sitting at the base
+ *                    for good
  *   Records whose group is null or dead are skipped (they are removed by
  *   AIC_fnc_registerGroups). Missing records for groups in "groups" are
  *   created with AIC_fnc_newGroupRecord.
@@ -27,6 +36,8 @@
  *   [_commander] call AIC_fnc_updateGroups;
  */
 
+#include "\z\aic\addons\main\script_component.hpp"
+
 params [["_commander", createHashMap, [createHashMap]]];
 
 if (!isServer) exitWith {0};
@@ -40,6 +51,7 @@ if (!(_groupData isEqualType createHashMap)) then {
 };
 
 private _totalPower = 0;
+private _retreatThreshold = [_commander, "retreatThreshold"] call AIC_fnc_getSetting;
 
 {
     private _grp = _x;
@@ -94,7 +106,7 @@ private _totalPower = 0;
 
             // --- Transport-only ---
             // the group drives unarmed vehicles (truck, transport helicopter)
-            // and carries at most one extra man: it carries others and is never
+            // and carries at most a few extra men: it carries others and is never
             // sent to fight (AIC_fnc_availableGroups) or to patrol. Judged by
             // the vehicles, not by who sits where this moment, so a crew that
             // stepped out or a lone passenger does not turn a truck into an
@@ -131,7 +143,7 @@ private _totalPower = 0;
                 if (isNull _veh) then {!((assignedVehicle _x) in _driven)} else {!(_veh in _driven) || {(_veh getCargoIndex _x) >= 0}}
             } count _alive;
             private _transportOnly = _driven isNotEqualTo []
-                && {_riders <= 1}
+                && {_riders <= AIC_TRANSPORT_MAX_RIDERS}
                 && {(_driven findIf {([_x] call AIC_fnc_vehicleArmament) > 0}) < 0};
             _record set ["transportOnly", _transportOnly];
             // anti-air crews protect what they stand next to: never sent to fight on the ground
@@ -161,6 +173,29 @@ private _totalPower = 0;
             private _woundFactor = 1 - 0.5 * (_woundSum / (count _alive));
 
             private _strength = ((_unitRatio * _vehHealth * _woundFactor) max 0) min 1;
+
+            // a remnant that has held a base in peace for a while is
+            // reorganised: what is left of it is the new full strength
+            if (_strength <= _retreatThreshold && {(count _alive) < _initial}
+                && {(_record getOrDefault ["task", ""]) isEqualTo "DEFEND"}
+                && {(time - (_record getOrDefault ["taskTime", time])) > AIC_REORG_TIME}
+                && {!(_engaged isEqualType 0) || {(time - _engaged) > AIC_REORG_CALM}}) then {
+                private _base = [_commander, _record getOrDefault ["objective", ""]] call AIC_fnc_getObjective;
+                private _bPos = _base getOrDefault ["pos", []];
+                if (
+                    (_base getOrDefault ["isBase", false]) isEqualTo true
+                    && {(_base getOrDefault ["owner", sideUnknown]) isEqualTo (_commander getOrDefault ["side", sideUnknown])}
+                    && {count _bPos >= 2}
+                    && {((leader _grp) distance2D _bPos) <= (((_base getOrDefault ["radius", 300]) max 100) * 1.5)}
+                ) then {
+                    _record set ["initialSize", count _alive];
+                    _record set ["reorgTime", time];
+                    _strength = ((_vehHealth * _woundFactor) max 0) min 1;
+                    ["updateGroups: %1 group %2 reorganised at '%3' with %4 men", [
+                        _commander getOrDefault ["side", sideUnknown], groupId _grp, _base get "id", count _alive
+                    ]] call AIC_fnc_log;
+                };
+            };
             _record set ["strength", _strength];
         };
     };

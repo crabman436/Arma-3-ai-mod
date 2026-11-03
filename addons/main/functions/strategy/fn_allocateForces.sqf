@@ -6,7 +6,10 @@
  *
  *   1. Damaged groups (strength <= retreatThreshold, or already RETREATing)
  *      get RETREAT to HQ; once near HQ (250 m ground, 400 m heli, 1500 m
- *      plane) - or already DEFENDing HQ - they DEFEND HQ instead.
+ *      plane; aircraft also near any owned base) - or already DEFENDing HQ
+ *      - they DEFEND HQ instead. "HQ" is the commander's "hq", which
+ *      AIC_fnc_updateObjectives moves to the nearest owned base while
+ *      "BASE_HQ" is held by the enemy; its objective id is then that base.
  *      Air (HELI/PLANE) is never tasked here except for retreating
  *      damaged aircraft - air is left to the support subsystem. STATIC,
  *      ARTY and NAVAL groups are never tasked here.
@@ -16,12 +19,29 @@
  *        - HQ (objective "", or "BASE_HQ" when garrisons are managed) as
  *          DEFEND target if threats are within 1000 m
  *        - own objectives with threats near them -> DEFEND targets
+ *        - own objectives that became contested (owner sideUnknown,
+ *          "prevOwner" the own side) -> DEFEND targets in every stance, so
+ *          the garrison inside holds on and is reinforced (never an ATTACK
+ *          that would send it out to an assembly area)
  *        - OFFENSIVE/BALANCED: enemy-held / contested / unowned objectives
- *          -> ATTACK targets, ordered by "score"
- *        - DEFENSIVE: no objective attacks; only weak threat clusters close
- *          to HQ/own objectives are counter-attacked (ATTACK, objective "").
- *      Required power: ATTACK 1.5x local threat (floor 3 + 2*priority for
- *      enemy-held, 3 otherwise); DEFEND 1.2x local threat (floor 3).
+ *          -> ATTACK targets, ordered by "score"; an own base ("BASE"
+ *          source, "BASE_HQ" included) taken by the enemy also in DEFENSIVE
+ *        - DEFENSIVE: no other objective attacks; only weak threat clusters
+ *          close to HQ/own objectives are counter-attacked (ATTACK,
+ *          objective "").
+ *      Local threat of an objective: the threat clusters within its radius
+ *      plus AIC_OBJ_THREAT_RANGE, but at least the objective's slowly
+ *      decaying enemy estimate "estPower" (AIC_fnc_updateObjectives); an
+ *      enemy-held objective nobody has looked at for AIC_EST_HALF_LIFE s
+ *      ("ownerTime") is assumed to hold at least AIC_EST_PRIOR_SHARE x
+ *      priority x "garrisonPerPriority". So an attack is not sized down, or
+ *      released and re-staffed, just because contacts expired.
+ *      Required power: ATTACK AIC_ATTACK_RATIO x local threat (floor
+ *      AIC_ATTACK_MIN_FORCE + 2*priority for enemy-held,
+ *      AIC_ATTACK_MIN_FORCE otherwise), times the objective's "attackBoost"
+ *      (set by AIC_fnc_assaultCycle when an assault stalls); DEFEND 1.2x
+ *      local threat (floor 3). An objective whose assault failed
+ *      (objective "failedUntil" in the future) gets no new attack.
  *      Number of ATTACK objectives staffed at once is capped:
  *      BALANCED max(1, floor(pool/3)), OFFENSIVE max(1, ceil(pool/2)).
  *   4. Stable assignments: a pool group whose record task/objective matches
@@ -34,7 +54,8 @@
  *      close groups are preferred; groups that would massively overshoot the
  *      remaining need are taken last.
  *   6. Greedy staffing per target (highest score first): candidates sorted
- *      by travel cost / type suitability (armour/mech for open ground,
+ *      once per target (re-sorted once when the first infantry joins an
+ *      urban attack) by travel cost / type suitability (armour/mech for open ground,
  *      infantry for towns, infantry best for defence; vehicles travel
  *      faster). A target is only staffed if the whole remaining pool could
  *      reach its required power - lone weak groups are never thrown at
@@ -74,7 +95,11 @@
  *         BASE_HQ's own objective DEFEND target), so garrison groups
  *         defending BASE_HQ count as already on it;
  *       - damaged groups still RETREAT; once at HQ they DEFEND it with
- *         objective "BASE_HQ", so the garrison system adopts them.
+ *         objective "BASE_HQ" (or the owned base the HQ moved to), so the
+ *         garrison system adopts them;
+ *       - a group left at the post the mission maker placed it on (record
+ *         "outpost", AIC_fnc_garrisonCycle) is only taken for DEFEND /
+ *         REINFORCE targets within AIC_THREAT_RADIUS of that post.
  *
  *   Jev advice (commander "advice", AIC_fnc_jevAdvisor; "jevWeight" 0 = off):
  *   - commit_reserve p > 0.5: the reserve ratio is multiplied by
@@ -159,8 +184,29 @@ if (_manageGarrisons) then {
     _garrisons = [_cmd] call AIC_fnc_garrisonStatus;
     if (isNil "_garrisons" || {!(_garrisons isEqualType createHashMap)}) then {_garrisons = createHashMap};
 };
-// objective id the HQ DEFEND order uses ("BASE_HQ" lets the garrison system adopt the group)
-private _hqObjId = if (_manageGarrisons && {AIC_BASE_ID in _garrisons}) then {AIC_BASE_ID} else {""};
+// objective id the HQ DEFEND order uses ("BASE_HQ" lets the garrison system
+// adopt the group). garrisonStatus only lists what the side holds: with
+// "BASE_HQ" lost, the owned objective the HQ moved to (updateObjectives)
+private _hqObjId = "";
+if (_manageGarrisons) then {
+    if (AIC_BASE_ID in _garrisons) exitWith {_hqObjId = AIC_BASE_ID};
+    private _bestD = 1e12;
+    {
+        private _o = [_cmd, _x] call AIC_fnc_getObjective;
+        private _p = _o getOrDefault ["pos", []];
+        private _r = _o getOrDefault ["radius", 300];
+        if !(_r isEqualType 0) then {_r = 300};
+        if (count _p >= 2 && {(_p distance2D _hq) <= (_r max 50)} && {(_p distance2D _hq) < _bestD}) then {
+            _bestD = _p distance2D _hq;
+            _hqObjId = _x;
+        };
+    } forEach (keys _garrisons);
+};
+// owned bases: aircraft count as home at any of them
+private _ownBasePositions = (_objectives select {
+    (_x getOrDefault ["isBase", false]) isEqualTo true && {(_x getOrDefault ["owner", sideUnknown]) isEqualTo _side}
+}) apply {_x get "pos"};
+private _perPriority = ([_cmd, "garrisonPerPriority"] call AIC_fnc_getSetting) max 0;
 
 private _now = time;
 private _stableWindow = 300;
@@ -326,12 +372,20 @@ private _fnc_isHome = {
     params ["_info", "_target"];
     private _home = _info get "home";
     private _id = _target get "id";
-    (_id != "" && {_home == _id}) || {(_target getOrDefault ["kind", ""]) == "HQ" && {_home == AIC_BASE_ID}}
+    (_id != "" && {_home == _id}) || {(_target getOrDefault ["kind", ""]) == "HQ" && {_hqObjId != ""} && {_home == _hqObjId}}
+};
+
+// a group holding the post it was placed on only answers a threat close by
+private _fnc_outpostOk = {
+    params ["_info", "_target"];
+    (_target get "task") != "ATTACK"
+    && {((_info get "outpost") distance2D (_target get "pos")) < AIC_THREAT_RADIUS}
 };
 
 // side-effect free estimate of AIC_fnc_canLeaveGarrison (feasibility / candidate lists)
 private _fnc_mayLeave = {
     params ["_info", "_target"];
+    if ((_info get "outpost") isNotEqualTo []) exitWith {[_info, _target] call _fnc_outpostOk};
     if (!_manageGarrisons || {!(_info get "garrisoned")}) exitWith {true};
     if ([_info, _target] call _fnc_isHome) exitWith {true};
     private _entry = _garrisons getOrDefault [_info get "home", createHashMap];
@@ -349,6 +403,7 @@ private _fnc_mayLeave = {
 // commit-time check: asks AIC_fnc_canLeaveGarrison (reserves the surplus)
 private _fnc_takeFromGarrison = {
     params ["_info", "_target"];
+    if ((_info get "outpost") isNotEqualTo []) exitWith {[_info, _target] call _fnc_outpostOk};
     if (!_manageGarrisons || {!(_info get "garrisoned")}) exitWith {true};
     if ([_info, _target] call _fnc_isHome) exitWith {true};
     ([_cmd, _info get "group"] call AIC_fnc_canLeaveGarrison) isEqualTo true
@@ -388,7 +443,12 @@ private _fnc_takeFromGarrison = {
             && {(_rec getOrDefault ["objective", ""]) in ["", _hqObjId]}
             && {_recPos isEqualType []} && {count _recPos >= 2}
             && {(_recPos distance2D _hq) < AIC_REISSUE_TOL_FIXED};
-        if (_defendingHq || {(_lpos distance2D _hq) < _homeR}) then {
+        // an aircraft parked at any owned base is home: its landing place
+        // need not be near the HQ (no RETREAT loop for a helicopter that set
+        // down at another base)
+        private _atHome = (_lpos distance2D _hq) < _homeR
+            || {_type in ["HELI", "PLANE"] && {(_ownBasePositions findIf {(_x distance2D _lpos) < _homeR}) >= 0}};
+        if (_defendingHq || {_atHome}) then {
             if !(_type in ["HELI", "PLANE"]) then {
                 [_grp, "DEFEND", _hq, _hqObjId] call _fnc_assign;
             } else {
@@ -433,6 +493,9 @@ private _pool = []; // array of info hashmaps
     if !(_recObj isEqualType "") then {_recObj = ""};
     private _taskTime = _rec getOrDefault ["taskTime", -1e6];
     if !(_taskTime isEqualType 0) then {_taskTime = -1e6};
+    // holding the post the mission maker placed it on (AIC_fnc_garrisonCycle)
+    private _outpost = _rec getOrDefault ["outpost", []];
+    if (!(_outpost isEqualType []) || {count _outpost < 2} || {_home != ""}) then {_outpost = []};
 
     _pool pushBack createHashMapFromArray [
         ["group", _grp],
@@ -446,7 +509,8 @@ private _pool = []; // array of info hashmaps
         ["task", _task],
         ["objective", _recObj],
         ["taskPos", _taskPos],
-        ["taskTime", _taskTime]
+        ["taskTime", _taskTime],
+        ["outpost", _outpost]
     ];
 } forEach _available;
 
@@ -497,32 +561,57 @@ if (_hqThreat > 0) then {
     private _owner = _obj getOrDefault ["owner", sideUnknown];
     if !(_owner isEqualType sideUnknown) then {_owner = sideUnknown};
     private _name = _obj getOrDefault ["name", _id];
+    private _prevOwner = _obj getOrDefault ["prevOwner", sideUnknown];
+    // a town of ours under attack (updateObjectives: contested now, ours before)
+    private _contestedOwn = _owner isEqualTo sideUnknown && {_prevOwner isEqualTo _side};
 
-    private _threat = [_opos, _radius + 700] call _fnc_threatAt;
+    private _threat = [_opos, _radius + AIC_OBJ_THREAT_RANGE] call _fnc_threatAt;
+    // the slowly decaying enemy estimate: contacts that expired are not forgotten
+    private _est = _obj getOrDefault ["estPower", 0];
+    if !(_est isEqualType 0) then {_est = 0};
 
-    if (_owner isEqualTo _side) then {
-        if (_threat > 0) then {
+    if (_owner isEqualTo _side || {_contestedOwn}) then {
+        // contested: defended in every stance, whatever the clusters say
+        if (_threat > 0 || {_contestedOwn}) then {
+            private _known = if (_contestedOwn) then {_threat max _est} else {_threat};
             _targets pushBack ([
-                _id, _name, _opos, _radius, "DEFEND", (_threat * 1.2) max 3,
-                _score, "OBJ", _threat, false
+                _id, _name, _opos, _radius, "DEFEND", (_known * 1.2) max 3,
+                _score, "OBJ", _known, false
             ] call _fnc_newTarget);
         };
     } else {
         private _isUnknown = _owner isEqualTo sideUnknown;
         private _isHostile = !_isUnknown && {(_side getFriend _owner) < AIC_HOSTILE_FRIEND};
+        // an own base the enemy took (BASE_HQ, own base markers) is retaken in every stance
+        private _lostBase = _isHostile && {(_obj getOrDefault ["source", ""]) isEqualTo "BASE"};
         // objectives held by a friendly third side are left alone
-        if ((_isUnknown || _isHostile) && {_stance != "DEFENSIVE"}) then {
+        if ((_isUnknown || _isHostile) && {_stance != "DEFENSIVE" || {_lostBase}}) then {
             private _floor = AIC_ATTACK_MIN_FORCE + (if (_isHostile) then {2 * (_priority min 3)} else {0});
+            private _known = _threat max _est;
+            // nobody has looked at an enemy-held place for a while: assume a garrison
+            private _seenAt = _obj getOrDefault ["ownerTime", -1e6];
+            if !(_seenAt isEqualType 0) then {_seenAt = -1e6};
+            if (_isHostile && {(_now - _seenAt) > AIC_EST_HALF_LIFE}) then {
+                _known = _known max (_priority * _perPriority * AIC_EST_PRIOR_SHARE);
+            };
+            // a stalled assault asks for more (AIC_fnc_assaultCycle)
+            private _boost = _obj getOrDefault ["attackBoost", 1];
+            if !(_boost isEqualType 0) then {_boost = 1};
             // terrain never changes: the urban test is cached on the objective
             private _urban = _obj getOrDefault ["urban", -1];
             if !(_urban isEqualType true) then {
                 _urban = [_opos, _radius] call _fnc_isUrban;
                 _obj set ["urban", _urban];
             };
-            _targets pushBack ([
-                _id, _name, _opos, _radius, "ATTACK", (_threat * AIC_ATTACK_RATIO) max _floor,
-                _score, "OBJ", _threat, _urban
-            ] call _fnc_newTarget);
+            private _t = [
+                _id, _name, _opos, _radius, "ATTACK", ((_known * AIC_ATTACK_RATIO) max _floor) * (_boost max 1),
+                _score, "OBJ", _known, _urban
+            ] call _fnc_newTarget;
+            // a failed assault leaves the objective alone for a while
+            private _failedUntil = _obj getOrDefault ["failedUntil", -1];
+            if !(_failedUntil isEqualType 0) then {_failedUntil = -1};
+            _t set ["cooldown", _now < _failedUntil];
+            _targets pushBack _t;
         };
     };
 } forEach _objectives;
@@ -601,7 +690,7 @@ private _reserveThreat = _hqThreat;
         private _id = _x getOrDefault ["id", ""];
         private _r = _x getOrDefault ["radius", 300];
         if (!(_r isEqualType 0) || {_r <= 0}) then {_r = 300};
-        private _t = [_x get "pos", _r + 700] call _fnc_threatAt;
+        private _t = [_x get "pos", _r + AIC_OBJ_THREAT_RANGE] call _fnc_threatAt;
         if (_t > _reserveThreat && {_id isEqualType ""} && {_id != ""}) then {
             _reserveThreat = _t;
             _reservePos = _x get "pos";
@@ -740,6 +829,8 @@ private _staffedAttackTargets = [];
             continue;
         };
         if (_isObjAttack && {_abortedId != ""} && {(_target get "id") == _abortedId}) then {continue};
+        // the last assault on it failed (AIC_fnc_assaultCycle "failedUntil")
+        if (_isObjAttack && {(_target getOrDefault ["cooldown", false]) isEqualTo true}) then {continue};
     };
 
     // attack cap (targets that are already being fought for keep their slot)
@@ -778,22 +869,29 @@ private _staffedAttackTargets = [];
         continue;
     };
 
-    // greedy fill
+    // greedy fill: the candidates are sorted by cost once per target. The
+    // only cost term that changes during the fill (vehicles wait for
+    // infantry on an urban attack) re-sorts the rest once, when the first
+    // infantry joins. Whether a garrison may still let a group go changes
+    // as groups are taken, so that is checked per pick.
     private _blocked = createHashMap; // hashValue -> true: garrison refused to let it go
-    private _guard = 0;
-    while {(_target get "committed") < _required && {_guard < 200}} do {
-        _guard = _guard + 1;
-        private _left = (call _fnc_remaining) select {
-            !((_x get "hv") in _blocked) && {[_x, _target] call _fnc_mayLeave}
-        };
-        if (_left isEqualTo []) exitWith {};
-        private _best = objNull;
-        private _bestCost = 1e12;
-        {
-            private _c = [_x, _target] call _fnc_cost;
-            if (_c < _bestCost) then {_bestCost = _c; _best = _x};
-        } forEach _left;
-        if (_best isEqualType objNull) exitWith {};
+    private _urbanWait = _task == "ATTACK" && {_target get "urban"}
+        && {((_target get "members") findIf {((_x select 0) get "type") == "INF"}) < 0};
+    private _list = [];
+    private _order = [];
+    private _fnc_sortCands = {
+        _list = _cands select {!((_x get "hv") in _handled) && {!((_x get "hv") in _blocked)}};
+        _order = [];
+        {_order pushBack [[_x, _target] call _fnc_cost, _forEachIndex]} forEach _list;
+        _order sort true;
+    };
+    call _fnc_sortCands;
+    private _i = 0;
+    while {(_target get "committed") < _required && {_i < count _order}} do {
+        private _best = _list select ((_order select _i) select 1);
+        _i = _i + 1;
+        if ((_best get "hv") in _handled) then {continue};
+        if !([_best, _target] call _fnc_mayLeave) then {continue};
         if !([_best, _target] call _fnc_takeFromGarrison) then {
             _blocked set [_best get "hv", true];
             continue;
@@ -808,6 +906,11 @@ private _staffedAttackTargets = [];
         _target set ["committed", (_target get "committed") + _eff];
         (_target get "members") pushBack [_best, _gTask];
         _handled set [_best get "hv", true];
+        if (_urbanWait && {(_best get "type") == "INF"}) then {
+            _urbanWait = false;
+            call _fnc_sortCands;
+            _i = 0;
+        };
     };
 
     if ((_target get "members") isNotEqualTo []) then {

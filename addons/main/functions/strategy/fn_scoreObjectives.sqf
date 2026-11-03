@@ -10,15 +10,22 @@
  *     own-held     : unthreatened -> base * 0.2 (low)
  *                    threatened   -> base * 0.8 + 10 + urgency (up to +20,
  *                                    grows with threat relative to own power)
+ *     own, contested ("prevOwner" the own side, owner sideUnknown): scored
+ *                    like a threatened own objective, the threat being at
+ *                    least its enemy estimate "estPower"
+ *     own base lost: an enemy-held base of source "BASE" ("BASE_HQ", own
+ *                    base markers) gets + AIC_LOST_BASE_BONUS
  *     allied-held  : base * 0.2 (another friendly side holds it)
  *     distance     : -2 per km from HQ (cap 15), scaled by stance
  *                    (DEFENSIVE x1.5, OFFENSIVE x0.75); halved for own
  *                    objectives (defence of what we hold is less reach-limited)
  *     threat       : objectives we do not hold get a penalty from threat
- *                    cluster power within (radius + 700 m) relative to own
- *                    power: min(25 * rel, 30) * (1.2 - aggression)
+ *                    power relative to own power:
+ *                    min(25 * rel, 30) * (1.2 - aggression)
  *   Threat power considered = sum of "power" of threat clusters whose centre
- *   is within (radius + 700 m) of the objective.
+ *   is within (radius + AIC_OBJ_THREAT_RANGE) of the objective; for
+ *   objectives we do not hold (and contested own ones) at least the
+ *   objective's "estPower" (AIC_fnc_updateObjectives).
  *   Jev advice (commander "advice" "main_effort", AIC_fnc_jevAdvisor): the
  *   objective the staff officer names scores x(1 + jevWeight x confidence).
  *
@@ -93,24 +100,31 @@ if (_mainRec isEqualType createHashMap && {count _mainRec > 0}) then {
 
             // threat near the objective
             private _threatPower = 0;
-            private _range = _radius + 700;
+            private _range = _radius + AIC_OBJ_THREAT_RANGE;
             {
                 if (((_x get "pos") distance2D _pos) <= _range) then {
                     private _p = _x getOrDefault ["power", 0];
                     if (_p isEqualType 0) then {_threatPower = _threatPower + _p};
                 };
             } forEach _threats;
+            private _isOwn = _owner isEqualTo _side;
+            private _isUnknown = _owner isEqualTo sideUnknown;
+            private _isHostile = !_isOwn && {!_isUnknown} && {(_side getFriend _owner) < AIC_HOSTILE_FRIEND};
+            // a town of ours under attack counts as ours, and threatened
+            private _contestedOwn = _isUnknown && {(_obj getOrDefault ["prevOwner", sideUnknown]) isEqualTo _side};
+            // what is believed to be there although no contact is fresh
+            if (!_isOwn) then {
+                private _est = _obj getOrDefault ["estPower", 0];
+                if (_est isEqualType 0) then {_threatPower = _threatPower max _est};
+            };
+            if (_contestedOwn) then {_threatPower = _threatPower max 1};
             private _rel = _threatPower / _ownPower;
 
             private _base = _priority * 10;
             private _distPenalty = ((((_pos distance2D _hq) / 1000) * 2) min 15) * _distScale;
 
-            private _isOwn = _owner isEqualTo _side;
-            private _isUnknown = _owner isEqualTo sideUnknown;
-            private _isHostile = !_isOwn && {!_isUnknown} && {(_side getFriend _owner) < AIC_HOSTILE_FRIEND};
-
             private _score = switch (true) do {
-                case (_isOwn): {
+                case (_isOwn || _contestedOwn): {
                     if (_threatPower > 0) then {
                         _base * 0.8 + 10 + ((_rel * 20) min 20) - _distPenalty * 0.5
                     } else {
@@ -119,6 +133,8 @@ if (_mainRec isEqualType createHashMap && {count _mainRec > 0}) then {
                 };
                 case (_isHostile): {
                     _base + 8 - _distPenalty - (((_rel * 25) min 30) * (1.2 - _aggression))
+                    // an own base the enemy took is retaken first
+                    + ([0, AIC_LOST_BASE_BONUS] select ((_obj getOrDefault ["source", ""]) isEqualTo "BASE"))
                 };
                 case (_isUnknown): {
                     _base + 5 - _distPenalty - (((_rel * 25) min 30) * (1.2 - _aggression))

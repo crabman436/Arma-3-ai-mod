@@ -19,7 +19,10 @@
  *   group's side (the HQ's side if that group is already close), or up to 90
  *   degrees around if that spot is wet or has an enemy known within 300 m,
  *   moved to the best cover within 200 m of it (AIC_fnc_bestPlace).
- *   An assault that finds no such spot starts in state "GO".
+ *   An assault that finds no such spot starts in state "GO". A group whose
+ *   leader is already inside the objective radius gets no assault (empty
+ *   HashMap, an existing one is not returned either): it fights where it is
+ *   and is never sent out to stage (AIC_fnc_issueOrder checks the same).
  *   AIC_fnc_orderAssault gives the groups their orders, AIC_fnc_assaultCycle
  *   starts the assault and ends it.
  *
@@ -30,8 +33,8 @@
  *   3: STRING  - objective id
  *
  * Returns:
- *   HASHMAP - the assault, empty for an objective-less attack or with
- *             "stagedAssaults" off
+ *   HASHMAP - the assault, empty for an objective-less attack, for a group
+ *             already inside the objective, or with "stagedAssaults" off
  *
  * Example:
  *   private _assault = [_cmd, _group, _pos, _objective] call AIC_fnc_assaultFor;
@@ -49,14 +52,17 @@ params [
 if (!isServer || {_objective isEqualTo ""} || {count _target < 2}) exitWith {createHashMap};
 if !(([_cmd, "stagedAssaults"] call AIC_fnc_getSetting) isEqualTo true) exitWith {createHashMap};
 
-private _assaults = _cmd getOrDefault ["assaults", createHashMap];
-if (_objective in _assaults) exitWith {_assaults get _objective};
-_cmd set ["assaults", _assaults];
-
 private _obj = [_cmd, _objective] call AIC_fnc_getObjective;
 private _radius = _obj getOrDefault ["radius", 300];
 private _pos = [_target select 0, _target select 1, 0];
 private _dist = (leader _group) distance2D _pos;
+// already in there: nothing to stage for
+if (_dist < _radius) exitWith {createHashMap};
+
+private _assaults = _cmd getOrDefault ["assaults", createHashMap];
+if (_objective in _assaults) exitWith {_assaults get _objective};
+_cmd set ["assaults", _assaults];
+
 private _stageDist = (_radius * 0.5) + AIC_ASSAULT_STAGE;
 
 private _urban = _obj getOrDefault ["urban", -1];

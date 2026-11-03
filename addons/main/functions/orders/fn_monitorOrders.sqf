@@ -24,7 +24,11 @@
  *                          RETREAT is told to land, so the dynamic-simulation
  *                          system can park it. A helicopter airborne and IDLE
  *                          for 180 s (a finished CAS job) gets RTB to its
- *                          place in the nearest base's helicopter park.
+ *                          place in the nearest base's helicopter park
+ *                          (record "landTries" counts these; after
+ *                          AIC_HELI_LAND_ATTEMPTS failed returns it lands
+ *                          where it is, land "LAND", instead of flying the
+ *                          RTB loop again; reset once it is on the ground).
  *     SUPPORT            : after 10 min (air sorties end in a loiter).
  *     PATROL / DEFEND    : standing orders, never auto-complete. An awake
  *                          INF group on DEFEND occupies buildings through
@@ -118,9 +122,24 @@ private _fnc_setIdle = {
     };
 
     // a helicopter with nothing to do goes to a base, it does not hang in the air
-    if (_task == "IDLE" && {_type == "HELI"} && {(time - _taskTime) > 180}) then {
+    if (_task == "IDLE" && {_type == "HELI"}) then {
         private _air = objectParent _leader;
-        if (!isNull _air && {_air isKindOf "Helicopter"} && {!isTouchingGround _air}) then {_goHome pushBack _group};
+        if (!isNull _air && {_air isKindOf "Helicopter"}) then {
+            if (isTouchingGround _air) then {
+                _rec set ["landTries", 0];
+            } else {
+                if ((time - _taskTime) > 180) then {
+                    // its pad did not work out (blocked, or it set down
+                    // elsewhere and took off again): land right here
+                    if ((_rec getOrDefault ["landTries", 0]) >= AIC_HELI_LAND_ATTEMPTS) then {
+                        _air land "LAND";
+                        _rec set ["taskTime", time];
+                    } else {
+                        _goHome pushBack _group;
+                    };
+                };
+            };
+        };
     };
 
     if (_task == "IDLE" || {!(_taskPos isEqualType [])} || {count _taskPos < 2}) then { continue };
@@ -331,6 +350,8 @@ private _fnc_setIdle = {
 } forEach _attackSplits;
 
 {
+    private _rec = _groupData getOrDefault [hashValue _x, createHashMap];
+    _rec set ["landTries", (_rec getOrDefault ["landTries", 0]) + 1];
     private _base = [_cmd, getPosATL (leader _x)] call AIC_fnc_nearestBase;
     private _slot = [_cmd, _x, [_cmd, _base] call AIC_fnc_getObjective, true] call AIC_fnc_parkSlot;
     [_cmd, _x, "RTB", _slot, "", true] call AIC_fnc_issueOrder;

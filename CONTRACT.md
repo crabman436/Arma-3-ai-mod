@@ -111,6 +111,22 @@ User-tunable values are settings, not constants.
 | `AIC_ADVICE_RISKY` | 2.5 | risk score from which no new attack starts (allocateForces) |
 | `AIC_ADVICE_ABORT_COOLDOWN` | 300 | s after an advised abort before the next one, and before that objective is attacked again (assaultCycle, allocateForces) |
 | `AIC_LOSS_WINDOW`, `AIC_LOSS_LOG_MAX` | 600, 400 | casualty log: window (s) reported to Jev, most entries kept (attachGroupEHs, jevState) |
+| `AIC_EST_HALF_LIFE`, `AIC_EST_FRESH`, `AIC_OBJ_THREAT_RANGE` | 900, 120, 700 | objective enemy estimate `"estPower"`: half-life (s) without a sighting, age (s) of a contact that counts as seen now, contacts / clusters within the objective radius plus this (m) belong to it (updateObjectives, scoreObjectives, allocateForces) |
+| `AIC_EST_PRIOR_SHARE` | 0.5 | allocateForces: an enemy-held objective not looked at (`"ownerTime"`) for `AIC_EST_HALF_LIFE` s is assumed to hold this share of priority × `garrisonPerPriority` |
+| `AIC_OBSERVE_RANGE` | 500 | updateObjectives: an owner change is only seen with an own leader within the radius plus this (or when it concerns the own side) |
+| `AIC_LOST_BASE_BONUS` | 25 | scoreObjectives: score bonus of an own base (source `"BASE"`) the enemy holds |
+| `AIC_ASSAULT_MAX_TOTAL` | 1800 | assaultCycle: an assault stops staging this long after it was planned, whatever the rides |
+| `AIC_ASSAULT_STALL`, `AIC_ASSAULT_ABORT`, `AIC_ASSAULT_FAIL_COOLDOWN`, `AIC_ASSAULT_BOOST` | 900, 1800, 900, 1.5 | assaultCycle: GO without a capture this long escalates (objective `"attackBoost"` = boost), this long aborts; objective `"failedUntil"` = time + cooldown (allocateForces) |
+| `AIC_STANDTO_HOLD` | 300 | garrisonCycle: an alert holds this long after it was last raised (objective `"alertTime"`) |
+| `AIC_DEFICIT_CYCLES` | 2 | garrisonCycle: cycles a deficit must last before a transfer (objective `"deficitCycles"`) |
+| `AIC_OUTPOST_RANGE` | 150 | garrisonCycle, allocateForces: a group is at its `"outpost"` within this (m) |
+| `AIC_WAKE_SPEED` | 25 | dynSimCycle: the wake radius is `dynSimWakeRange` + this (m/s) × `loopInterval` |
+| `AIC_REORG_TIME`, `AIC_REORG_CALM` | 600, 300 | updateGroups: a remnant at a base it holds is reorganised after this long, without contact for this long |
+| `AIC_TRANSPORT_MAX_RIDERS` | 3 | updateGroups: extra men aboard a crew of unarmed vehicles that still leave it transport-only |
+| `AIC_SECTOR_MIN_GAP` | 30 | issueOrder: a defend sector this close (degrees) to another defender's is chosen again |
+| `AIC_SUPPLY_AMMO_LOW` | 0.4 | supplyCycle: weighted share of loaded real-weapon magazines below which a vehicle asks for ammo |
+| `AIC_AIRFIELD_TURNAROUND_RANGE` | 3000 | rearmCycle: a plane is down at its airfield within this of the airfield's `ilsPosition` |
+| `AIC_HELI_LAND_ATTEMPTS` | 2 | monitorOrders: returns to the park after which an idle helicopter lands where it is |
 
 ## Commander state (HashMap)
 
@@ -121,7 +137,7 @@ Created by `AIC_fnc_createCommander`. Keys (all strings):
 | `"side"` | side | core |
 | `"enabled"` | bool | core |
 | `"settings"` | HashMap (see below) | core |
-| `"hq"` | position ATL [x,y,z] — commander's base/rally point | core: at start, the side's `aic_base_<side>*` marker nearest to the average leader position of its groups; without such a marker the average itself (moved to the nearest leader on land if it is on water); without groups the respawn marker, else the map centre |
+| `"hq"` | position ATL [x,y,z] — commander's base/rally point | core: at start, the side's `aic_base_<side>*` marker nearest to the average leader position of its groups; without such a marker the average itself (moved to the nearest leader on land if it is on water); without groups the respawn marker, else the map centre; intel (`updateObjectives`): while `"BASE_HQ"` is held by an enemy, the nearest owned base to it (else the nearest owned objective), back to `"BASE_HQ"` once it is held again |
 | `"groups"` | array of groups under command | groups |
 | `"groupData"` | HashMap: `hashValue _group` (string) -> group record. Groups/objects are NOT valid HashMap keys in SQF, always key by `hashValue`. | groups / orders |
 | `"objectives"` | array of objective records | intel |
@@ -142,7 +158,9 @@ Created by `AIC_fnc_createCommander`. Keys (all strings):
 | `"transportPool"` | HashMap `{"cargo" (hashValue of the cargo group), "dest", "time", "entries"}` — the candidate vehicles of the last transport search, reused by the probes of the same order (same cargo and destination, a few seconds old); see `AIC_fnc_findTransport` | logistics |
 
 Further commander keys are documented with their subsystems below:
-`"garrisons"` (logistics, `AIC_fnc_garrisonStatus`), `"assaults"` (strategy,
+`"garrisons"` (logistics, `AIC_fnc_garrisonStatus`), `"homesAssigned"`
+(logistics, bool: `AIC_fnc_garrisonCycle` has run once, see group key
+`"outpost"`), `"assaults"` (strategy,
 `AIC_fnc_assaultFor`), `"prepTarget"` (support), `"lastReport"` (ui),
 `"objectiveIndex"` / `"deadQueue"` (performance extension) and the Jev keys
 (`"advice"`, `"adviceTime"`, ...).
@@ -212,9 +230,21 @@ Orders notes: the order functions (`orderAttack/Defend/Patrol` take an optional 
 HashMap: `"id"` (string, unique), `"name"` (string), `"pos"` (ATL), `"radius"`,
 `"priority"` (number, base value ~1, modules may set higher), `"owner"`
 (side; `sideUnknown` if contested/nobody), `"source"` (`"MODULE"`, `"MARKER"`,
-`"LOCATION"`), `"score"` (number, filled by strategy each cycle), `"urban"`
+`"LOCATION"`, `"BASE"`), `"score"` (number, filled by strategy each cycle), `"urban"`
 (bool, optional: built-up area test cached by `allocateForces`, since terrain
 never changes).
+
+Further objective keys:
+- `"prevOwner"` (intel): side, the owner before the last change (`sideUnknown` until one). Owner `sideUnknown` with `"prevOwner"` the own side = a place of ours under attack: `allocateForces` makes it a DEFEND target in every stance (never an ATTACK), `scoreObjectives` scores it as a threatened own objective. Written by `updateObjectives`.
+- `"ownerTime"` (intel): `time` the owner was last observed (own leader within the radius plus `AIC_OBSERVE_RANGE`, or the change concerns the own side). Without it the last known owner is kept (no omniscience). `allocateForces` assumes a garrison (`AIC_EST_PRIOR_SHARE`) at an enemy objective not observed for `AIC_EST_HALF_LIFE` s.
+- `"estPower"`, `"estTime"` (intel): the enemy power believed to be at the objective (contacts seen within `AIC_EST_FRESH` s inside the radius plus `AIC_OBJ_THREAT_RANGE`) and the time it was last updated. With an own leader inside or the objective ours it is what is seen now; a fresh sighting raises it; otherwise it halves every `AIC_EST_HALF_LIFE` s. Attack sizing (`allocateForces`) and the threat penalty (`scoreObjectives`) use at least this, so expiring contacts do not shrink or release an attack.
+- `"attackBoost"` (strategy): number ≥ 1, multiplier on the required power of an ATTACK on it, set to `AIC_ASSAULT_BOOST` by `assaultCycle` when an assault stalls, removed when the assault ends.
+- `"failedUntil"` (strategy): `time` until which no new attack is staffed on it, set by `assaultCycle` when an assault failed (`AIC_ASSAULT_ABORT`).
+- `"alertTime"` (logistics): last time its garrison was alerted (`garrisonCycle`; the alert holds `AIC_STANDTO_HOLD` s).
+- `"deficitCycles"` (logistics): consecutive `garrisonCycle` runs with a garrison deficit; transfers start at `AIC_DEFICIT_CYCLES`.
+- `"sectors"` (orders): HashMap `hashValue group` → `[group, bearing]`, the infantry defend sectors handed out by `issueOrder`; entries of groups that no longer DEFEND it are dropped when read.
+
+One base per place: the `aic_base_<side>` marker the HQ was taken from is `"BASE_HQ"` itself (name = marker text); `collectObjectives` creates no second base record within an existing `"BASE"` record's radius.
 
 Marker-based objectives: any map marker whose name starts with `aic_obj`
 (`AIC_MARKER_OBJ_PREFIX`, case-insensitive) becomes an objective for every
@@ -301,8 +331,8 @@ HashMap: `"group"`, `"task"`, `"pos"`, `"objective"` (id or `""`).
 - `AIC_fnc_bestPlace` — `[center, radius, expression, flatSize(optional, 0)] call` → `[x,y,0]` or `[]`. The engine's terrain scoring (`selectBestPlaces`) behind every position search: landing zones, assembly areas, flanking points and motor pools.
 - `AIC_fnc_setMarch` — `[group, on] call` → bool. Group variable `"AIC_marching"`: no automatic combat mode, vehicles on roads in column (`AIC_CONVOY_SEPARATION`), a convoy's lead vehicle limited to `AIC_CONVOY_SPEED`. `issueOrder` starts a march for moves over `AIC_MARCH_RANGE`, `monitorOrders` ends it within `AIC_MARCH_END` of the target, at the assembly area, or on contact; `orderTransport` puts ground transports on the march.
 - `AIC_fnc_orderAssault` — `[group, pos, radius, type, via, assault, record] call`. One ground group in a staged assault: its place in the front (`"assaultId"`, `"assaultLane"`, `"assaultAxis"`, `"assaultRow"`), the assembly area (`"staged"`, `"stagePos"`) or the assault itself, vehicles on overwatch outside a built-up objective (`"overwatch"`).
-- `AIC_fnc_assaultFor` (strategy) — `[commander, group, pos, objectiveId] call` → the assault record, created on first use in commander key `"assaults"`, empty without an objective or with `stagedAssaults` off.
-- `AIC_fnc_assaultCycle` (strategy) — `[commander] call` → assaults started. Runs after `monitorOrders`, see the function header for the start rules.
+- `AIC_fnc_assaultFor` (strategy) — `[commander, group, pos, objectiveId] call` → the assault record, created on first use in commander key `"assaults"`, empty without an objective, for a group whose leader is already inside the objective radius (it fights where it is; `issueOrder` then uses `orderAttack`), or with `stagedAssaults` off. Assault keys: `"id"`, `"key"`, `"pos"`, `"stage"`, `"dir"`, `"state"`, `"time"`, `"firstArrive"`, `"urban"`, `"hasInf"`, `"slots"`, `"goTime"` (assaultCycle), `"escalated"` (assaultCycle).
+- `AIC_fnc_assaultCycle` (strategy) — `[commander] call` → assaults started. Runs after `monitorOrders`, see the function header for the start rules (wait clocks from the first arrival, STAGE held while members ride, `AIC_ASSAULT_MAX_TOTAL` cap) and the stalemate rules (escalation at `AIC_ASSAULT_STALL`, abort with `"failedUntil"` at `AIC_ASSAULT_ABORT`).
 - `AIC_fnc_isAntiAir` (groups) — `[vehicle] call` → bool, per class cached in `AIC_ns`. Editor subcategory containing `_aa`, or a weapon with `airLock` 2 ammunition. `updateGroups` sets record `"antiAir"`: such groups are never available for attacks, rides, patrols or transfers, are never parked and hold the middle of their home.
 - `AIC_fnc_spreadCycle` (groups) — `[commander] call` → groups moved. Runs after `teamCycle`, record `"lastSpread"`, see the function header.
 - `AIC_fnc_sentryWatch` — `[commander, group, record] call` → bool. Sentries (unit variable `"AIC_sentry"`) query `nearTargets` within `AIC_SENTRY_RANGE`; a recognised hostile sets objective keys `"alarmTime"` / `"alarmPos"`, wakes and `reveal`s to every group of the place, once per `AIC_ALARM_REPEAT`. Called by `monitorOrders` for INF DEFEND groups whose garrison is in place.
@@ -418,6 +448,9 @@ Group record:
 - `"final"`: HashMap `{"task","pos","objective"}` — for `TRANSPORTED` cargo: the order to execute after dismount.
 - `"homeTime"`: number — `time` the garrison system last moved the group to a new home (transfer, or DEFEND adoption). Groups whose home changed less than 600 s ago are not used as garrison donors.
 - `"rideAbortTime"`: number — `time` the group's last transport ride was aborted (set by `transportCycle`). `issueOrder` starts no new ride for it within 600 s.
+- `"outpost"`: `[x,y,0]` — set by `garrisonCycle` on its first run (commander key `"homesAssigned"`) for an INF/MOTOR/MECH/ARMOR group with no owned objective within 1000 m: it holds where it was placed (DEFEND there, objective `""`, home `""`) while it is within `AIC_OUTPOST_RANGE`; `allocateForces` only takes it for DEFEND/REINFORCE targets within `AIC_THREAT_RADIUS`. Deleted once the group has gone elsewhere.
+- `"landTries"`: number — RTBs of an idle airborne helicopter (`monitorOrders`); from `AIC_HELI_LAND_ATTEMPTS` on it lands where it is. Reset on the ground.
+- `"reorgTime"`: number — `time` `updateGroups` reorganised the group (`"initialSize"` set to its alive count).
 - New task values: `"TRANSPORT"` (a vehicle group ferrying cargo), `"TRANSPORTED"` (infantry being carried), `"RTB"` (transport returning to HQ/home after a drop, completes like RETREAT → `"IDLE"`).
 - `AIC_fnc_availableGroups` excludes tasks `RETREAT`, `TRANSPORT`, `TRANSPORTED`, `RTB`.
 
@@ -426,7 +459,7 @@ Objective record:
 - `"garrison"`: number — desired garrison power override (0 = auto).
 
 New objective sources:
-- Each commander gets an implicit base objective with id `"BASE_HQ"` at `"hq"`, with `isBase` = true, priority 1 and owner = own side.
+- Each commander gets an implicit base objective with id `"BASE_HQ"` at `"hq"`, with `isBase` = true, priority 1 and owner = own side. It is a base like any other once lost: while an enemy holds it, it is no home, garrison, retreat point, RTB destination or airfield; the commander's `"hq"` moves to the nearest owned base (`updateObjectives`) and `BASE_HQ` is an ATTACK target in every stance with `AIC_LOST_BASE_BONUS`.
 - Map markers named `aic_base_<side>*`, where `<side>` is `west`, `east`, `guer` or `civ` (case-insensitive), become base objectives with source `"BASE"`, but **only for that side's commander**.
 - `AIC_ModuleObjective` gets two new attributes: `Garrison` (number, default 0) and `IsBase` (checkbox, default false).
 - `AIC_ModuleCommander` gets three new attributes: `ManageDynSim`, `ManageGarrisons` and `UseTransport` (checkboxes, default true).
@@ -438,13 +471,14 @@ New objective sources:
   - **Wake** if any of these holds:
     - the task is ATTACK, REINFORCE, RETREAT, SUPPORT, TRANSPORT, TRANSPORTED or RTB
     - any known enemy contact or threat cluster is within `dynSimWakeRange`
-    - an enemy unit is within `dynSimWakeRange` of the leader (parked groups). The positions of all hostile units (alive, not `captive`, side of their group hostile; vehicle crews included) are collected once per cycle from `allUnits` and shared by every group. This matters because parked groups are blind and wouldn't otherwise see the enemy coming.
+    - an enemy unit is within `dynSimWakeRange` + `AIC_WAKE_SPEED` × `loopInterval` of the leader (parked groups). The positions of all hostile units (alive, not `captive`, side of their group hostile; vehicle crews included) are collected once per cycle from `allUnits` into a grid of wake-radius cells; a group tests the 3 × 3 cells around it. This matters because parked groups are blind and wouldn't otherwise see the enemy coming.
+    - it is the picket of its objective: one PATROL group per objective (an awake one first) is never parked.
   - **Park** if all of these hold:
     - the task is IDLE, DEFEND or PATROL
     - the group has arrived: within 100 m of `taskPos`, or within 1.5 × the objective radius (min 100 m) of `taskPos` with no waypoint left or in the task for more than 120 s. Without a `taskPos`: no waypoint left, or in the task for more than 120 s and not moved for 120 s. A group still marching to a distant objective is never parked.
     - INF with task DEFEND: its building occupation is done (`"garrisonDone"` with a valid `"garrisonToken"`, see `AIC_fnc_monitorGarrison`), or the task is older than 1100 s, so units never freeze halfway to their building positions.
-    - no wake condition applies, and no hostile unit is within `dynSimWakeRange` (the same hostile list), so a group is never parked only to be woken by the same enemy next cycle.
-- `AIC_fnc_garrisonStatus` — `[commander] call` → HashMap: objective id → HashMap `{"desired","present","surplus","groups","threat","incoming","released"}`, for objectives owned by own side plus `BASE_HQ`.
+    - no wake condition applies, and no hostile unit is within the wake radius (the same hostile grid), so a group is never parked only to be woken by the same enemy next cycle.
+- `AIC_fnc_garrisonStatus` — `[commander] call` → HashMap: objective id → HashMap `{"desired","present","surplus","groups","threat","incoming","released"}`, for objectives owned by own side (`BASE_HQ` only while held).
   - `desired` = `garrison` if > 0, otherwise `priority * garrisonPerPriority` (`2 * garrisonPerPriority` for bases, whatever their priority). Add 50 % of the power of threat clusters within 1500 m.
   - `present` = summed power of groups whose `"home"` == id, task in DEFEND/PATROL/IDLE, and leader within `radius * 1.5`.
   - `surplus` = `present - desired`.
@@ -454,15 +488,15 @@ New objective sources:
   - Also stores the result in the commander under `"garrisons"`.
 - `AIC_fnc_canLeaveGarrison` — `[commander, group] call` → bool. True if the group has no home, its home is not owned any more, or `surplus` of its home (minus the power already released this cycle) ≥ the group's power. Uses `"garrisons"`. **Not a pure test:** when it returns true for a homed group it records the group's power in its home entry's `"released"` map until the next `garrisonStatus`, so a second call for another group sees less surplus. Call it only when the group will actually be moved (`allocateForces` and `findTransport` use their own side-effect-free estimate for candidate lists; `garrisonCycle` removes the reservation again if `issueOrder` fails; `orderTransport` reserves the transport group's power only once the ride is set up, so a failed ride reserves nothing).
 - `AIC_fnc_garrisonCycle` — `[commander] call`. Runs only if `manageGarrisons`.
-  1. Every group with `home == ""` and task IDLE/DEFEND/PATROL gets home = the nearest owned objective or base within 1000 m, else `BASE_HQ`. A group DEFENDing an owned objective adopts it as home; an IDLE group away from home joins an owned objective within 1000 m. Every IDLE INF/MOTOR/MECH/ARMOR group that is then not at its home (leader outside `radius * 1.5`) gets `DEFEND` there through `issueOrder`.
+  1. Every group with `home == ""` and task IDLE/DEFEND/PATROL gets home = the nearest owned objective or base within 1000 m, else `BASE_HQ` (with it lost: the owned base nearest the `"hq"`); on the first run such a group without an owned objective within 1000 m keeps its `"outpost"` instead (group record keys). A group DEFENDing an owned objective adopts it as home; an IDLE group away from home joins an owned objective within 1000 m. Every IDLE INF/MOTOR/MECH/ARMOR group that is then not at its home (leader outside `radius * 1.5`) gets `DEFEND` there through `issueOrder`.
   2. Recompute `AIC_fnc_garrisonStatus`.
-  3. For objectives with a deficit (most negative surplus × priority first), pick donor groups (INF, MOTOR, MECH or ARMOR; task IDLE/DEFEND/PATROL; `canLeaveGarrison` true). Prefer bases, then the largest surplus, then the shortest distance. Send each with `AIC_fnc_issueOrder` (`DEFEND`, objective pos, objective id) and set its home to the target. Stop at `garrisonMovesPerCycle`. Don't strip an objective that has a threat cluster within 1500 m.
+  3. For objectives with a deficit lasting `AIC_DEFICIT_CYCLES` cycles (most negative surplus × priority first), pick donor groups (INF, MOTOR, MECH or ARMOR; task IDLE/DEFEND/PATROL; `canLeaveGarrison` true). Prefer bases, then the largest surplus, then the shortest distance. Send each with `AIC_fnc_issueOrder` (`DEFEND`, objective pos, objective id) and set its home to the target. Stop at `garrisonMovesPerCycle`. Don't strip an objective that has a threat cluster within 1500 m.
   4. Groups at their home objective with task IDLE get `DEFEND` there (or `PATROL` for every second group) through `issueOrder`.
   - `[commander, true] call` (homes only): step 1 without any order, then step 2, returns 0. `commanderCycle` calls it right before `allocateForces`, so even on the first cycle every group already has a home.
 - `AIC_fnc_freeSeats` — `[vehicle, transportGroup, cargoGroup(optional)] call` → free passenger seats: empty cargo seats plus empty FFV seats from one `fullCrew [veh, "", true]` enumeration (seats held by the cargo group's own members count as free), minus the transport group's own members on foot. The one seat rule used by `findTransport` and `orderTransport`.
 - `AIC_fnc_dismountCarrier` — `[group, vehicle, land(optional, false), force(optional, false)] call` → bool. The one place groups get out of another group's vehicle (`issueOrder`, `monitorOrders`, `transportCycle`). A flying helicopter with a pilot is never left; with `land` it is told to land. Otherwise only a stopped or landed vehicle is left, unless `force`.
 - `AIC_fnc_parkSlot` — `[commander, group, baseRecord, isHeli(optional)] call` → `[x,y,0]` or `[]`. Lays out a base's motor pool once (base keys `"parkSlots"`, `"heliSlots"`, their `"...Claims"` and `"heliPads"`, deleted by `removeCommander`) and gives a group its place, kept while the group's `"home"` is that base. Setting `useVehicleParks`.
-- `AIC_fnc_nearestBase` — `[commander, pos] call` → objective id of the nearest owned base or `BASE_HQ`, `""` if none. Home of transport-only crews (`garrisonCycle`) and of helicopters coming back from a ride (`transportCycle`).
+- `AIC_fnc_nearestBase` — `[commander, pos] call` → objective id of the nearest owned base (`BASE_HQ` only while held), `""` if none. Home of transport-only crews (`garrisonCycle`) and of helicopters coming back from a ride (`transportCycle`).
 - `AIC_fnc_supplyRoles` — `[vehicle] call` → any of `"repair"`, `"fuel"`, `"ammo"`, from the config values `transportRepair`, `transportFuel`, `transportAmmo`. Such vehicles never carry troops.
 - `AIC_fnc_supplyCycle` — `[commander] call` → vehicles serviced. Runs after `transportCycle` (setting `useSupplyTrucks`). Task `"SUPPLY"`, record keys `"supplyTarget"`, `"supplyWp"`, `"supplyArrive"`, rules in the function header. Only transport-only groups are used.
 - `AIC_fnc_splitForRide` — `[commander, group, pos, task, objective] call` → bool. Called by `issueOrder` when no single vehicle fits. Tries 2 to `AIC_TEAM_MAX` teams through `findTransport` probes (4th and 5th parameter: seats, transports to leave out) and splits only if every team has its own vehicle, then orders the new teams.
