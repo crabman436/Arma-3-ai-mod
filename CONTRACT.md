@@ -572,3 +572,112 @@ read into the settings of the same name in lower camel case.
 - `AIC_fnc_createCommander`: initial keys `"objectiveIndex"` (empty HashMap) and `"deadQueue"` (`[]`); clamps the cleanup settings to ≥ 0.
 - `AIC_fnc_dynSimCycle`: recent `"lastEngaged"` (< 120 s) is a wake condition. The hostile-unit proximity check for parked groups stays: a group frozen by dynamic simulation is blind and fires no `EnemyDetected`.
 - Objective lookups by id in `issueOrder`, `monitorOrders`, `allocateForces`, `transportCycle`, `dynSimCycle`, `updateObjectives`, `collectObjectives` and `createCommander` go through `AIC_fnc_getObjective`.
+
+---
+
+# Jev extension: a decision model as the general's judgment
+
+**Jev** (TypeSafe AI, https://docs.typesafe.ai) is a *System One* decision
+model: it writes no text; it answers typed questions about a `state` with
+calibrated probabilities. The commander uses it as a staff officer whose
+judgment it asks every cycle: "launch the attack now?", "call it off?",
+"commit the reserve?", "which objective is the main effort?", "how risky is
+the plan?". Everything keeps working without Jev: if the extension, key or
+network is missing, every hook falls back to the scripted heuristics.
+
+## API facts (verified 2026-11-03)
+
+- `POST https://api.typesafe.ai/v1/systemone`, headers
+  `Authorization: Bearer <TYPESAFE_API_KEY>`, `Content-Type: application/json`.
+- Body: `{"model": "jev-latest", "state": <string|object|array>, "questions": {<id>: <question>}}`.
+- Question types (all answered in parallel, independent of each other):
+  - `noul`: `{"type":"noul","instructions":"<true/false question>","criteria":{"true":"...","false":"..."}}` (criteria optional) → answer `{"type":"noul","noul":0..1}` (probability the statement is true).
+  - `choice`: `{"type":"choice","instructions":"...","criteria":{"<key>":"<description>",...}}` → `{"type":"choice","choice":"<key>","confidence":0..1,"probabilities":{key:p}}`.
+  - `score`: `{"type":"score","instructions":"...","criteria":["<level 0>","<level 1>",...]}` → `{"type":"score","score":0..n-1 (float),"confidence":0..1,"legend":{...},"probabilities":{"0":p,...}}`.
+- Limits: 64k tokens per request, 32k per question. Latency 70–500 ms. Price $0.042 per million input tokens, output free. One commander request is ~1–2k tokens.
+- Errors: HTTP 400 `{"detail": ...}`, 401 bad key, 429 rate limit.
+
+## Native extension `aic_jev` (`extension/aic_jev`, Rust + arma-rs)
+
+Arma cannot do HTTP from SQF, so a tiny extension does the request on a
+background thread and hands the answer back through the engine's
+`ExtensionCallback` mission event handler. Binaries: `aic_jev_x64.dll`
+(Windows) and `aic_jev_x64.so` (Linux server), placed in the mod folder root
+next to `mod.cpp`. Built by `.github/workflows/build-extension.yml` and
+`cargo build --release` locally.
+
+Commands (`"aic_jev" callExtension [fn, args]`, all return immediately):
+
+| Call | Returns | Effect |
+|---|---|---|
+| `"aic_jev" callExtension "version"` | `"1.0.0"` | presence test |
+| `["status", []]` | `"ok"` / `"nokey"` | whether an API key was found |
+| `["setKey", [key]]` | `"ok"` | sets the key at runtime (overrides env/file) |
+| `["ask", [id, model, bodyJson]]` | `"queued"` or `"error:<msg>"` | posts `bodyJson` (already complete JSON) to the API on a worker thread, with a 10 s timeout and one retry on 429/5xx |
+
+Key lookup order: `setKey` → env var `TYPESAFE_API_KEY` → file `aic_jev.key`
+in the game working directory (one line). The key is never logged.
+
+Callback: `ExtensionCallback` with `_name == "aic_jev"`, `_function == "answer"`,
+`_data` a string that `parseSimpleArray` reads as
+`[id, ok(bool), payload]` where, on success, `payload` is an array of
+`[qid, type, value, confidence, probsArray]`:
+- `noul`: `value` = probability (number), `confidence` = `abs(2*p-1)`, `probsArray` = `[["true",p],["false",1-p]]`
+- `choice`: `value` = chosen key (string), `confidence`, `probsArray` = `[[key,p],...]`
+- `score`: `value` = score (number), `confidence`, `probsArray` = `[["0",p],...]`
+and on failure `payload` is the error message string (HTTP status + detail).
+Strings are escaped for SQF (`"` doubled).
+
+## SQF client (category `jev`, folder `functions/jev`)
+
+Globals (inside `AIC_ns`): `"jev"` → HashMap `{"available"(bool), "reason"(string), "ehId"(number), "pending"(HashMap id → request record), "answered"(HashMap tag → answers), "nextId"(number), "stats"({"asked","answered","failed","tokens"})}`.
+
+- `AIC_fnc_jevInit` — `[] call` → bool. Idempotent. Tests `"aic_jev" callExtension "version"`; sets `available`/`reason`; installs the `ExtensionCallback` mission EH once (`addMissionEventHandler`, handler just calls `AIC_fnc_jevCallback`). Called lazily by `jevAsk` and by `createCommander` when `jevEnabled`.
+- `AIC_fnc_jevToJSON` — `[value] call` → JSON string. HashMap → object (keys as strings), array → array, string → escaped string, number → number (no `e` notation; integers without `.0`), bool → true/false, `nil`/other → `null`. Must handle nested structures and unicode/quotes/backslashes/newlines.
+- `AIC_fnc_jevAsk` — `[tag, state, questions, model(optional)] call` → request id (number) or -1. `state` is a string, array of strings or HashMap; `questions` a HashMap qid → question HashMap in the API shape above. Builds the body with `jevToJSON`, calls the extension, stores a pending record `{"tag","time","state"}`. If Jev is unavailable, returns -1 without side effects. Rate-guard: never more than `jevMaxPerMinute` (setting, 30) requests per minute per server.
+- `AIC_fnc_jevCallback` — `[name, function, data] call` (from the EH). Cheap and unscheduled: `parseSimpleArray`, look up pending id, move the answers into `answered[tag]` as a HashMap qid → `{"type","value","confidence","probs"(HashMap)}` plus `"_time"` and `"_latency"`, update stats, log failures via `AIC_fnc_log` (throttled).
+- `AIC_fnc_jevAnswers` — `[tag, maxAge(optional, default 120)] call` → answers HashMap or empty HashMap if none / too old. Does not delete (the advisor overwrites each cycle).
+- `AIC_fnc_jevState` — `[cmd] call` → HashMap describing the commander's situation for the model, kept under ~1.5k tokens: side, stance, aggression, own power / enemy power / ratio, groups by type (counts and % strength), casualties in the last 10 min (units lost, groups lost), objectives (top 8 by score: id, name, owner, priority, distance from HQ, our power present, enemy power nearby, contested?), threat clusters (top 5: power, distance to nearest own objective, age of intel), current assault (objective, stage, attackers' power vs defenders, time in stage, losses since start), reserve power at base, transports in flight, time of day / daylight, fog/rain, intel age (oldest/newest contact), last Jev advice and whether it was followed.
+- `AIC_fnc_jevAdvisor` — `[cmd] call`. Cycle step right after `scoreObjectives` and before `allocateForces`. (1) If `jevEnabled` is off or Jev unavailable: clear `cmd "advice"` and return. (2) Consume last cycle's answers for tag `"advisor_<side>"` into `cmd "advice"` (HashMap qid → answer record, only entries with `confidence >= jevMinConfidence`; nouls use `abs(2p-1)`). (3) Every `jevInterval` seconds (default = loopInterval) ask the next batch with `jevState` as the state and these questions:
+  - `posture` (choice: `offensive` "Press attacks, accept risk", `balanced` "Hold what we have and attack where favourable", `defensive` "Consolidate, dig in, counter-attack only"): "Which posture should the commander adopt now?"
+  - `attack_now` (noul): "Given the odds, intel freshness, daylight and reserves, should the planned main attack be launched or continued now rather than waiting?"
+  - `break_off` (noul): "Is the current attack failing badly enough (losses, stalled stage, enemy reinforcement) that a competent commander would call it off and regroup?"
+  - `commit_reserve` (noul): "Should the reserve at base be committed to the fight now?"
+  - `main_effort` (choice over the top-5 objective ids with one-line descriptions): "Which objective should be the main effort?"
+  - `risk` (score: 0 "Safe", 1 "Acceptable", 2 "Risky", 3 "Reckless"): "How risky is the current plan for this force?"
+  - `prep_fires` (noul): "Should artillery prepare the main objective before the assault goes in?"
+  - `intel_stale` (noul): "Is the picture of the enemy too stale or thin to commit forces on?"
+  Stores `cmd "adviceTime"`. Logs one line per answered batch when `AIC_ns "debug"`.
+
+### Where the advice is used (all blended with `jevWeight`, 0 = ignore, 1 = follow fully)
+
+- `determineStance`: if `advice.posture` exists, `value` is shifted: offensive → ×(1 + 0.5·w·conf), defensive → ×(1 − 0.5·w·conf), balanced → pulled toward 1.15. Existing hysteresis stays.
+- `scoreObjectives`: the `main_effort` objective gets `score × (1 + w·conf)`.
+- `allocateForces`: `commit_reserve` true (p>0.5) lowers the effective `reserveRatio` by `w·(p−0.5)·2 × 0.75` (never below 0.05); `attack_now` false (p<0.4) or `intel_stale` true (p>0.6) or `risk ≥ 2.5` with conf ≥ 0.4 → no NEW attack assignments this cycle (existing ones continue); the reason is stored in `cmd "advice" "hold_reason"` for the report.
+- `assaultCycle` (staged assaults): `break_off` p>0.6 with conf ≥ 0.4 → the current assault is aborted the way a failed assault already is (groups retreat/regroup), with a 300 s cooldown before Jev may abort again; `attack_now` true (p>0.6) lets the staging stage advance early.
+- `supportCycle`: `prep_fires` p>0.6 → a fire mission on the main-effort objective before the assault launches (respects cooldown and danger-close).
+- `report`: when advice changes the decision (hold/abort/commit), the HQ message says so ("HQ: attack on X postponed — intel too old").
+
+### Settings (defaults in `AIC_fnc_defaultSettings`) and module attributes
+
+| Key | Default | Module attribute |
+|---|---|---|
+| `jevEnabled` | true | `UseJev` (checkbox) "Ask the Jev decision model for judgment calls (needs the aic_jev extension and a TypeSafe API key)" |
+| `jevWeight` | 0.6 | `JevWeight` (number 0..1) |
+| `jevMinConfidence` | 0.3 | — |
+| `jevInterval` | 0 (= loopInterval) | — |
+| `jevModel` | "jev-latest" | — |
+| `jevMaxPerMinute` | 30 | — |
+
+### Public API for mission makers
+
+```sqf
+// Ask anything about any state; answers arrive asynchronously
+private _q = createHashMapFromArray [
+    ["ambush", createHashMapFromArray [["type","noul"],["instructions","Is this a good ambush site?"]]]
+];
+private _id = ["myTag", createHashMapFromArray [["road","narrow valley road, forest both sides"]], _q] call AIC_fnc_jevAsk;
+// later (next frame or later):
+private _a = ["myTag"] call AIC_fnc_jevAnswers;   // {} until answered
+if (count _a > 0) then { diag_log ((_a get "ambush") get "value") };
+```
