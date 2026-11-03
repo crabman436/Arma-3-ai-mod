@@ -32,9 +32,13 @@
         < 2, i.e. door gunners) are left to the transport system. Clusters
         already being struck by another air group (within 300 m) are skipped.
 
-        Weather: no CAS tasking at all while fog > AIC_CAS_MAX_FOG or
-        rain > AIC_CAS_MAX_RAIN; helicopters are not tasked while the wind
-        is stronger than AIC_HELI_MAX_WIND m/s (planes still are).
+        Weather (AIC_fnc_flyingWeather): no CAS tasking at all while fog >
+        AIC_CAS_MAX_FOG or rain > AIC_CAS_MAX_RAIN; helicopters are not
+        tasked while the wind is stronger than AIC_HELI_MAX_WIND m/s
+        (planes still are). An aircraft already airborne on a sortie (task
+        "SUPPORT") when the weather closes in for its kind is called home:
+        RTB with force (AIC_fnc_issueOrder: its home, else the HQ), checked
+        every cycle before anything else, also without targets.
         Artillery is not affected.
 
         Groups owned by the transport system (task "TRANSPORT",
@@ -109,6 +113,31 @@ if ((([_cmd, "jevWeight"] call AIC_fnc_getSetting) max 0) > 0 && { count _advice
         };
     };
 };
+// weather closing in: aircraft out on a sortie come home (new taskings are
+// gated below); checked before the no-target exit
+private _flyWeather = [false] call AIC_fnc_flyingWeather;
+private _heliWeather = [true] call AIC_fnc_flyingWeather;
+if (!_heliWeather) then {
+    {
+        private _grp = _x;
+        private _rec = _groupData getOrDefault [hashValue _grp, createHashMap];
+        if (
+            isNull _grp
+            || { !((_rec getOrDefault ["task", ""]) isEqualTo "SUPPORT") }
+            || { !((_rec getOrDefault ["type", ""]) in ["HELI", "PLANE"]) }
+        ) then { continue };
+        private _veh = objectParent leader _grp;
+        if (isNull _veh || { !alive _veh } || { isTouchingGround _veh }) then { continue };
+        if ([_veh isKindOf "Helicopter"] call AIC_fnc_flyingWeather) then { continue };
+        if ([_cmd, _grp, "RTB", [], "", true] call AIC_fnc_issueOrder) then {
+            ["supportCycle: %1 air group %2 recalled, weather (fog %3, rain %4, wind %5 m/s)", [
+                _cmd getOrDefault ["side", sideUnknown], groupId _grp,
+                (round (fog * 100)) / 100, (round (rain * 100)) / 100, round (vectorMagnitude wind)
+            ]] call AIC_fnc_log;
+        };
+    } forEach _groups;
+};
+
 if (_threats isEqualTo [] && { count _prepPos < 2 }) exitWith { [false, false] };
 
 // newest sighting inside a cluster
@@ -217,8 +246,7 @@ if (_useArty && { (_now - (_cmd getOrDefault ["lastArtyTime", -1e6])) >= _artyCo
 private _airTasked = false;
 private _useAir = ([_cmd, "useAir"] call AIC_fnc_getSetting) isEqualTo true;
 // no CAS in thick fog or heavy rain; no helicopters in a strong wind
-private _flyWeather = fog <= AIC_CAS_MAX_FOG && {rain <= AIC_CAS_MAX_RAIN};
-private _heliWeather = (vectorMagnitude wind) <= AIC_HELI_MAX_WIND;
+// (_flyWeather / _heliWeather from AIC_fnc_flyingWeather above)
 private _airCooldown = [_cmd, "airCooldown"] call AIC_fnc_getSetting;
 
 if (_useAir && {_flyWeather}) then {

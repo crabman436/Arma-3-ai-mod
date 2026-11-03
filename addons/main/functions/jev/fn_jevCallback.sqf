@@ -77,7 +77,9 @@ if (!(_parsed isEqualType []) || { count _parsed < 3 }) exitWith {
     false
 };
 _parsed params [["_rawId", "", ["", 0]], ["_ok", false, [false]], "_payload"];
-private _id = [_rawId, parseNumber _rawId] select (_rawId isEqualType "");
+// lazy: parseNumber only takes a string, and the array form would evaluate
+// it for a numeric id too (a public-API caller may hand one back unquoted)
+private _id = if (_rawId isEqualType "") then { parseNumber _rawId } else { _rawId };
 
 // --- the request this answers (dropped by jevAsk when it took too long)
 private _pending = _jev getOrDefault ["pending", createHashMap];

@@ -139,7 +139,7 @@ All mod-wide state lives in one global HashMap, `AIC_ns`, created by
 Further keys are per-class caches that functions fill lazily and never clear
 (`"vehicleTypeClasses"`, `"turretWeaponsClasses"`, `"armamentClasses"`,
 `"antiAirClasses"`, `"supplyRolesClasses"`, `"aaLauncherClasses"`,
-`"airfields"` / `"airfieldsRead"`); `CONTRACT.md` lists their owners.
+`"mgClasses"`, `"airfields"` / `"airfieldsRead"`); `CONTRACT.md` lists their owners.
 
 Read it with the accessor functions (`AIC_fnc_getCommander`, ...) or with
 `AIC_ns getOrDefault [key, default]`. Type `AIC_ns` in the debug console to
@@ -167,7 +167,7 @@ change them live through `(_cmd get "settings") set [key, value]`.
 |---|---|---|
 | `loopInterval` | 30 | Seconds between commander cycles (minimum 5) |
 | `aggression` | 0.5 | 0..1, biases the stance toward attacking |
-| `retreatThreshold` | 0.3 | Group strength below which the group retreats to HQ |
+| `retreatThreshold` | 0.3 | Group strength below which the group falls back to its rally point (the nearest place its side holds behind it, else the HQ) |
 | `reserveRatio` | 0.2 | Share of combat power kept back as a reserve to defend HQ |
 | `useArtillery` | true | Allow artillery fire missions |
 | `useAir` | true | Allow CAS tasking of helicopters and planes |
@@ -189,8 +189,8 @@ change them live through `(_cmd get "settings") set [key, value]`.
 The Eden module sets Side, Aggression, LoopInterval, UseArtillery, UseAir,
 AutoObjectives, DebugMarkers, ReportToPlayers, ManageDynSim, ManageGarrisons,
 UseTransport, ManageCleanup, SplitPassengers, DynamicSquads, StagedAssaults,
-SpreadGroups, UseVehicleParks, UseSupplyTrucks, GarrisonManStatics, UseMorale,
-UseRecon and UseQRF. The others keep their defaults. The settings
+SpreadGroups, UseVehicleParks, UseSupplyTrucks, GarrisonManStatics, UseJev,
+JevWeight, UseMorale, UseRecon and UseQRF. The others keep their defaults. The settings
 for parking, garrisons and transport are listed in the next section, the
 cleanup settings in "Performance and cleanup".
 
@@ -611,10 +611,16 @@ follows the group's strength, minus 0.15 for a while after its leader fell
 and 0.1 for every tenth of the group killed in the last 10 minutes, plus a
 little for skilled troops. Bad news hits at once; morale comes back slowly,
 fastest when the group rests in a place its side holds. A **shaky** group
-(below 0.6) still defends and patrols but is not sent on new attacks, and
+(below 0.6) still defends but is not sent on new attacks or patrols, and
 its men may flee. A **broken** group (below 0.35) runs: it falls back to its
-rally point, takes no orders for 10 minutes and is never pulled out of a
-garrison, then rejoins the garrison where it rallied.
+rally point (really running only on the first 300 m, so it still gets
+there), takes no orders for 10 minutes and is never pulled out of a
+garrison, then rejoins the garrison where it rallied. A weakened squad that
+has held a place of its side calmly for 10 minutes is reorganised: what is
+left of it counts as a full squad again, so its morale can recover and it
+returns to attack duty. Only infantry and ground vehicle groups that can
+break have their fleeing set; aircraft, guns and transport crews keep the
+mission maker's setting.
 
 **Rally points.** A group that falls back goes to the nearest objective or
 base its side holds that is not under threat and lies behind it, never
@@ -626,8 +632,14 @@ straight away from the threat before turning towards the rally point.
 troops: about 30 s plus 10 s per km from the HQ for a move, 90 s plus 10 s per
 km for an attack or a recon, 20 s for a support job. Retreats, forced orders
 and orders to defend a group's own home go out at once. Until the order
-arrives the group carries on with what it was doing; an order to a group that
-dies, breaks or is sent elsewhere meanwhile is dropped. Players hear "Attack
+arrives the group carries on with what it was doing. A waiting order is
+dropped when the group dies or breaks, when it gets a retreat, ride, recon or
+attack order meanwhile, when the next plan no longer wants it (the planner
+changed its mind, held the attack or released the group), and an attack order
+when its objective has been taken, its last assault failed or was called off,
+or the staff holds new attacks there. Garrison routine (defend, patrol) does
+not cancel a waiting order, and a group with an order waiting is not used as
+a garrison transfer or a ride. Players hear "Attack
 on X: orders issued" when a delayed attack goes out. `orderDelay` scales all
 of it; 0 gives every order at once, as before.
 
@@ -640,9 +652,12 @@ motorised group before infantry, never a garrison below strength, never a
 shaken group). It moves to a spot 600-900 m out on high ground at the edge of
 the woods that can see the place, creeps the last stretch in stealth, unloads
 its infantry and watches with weapons tight. The job ends after 4 minutes on
-the spot, as soon as it reports enemies there (the estimate of the defenders
-is updated), or after 15 minutes in any case; a scout that is shot at falls
-back to its rally point - the contact is the report. The attack is planned on
+the spot, as soon as it reports enemies it has seen there itself (the
+estimate of the defenders is updated), or after 15 minutes in any case; a
+scout that is shot at (not merely one that spots the enemy) falls back to its
+rally point - the contact is the report. A scout killed on the job also
+counts as a look at the place, so no second scout walks into the same fire
+at once. The attack is planned on
 the next cycle after that. At most two new scouts go out per cycle; with no
 group to spare, the attack goes ahead unscouted.
 
@@ -651,9 +666,13 @@ night is less than 30 minutes away waits at the assembly area for the dark
 (the map's sunset for the date, with time acceleration taken into account).
 It goes at once if it is shot at or the staff advises attacking now. At night
 garrisons post twice the sentries at their edge (up to half of each group).
+Garrisons that are awake post their sentries again once at dusk and once at
+dawn; parked ones keep theirs until they are woken.
 
 **Weather.** No close air support in fog above 0.4 or rain above 0.6, and no
-helicopter sorties in wind above 12 m/s. Artillery fires in any weather.
+helicopter sorties in wind above 12 m/s. Aircraft already out on a sortie
+when the weather closes in fly home, and helicopters give no rides in such
+weather either (trucks and APCs do). Artillery fires in any weather.
 
 ### Phased assaults, reserves and quick-reaction forces
 
@@ -671,8 +690,8 @@ infantry goes in, every group gets a job:
   infantry groups there is no reserve (in practice it takes four: one is the
   machine-gun team and two thirds of two rounds up to two).
 
-The reserve is committed when the place has not fallen four minutes after
-the assault went in, when the assaulting groups are down to 60 % of their
+The reserve is committed when the place has not fallen ten minutes after
+the assault groups reached it, when the assaulting groups are down to 60 % of their
 strength, or when the Jev staff advises committing the reserve; HQ reports
 "Reserve committed on X". A stalling assault sends in the reserve before it
 sends the vehicles on overwatch in. Groups that arrive later simply attack.
@@ -681,7 +700,8 @@ sends the vehicles on overwatch in. Groups that arrive later simply attack.
 general holds keeps its strongest motorised or mechanised group that is at the
 base, at 70 % strength or more and not shaken as its quick-reaction force
 (QRF). The QRF does not patrol, is never moved to another garrison, never
-gives rides and never joins an attack or a recon. When a place of ours within
+gives rides and never joins an attack or a recon. It comes on top of the
+base's guard: the base keeps its full guard whether the QRF is home or out. When a place of ours within
 5 km of its base is threatened, it is the first group sent to reinforce it.
 Five minutes after the last enemy force near that place was seen (at once if
 the enemy took it) it drives back to its base and is the QRF again. A QRF
@@ -720,9 +740,14 @@ groups); the eight best-scored objectives (owner, priority, distance and
 bearing from HQ, our power inside and on the way, enemy power nearby); the
 five strongest threat clusters (power, types, distance to HQ and to the
 nearest own objective, age of the sighting); the main assault (stage, time in
-stage, attackers against defenders, losses since it was planned); the reserve
-holding the bases; groups in transit; time of day, light, fog and rain; the age
-of the intel; and what the general did with the previous advice.
+stage, attackers against defenders, losses of its own groups since it was
+planned, whether it waits for the night and why it is still staging, its
+support-by-fire / assault / reserve groups and whether the reserve is held or
+committed); the reserve holding the bases; the quick-reaction forces (home or
+out); the scouts out or ordered and, per objective, how long ago it was last
+scouted; average morale and the broken and shaky groups; groups in transit;
+time of day, light, fog and rain; the age of the intel; and what the general
+did with the previous advice.
 
 The questions, with the rubric each answer is judged by:
 
@@ -730,12 +755,12 @@ The questions, with the rubric each answer is judged by:
 |---|---|---|
 | `posture` | choice | Which posture should the commander adopt now? (`offensive` / `balanced` / `defensive`) |
 | `attack_now` | yes/no | Given the odds, intel freshness, daylight and reserves, should the planned main attack be launched or continued now rather than waiting? |
-| `break_off` | yes/no | Is the current attack failing badly enough that a competent commander would call it off and regroup? |
-| `commit_reserve` | yes/no | Should the reserve at base be committed to the fight now? |
+| `break_off` | yes/no | Is the current attack failing badly enough that a competent commander would call it off and regroup? (not asked while the assault waits for the night without a loss) |
+| `commit_reserve` | yes/no | Should the current assault commit its reserve now (the reserve groups held back at its assembly area)? |
 | `main_effort` | choice | Which objective should be the main effort? (over the five best-scored objectives; only asked with at least two candidates) |
 | `risk` | score 0..3 | How risky is the current plan for this force? (Safe, Acceptable, Risky, Reckless) |
 | `prep_fires` | yes/no | Should artillery prepare the main objective before the assault goes in? |
-| `intel_stale` | yes/no | Is the picture of the enemy too stale or thin to commit forces on? |
+| `intel_stale` | yes/no | Is the picture of the enemy too stale or thin to commit forces on? (weighing the scouts already out and how recently each objective was scouted) |
 
 ### How the answers change its behaviour
 
@@ -912,7 +937,7 @@ spawns `AIC_fnc_commanderLoop`. The loop calls `AIC_fnc_commanderCycle` every
 | 6 | Advice | `jevAdvisor` (`jevState`, `jevAsk`, `jevAnswers`) | Last cycle's Jev answers become `advice` and the next batch of questions goes out (if `jevEnabled` and the extension is available), so the stance, the scores and the plan all act on the same batch |
 | 7 | Stance | `determineStance` | Power ratio × aggression gives OFFENSIVE, BALANCED or DEFENSIVE |
 | 8 | Score | `scoreObjectives` | Priority, enemy ownership, distance and local threat |
-| 9 | Plan + orders | `garrisonCycle` (homes only), `allocateForces` then `issueOrder` | Assignments (ATTACK, DEFEND, PATROL, RETREAT, ...) turned into waypoints by the `order*` functions; infantry entries are issued before vehicle entries so squads can still claim the vehicles next to them as rides |
+| 9 | Plan + orders | `garrisonCycle` (homes only), `allocateForces`, then `queueOrder` per assignment and `drainOrders` | Assignments (ATTACK, DEFEND, PATROL, RETREAT, RECON, ...) wait their order delay in the queue (`orderDelay`; retreats, forced orders and a group's own home go out at once), then `issueOrder` turns them into waypoints through the `order*` functions; infantry entries go first so squads can still claim the vehicles next to them as rides. `drainOrders` also runs right after step 2, for orders that fell due during the sleep |
 | 10 | Garrisons | `garrisonCycle` (`garrisonStatus`, `canLeaveGarrison`) | Homes for groups and garrison refills from bases and surplus towns (if `manageGarrisons`) |
 | 11 | Transport | `transportCycle` (`findTransport`, `orderTransport`) | Rides are followed through pickup, flight and drop; dismounted cargo gets its final order, and empty transports return home |
 | 12 | Supply | `supplyCycle` (`supplyRoles`) | Repair, fuel and ammo trucks are sent to vehicles that need them (if `useSupplyTrucks`) |
@@ -923,7 +948,7 @@ spawns `AIC_fnc_commanderLoop`. The loop calls `AIC_fnc_commanderCycle` every
 | 17 | Parking | `dynSimCycle` (`setGroupSim`) | Settled groups are parked with dynamic simulation, and needed or threatened ones are woken (if `manageDynSim`) |
 | 18 | Support | `supportCycle` (`fireMission`, `tasksAir`) | Artillery on the strongest in-range threat and CAS from an idle armed aircraft, each with a cooldown |
 | 19 | Rearm | `rearmCycle` (`heldAirfield`) | Planes out of ammunition or fuel land at a held airfield, are restocked and go back to IDLE |
-| 20 | Present | `updateDebugMarkers`, `report` | Debug map markers and throttled side-chat reports |
+| 20 | Present | `updateDebugMarkers`, `report` | Debug map markers (group labels show the task, strength, role QRF / SBF / RES and morale or BROKEN) and throttled side-chat reports |
 
 Subsystems are split by folder, and each one owns the commander keys listed in
 `CONTRACT.md`:

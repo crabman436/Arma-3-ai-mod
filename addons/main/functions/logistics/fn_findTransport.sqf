@@ -28,11 +28,16 @@
           - the vehicle is within "transportSearchRadius" of the cargo leader
             (AIC_TRANSPORT_RANGE_MULT times that for transport-only crews)
             and is no repair, fuel or ammo truck (AIC_fnc_supplyRoles);
-          - HELI only if setting "useAir" is true; ground vehicles only if
+          - HELI only if setting "useAir" is true and the weather lets
+            helicopters fly (AIC_fnc_flyingWeather: fog, rain, wind; the
+            same rule that grounds CAS); ground vehicles only if
             they are not farther from the cargo than the cargo's own trip
-            (otherwise walking is faster).
+            (otherwise walking is faster);
+          - the group has no order waiting in the commander's "orderQueue"
+            (AIC_fnc_queuedGroups): a group the planner already took for a
+            job is nobody's taxi.
         Preference: helicopters first if the trip is longer than
-        "heliTransportDistance" (and "useAir"), otherwise the closest ground
+        "heliTransportDistance" (and "useAir" and flying weather), otherwise the closest ground
         vehicle. Within a class the cost is distance * (1 + 0.6 * armament),
         armament 0 = unarmed, 1 = machine guns, 2 = cannons / rockets /
         missiles or any tracked vehicle, so trucks and light cars are taken
@@ -103,6 +108,10 @@ if !(_garrisons isEqualType createHashMap) then { _garrisons = createHashMap; };
 
 private _trip = _cargoPos distance2D _dest;
 
+// groups with an order waiting in the queue (realism D) are spoken for
+private _queued = [_cmd] call AIC_fnc_queuedGroups;
+if !(_queued isEqualType createHashMap) then { _queued = createHashMap; };
+
 // ---------------------------------------------------------------- the pool
 // the candidate list of this order, if the last call built it: same cargo
 // group and destination, not older than a few seconds (one issueOrder call)
@@ -121,7 +130,9 @@ if (_fresh) then {
     private _useAir = ([_cmd, "useAir"] call AIC_fnc_getSetting) isEqualTo true;
     private _heliDist = [_cmd, "heliTransportDistance"] call AIC_fnc_getSetting;
     private _searchR = [_cmd, "transportSearchRadius"] call AIC_fnc_getSetting;
-    private _preferHeli = _useAir && { _trip > _heliDist };
+    // helicopters stay down in the weather that grounds CAS
+    private _heliWeather = [true] call AIC_fnc_flyingWeather;
+    private _preferHeli = _useAir && { _heliWeather } && { _trip > _heliDist };
 
     {
         private _rec = _y;
@@ -131,7 +142,8 @@ if (_fresh) then {
 
         private _type = _rec getOrDefault ["type", ""];
         if !(_type in ["MOTOR", "MECH", "HELI"]) then { continue };
-        if (_type == "HELI" && { !_useAir }) then { continue };
+        if (_type == "HELI" && { !_useAir || { !_heliWeather } }) then { continue };
+        if ((hashValue _grp) in _queued) then { continue };
         if !((_rec getOrDefault ["task", "IDLE"]) in ["IDLE", "DEFEND", "PATROL"]) then { continue };
         if (_grp getVariable ["AIC_exclude", false]) then { continue };
         if ((_rec getOrDefault ["antiAir", false]) isEqualTo true) then { continue };
@@ -241,7 +253,7 @@ private _fnc_mayLeave = {
 private _byGroup = createHashMap;
 {
     _x params ["_key", "_grp", "_veh", "_free", "_leaderVeh", "_transportOnly"];
-    if (_free < _cargoCount || { isNull _grp } || { _grp in _exclude }) then { continue };
+    if (_free < _cargoCount || { isNull _grp } || { _grp in _exclude } || { (hashValue _grp) in _queued }) then { continue };
     // still free (an earlier pick of this order may have taken it since the pool was built)
     private _rec = _groupData getOrDefault [hashValue _grp, createHashMap];
     if (count _rec == 0 || { !((_rec getOrDefault ["task", "IDLE"]) in ["IDLE", "DEFEND", "PATROL"]) }) then { continue };

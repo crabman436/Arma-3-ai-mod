@@ -9,20 +9,39 @@
  *   there while no member is still riding there (TRANSPORTED),
  *   AIC_ASSAULT_MAX_WAIT seconds after the first group got there even with
  *   rides under way, AIC_ASSAULT_MAX_TOTAL seconds after the assault was
- *   planned in any case, or at once if a waiting group comes under fire.
+ *   planned in any case (after the first arrival instead while a member is
+ *   still getting closer: moved within AIC_STUCK_TIMEOUT s, or its order
+ *   still queued), or at once if a waiting group comes under fire (record
+ *   "lastHit" younger than 30 s: Hit / FiredNear / UnitKilled, not a mere
+ *   sighting). With artillery of its own (setting "useArtillery", an ARTY
+ *   group) the commander's "prepTarget" is set once AIC_PREP_FIRE_READY of
+ *   the power is at the assembly area (assault "prepTime"), and the GO
+ *   waits until AIC_PREP_FIRE_DELAY s after that fire (called then if it
+ *   was not yet, or is older than AIC_PREP_FIRE_TIME + AIC_PREP_FIRE_DELAY),
+ *   unless a group is under fire or the staff says attack_now.
  *   Every member is then ordered in through AIC_fnc_issueOrder with force.
  *   "GO": the vehicles on overwatch go in when the infantry has swept the
  *   place without taking it (AIC_ASSAULT_PUSH s after GO with every
  *   infantry group's waypoints done, or twice that in any case), or when
- *   the last infantry is gone. On GO the commander's "prepTarget" is set
- *   to the objective, so the support cycle fires on it first.
+ *   the last infantry is gone. On GO without a preparatory fire before it
+ *   the commander's "prepTarget" is set to the objective, so the support
+ *   cycle fires on it first.
+ *   GO clocks (push, reserve, stall, abort): they run from assault
+ *   "contactTime", the first time a group going in (not SBF / RESERVE) came
+ *   within the objective radius + AIC_ASSAULT_CONTACT, else from
+ *   AIC_ASSAULT_APPROACH s after GO; "after GO" below means on that clock.
  *   Stalemate: AIC_ASSAULT_STALL s after GO without a capture the assault is
  *   escalated once ("escalated"): the objective's "attackBoost" becomes
  *   AIC_ASSAULT_BOOST (AIC_fnc_allocateForces asks for that much more
  *   force), preparatory fire is called again and the vehicles on overwatch
  *   go in. AIC_ASSAULT_ABORT s after GO it is called off: its groups regroup
- *   like an advised abort (below) and the objective's "failedUntil" is set
- *   AIC_ASSAULT_FAIL_COOLDOWN s ahead (no new attack on it until then).
+ *   like an advised abort (below). Every abort (failed, shaken, advised)
+ *   sets the objective's "failedUntil" AIC_ASSAULT_FAIL_COOLDOWN s ahead (no
+ *   new attack on it until then; AIC_fnc_assaultFor and AIC_fnc_drainOrders
+ *   refuse one too) and its "failReason" ("failed", "shaken", "advice",
+ *   for AIC_fnc_report), and drops the ATTACK orders for it still waiting
+ *   in the commander's "orderQueue" (the queue is replaced, its
+ *   "orderQueueIndex" deleted).
  *   Order delays (AIC_fnc_queueOrder): groups whose ATTACK order on the
  *   objective still waits in the commander's "orderQueue" count as members
  *   on their way: their power counts toward the assault's total (not toward
@@ -43,7 +62,8 @@
  *   existed for AIC_ASSAULT_MAX_TOTAL + AIC_NIGHT_WAIT_MAX s.
  *   Jev advice (commander "advice", AIC_fnc_jevAdvisor; "jevWeight" 0 =
  *   off): break_off p > AIC_ADVICE_YES with confidence >= AIC_ADVICE_SURE
- *   calls off the assault the staff was asked about ("advice" "_assault"):
+ *   calls off the assault the staff was asked about ("advice" "_assault";
+ *   never while it waits for the night, assault "nightHold"):
  *   its groups DEFEND their home garrison if still held (else the nearest
  *   held base, else the HQ) with force, riding
  *   groups get that as their final order, the record is dropped, the
@@ -65,14 +85,19 @@
  *                 strongest first; they go in
  *     "RESERVE" - the rest (only with 3+ infantry groups), held at the
  *                 assembly area
- *   Groups joining later have no role and attack as before. "goPower" is the
- *   ASSAULT groups' power at GO. The reserve is committed (ATTACK through
- *   AIC_fnc_issueOrder with force, role ASSAULT; assault "reserveCommitted"
- *   = time) when GO has lasted AIC_RESERVE_COMMIT_TIME s without a capture,
- *   when the ASSAULT groups' power falls below AIC_RESERVE_POWER_FRACTION of
- *   "goPower", or when the staff advises commit_reserve (p > AIC_ADVICE_YES,
- *   confidence >= AIC_ADVICE_SURE; only the assault the batch was about, if
- *   it named one). Every rule that sends the vehicles on overwatch in
+ *   Groups joining later have no role and attack as before. The power going
+ *   in is that of every group on ATTACK that is not SBF or RESERVE (so the
+ *   fireteams a squad splits into near the objective, which have no role,
+ *   count too); "goPower" is that power at GO. The reserve is committed
+ *   (ATTACK through AIC_fnc_issueOrder with force, role ASSAULT; assault
+ *   "reserveCommitted" = time) when that power falls below
+ *   AIC_RESERVE_POWER_FRACTION of "goPower", when a group going in is
+ *   inside the objective radius (exploit), when the staff advises
+ *   commit_reserve (p > AIC_ADVICE_YES, confidence >= AIC_ADVICE_SURE; only
+ *   the assault the batch was about, if it named one; when that moved a
+ *   group, "advice" "commit" and assault "reserveAdvice" are set for
+ *   AIC_fnc_report), or when GO has lasted AIC_RESERVE_COMMIT_TIME s
+ *   without a capture. Every rule that sends the vehicles on overwatch in
  *   (stall escalation, push) commits an uncommitted reserve first and sends
  *   the vehicles on a later cycle; vehicles sent in become ASSAULT. The
  *   SBF and RESERVE groups do not count for "every infantry group's
@@ -103,11 +128,15 @@ private _useMorale = ([_cmd, "useMorale"] call AIC_fnc_getSetting) isEqualTo tru
 private _nightAssaults = ([_cmd, "nightAssaults"] call AIC_fnc_getSetting) isEqualTo true;
 private _toNight = -1; // AIC_fnc_timeToNight, asked once per cycle when needed
 private _groupData = _cmd getOrDefault ["groupData", createHashMap];
+private _useArtillery = ([_cmd, "useArtillery"] call AIC_fnc_getSetting) isEqualTo true;
 private _records = (values _groupData) select {
     _x isEqualType createHashMap
     && {!isNull (_x getOrDefault ["group", grpNull])}
     && {({alive _x} count (units (_x get "group"))) > 0}
 };
+
+// artillery of our own to prepare an objective before the assault goes in
+private _artyReady = _useArtillery && {(_records findIf {(_x getOrDefault ["type", ""]) isEqualTo "ARTY"}) >= 0};
 
 // Jev advice (AIC_fnc_jevAdvisor), weight 0 = ignore: break_off aborts the
 // assault the staff was asked about (once per AIC_ADVICE_ABORT_COOLDOWN),
@@ -176,6 +205,20 @@ private _fnc_armed = {
     } forEach ((units _grp) select {alive _x});
     (_vehs findIf {([_x] call AIC_fnc_vehicleWeapons) isNotEqualTo []}) >= 0
 };
+// power of the groups going in: every group on ATTACK that is not SBF or
+// RESERVE, so the fireteams a squad splits into (AIC_fnc_splitForAttack, no
+// role) and late joiners count as well
+private _fnc_assaultPower = {
+    params ["_roles", "_list"];
+    private _sum = 0;
+    {
+        if !(([_roles, _x] call _fnc_role) in ["SBF", "RESERVE"]) then {
+            private _p = _x getOrDefault ["power", 0];
+            if (_p isEqualType 0) then {_sum = _sum + _p};
+        };
+    } forEach _list;
+    _sum
+};
 // hands out SBF / ASSAULT / RESERVE when the assault goes GO
 private _fnc_assignRoles = {
     params ["_assault", "_list"];
@@ -217,15 +260,14 @@ private _fnc_assignRoles = {
     if (count _inf >= 3) then {
         _nAssault = ((ceil (((count _rest) * AIC_ASSAULT_SHARE) - 0.02)) max 1) min (count _rest);
     };
-    private _goPower = 0;
     {
         private _rec = _rest select (_x select 2);
         private _role = ["RESERVE", "ASSAULT"] select (_forEachIndex < _nAssault);
         _roles set [hashValue (_rec get "group"), _role];
-        if (_role isEqualTo "ASSAULT") then {_goPower = _goPower - (_x select 1)};
     } forEach _order;
     _assault set ["roles", _roles];
-    _assault set ["goPower", _goPower];
+    // every group that goes in (ASSAULT, and unarmed vehicles without a role)
+    _assault set ["goPower", [_roles, _list] call _fnc_assaultPower];
     _assault set ["reserveCommitted", -1];
     private _count = createHashMap;
     {_count set [_y, (_count getOrDefault [_y, 0]) + 1]} forEach _roles;
@@ -290,6 +332,22 @@ private _fnc_regroupDest = {
     [_dest getOrDefault ["pos", _cmd getOrDefault ["hq", [0, 0, 0]]], _dest getOrDefault ["id", ""]]
 };
 
+// ATTACK orders for an objective still in the order queue are dropped when
+// its assault ends badly: no late group restarts what was just called off
+private _fnc_purgeQueued = {
+    params ["_id"];
+    private _q = _cmd getOrDefault ["orderQueue", []];
+    if !(_q isEqualType []) exitWith {};
+    private _left = _q select {
+        !(_x isEqualType [] && {count _x >= 5} && {(_x select 2) isEqualTo "ATTACK"} && {(_x select 4) isEqualTo _id})
+    };
+    if (count _left != count _q) then {
+        // a new array (AIC_fnc_queueOrder's index is rebuilt from it)
+        _cmd set ["orderQueue", _left];
+        _cmd deleteAt "orderQueueIndex";
+    };
+};
+
 // ATTACK orders still waiting for their delay: objective id -> group records
 private _queued = createHashMap;
 private _queue = _cmd getOrDefault ["orderQueue", []];
@@ -335,8 +393,14 @@ private _started = 0;
         continue;
     };
 
-    // GO for too long without a capture: a siege that goes nowhere is called off
-    private _goAge = time - (_assault getOrDefault ["goTime", time]);
+    // GO for too long without a capture: a siege that goes nowhere is called
+    // off. The GO clocks run from the first group going in that came within
+    // the objective radius + AIC_ASSAULT_CONTACT ("contactTime"), not from
+    // the GO order: a long approach is no failed assault. Without such a
+    // group they run anyway AIC_ASSAULT_APPROACH s after GO.
+    private _contact = _assault getOrDefault ["contactTime", -1];
+    if !(_contact isEqualType 0) then {_contact = -1};
+    private _goAge = (time - ([(_assault getOrDefault ["goTime", time]) + AIC_ASSAULT_APPROACH, _contact] select (_contact >= 0))) max 0;
     private _failed = (_assault get "state") isEqualTo "GO" && {_goAge > AIC_ASSAULT_ABORT};
     // the attackers have lost heart (AIC_fnc_updateGroups "morale")
     private _shaken = false;
@@ -354,9 +418,15 @@ private _started = 0;
     // the staff calls the assault off (or it failed): everybody regroups at
     // home, the way a released attack ends (AIC_fnc_allocateForces
     // leftovers), and the objective is left alone for the cooldown
-    if (_failed || {_breakOff && {_id isEqualTo _adviceAssault}}) then {
+    // (a deliberate wait for the night is no stalled stage: no advised abort then)
+    if (_failed || {_breakOff && {_id isEqualTo _adviceAssault} && {!((_assault getOrDefault ["nightHold", false]) isEqualTo true)}}) then {
+        // no new attack on it for a while, whatever ended it (an advised
+        // abort too: otherwise the same groups are planned on it again);
+        // "failReason" tells AIC_fnc_report how it ended
+        _obj set ["failedUntil", time + AIC_ASSAULT_FAIL_COOLDOWN];
+        _obj set ["failReason", ["advice", ["failed", "shaken"] select _shaken] select _failed];
+        [_id] call _fnc_purgeQueued;
         if (_failed) then {
-            _obj set ["failedUntil", time + AIC_ASSAULT_FAIL_COOLDOWN];
             if (_shaken) then {
                 ["%1: assault on '%2' is called off, the attackers are shaken, %3 groups regroup", [_side, _id, count _members]] call AIC_fnc_log;
             } else {
@@ -401,6 +471,9 @@ private _started = 0;
         private _power = 0;
         private _ready = 0;
         private _underFire = false;
+        // a group still on its way that is getting somewhere (moved within
+        // AIC_STUCK_TIMEOUT s); orders still queued are on their way too
+        private _progressing = _pending isNotEqualTo [];
         {
             private _p = _x getOrDefault ["power", 0];
             _power = _power + _p;
@@ -412,8 +485,13 @@ private _started = 0;
                 || {(_x getOrDefault ["task", ""]) isEqualTo "ATTACK" && {(_lpos distance2D (_assault get "pos")) < _objRadius}}
             ) then {
                 _ready = _ready + _p;
-                private _engaged = _x getOrDefault ["lastEngaged", -1e6];
-                if (_engaged isEqualType 0 && {(time - _engaged) < 30}) then {_underFire = true};
+                // under fire (record "lastHit": Hit / FiredNear / UnitKilled),
+                // not merely in sight of the defenders
+                private _hit = _x getOrDefault ["lastHit", -1e6];
+                if (_hit isEqualType 0 && {(time - _hit) < 30}) then {_underFire = true};
+            } else {
+                private _moved = _x getOrDefault ["lastMoveTime", -1e6];
+                if (_moved isEqualType 0 && {(time - _moved) < AIC_STUCK_TIMEOUT}) then {_progressing = true};
             };
         } forEach _members;
         // groups whose order is still on its way are part of the force too
@@ -442,23 +520,52 @@ private _started = 0;
                 ["%1: assault on '%2' waits for the night (%3 s)", [_side, _id, round _toNight]] call AIC_fnc_log;
             };
         };
+        // preparatory fire (own artillery only, setting "useArtillery"): once
+        // AIC_PREP_FIRE_READY of the force is at the assembly area the guns
+        // take the objective ("prepTarget", AIC_fnc_supportCycle), and the
+        // assault goes in AIC_PREP_FIRE_DELAY s after the fire was called.
+        // A fire older than AIC_PREP_FIRE_TIME + AIC_PREP_FIRE_DELAY (a
+        // night hold in between) is called again.
+        private _prepTime = _assault getOrDefault ["prepTime", -1];
+        if !(_prepTime isEqualType 0) then {_prepTime = -1};
+        private _prepFresh = _prepTime >= 0 && {(time - _prepTime) <= (AIC_PREP_FIRE_TIME + AIC_PREP_FIRE_DELAY)};
+        private _fnc_prepFire = {
+            _prepTime = time;
+            _prepFresh = true;
+            _assault set ["prepTime", time];
+            _cmd set ["prepTarget", [_assault get "pos", time]];
+            ["%1: preparatory fire on '%2' before the assault", [_side, _id]] call AIC_fnc_log;
+        };
+        if (_artyReady && {!_prepFresh} && {!_nightWait} && {!_underFire}
+            && {_ready > 0} && {_ready >= (AIC_PREP_FIRE_READY * _power)}) then {call _fnc_prepFire};
+
         // the clocks run from the first arrival, not from the planning: a
         // long ride does not make the assault go with nobody in place; and
-        // while members still ride there the short wait holds
-        if (!_nightWait && {
+        // while members still ride there the short wait holds. The total cap
+        // counts from the planning, but from the first arrival while groups
+        // are still getting closer (a long march on foot)
+        private _totalFrom = [_assault get "time", _first] select _progressing;
+        private _goNow = !_nightWait && {
             _underFire
             || {_ready > 0 && {_ready >= (AIC_ASSAULT_READY * _power)}}
             || {_first >= 0 && {(time - _first) > AIC_ASSAULT_WAIT} && {_riding isEqualTo []} && {_pending isEqualTo []}}
             || {_first >= 0 && {(time - _first) > AIC_ASSAULT_MAX_WAIT}}
-            || {(time - (_assault get "time")) > AIC_ASSAULT_MAX_TOTAL}
+            || {_totalFrom >= 0 && {(time - _totalFrom) > AIC_ASSAULT_MAX_TOTAL}}
             || {_early}
-        }) then {
+        };
+        // the guns get their time first (not under fire, not on the staff's go)
+        if (_goNow && {_artyReady} && {!_underFire} && {!_early}) then {
+            if (!_prepFresh) then {call _fnc_prepFire};
+            if ((time - _prepTime) < AIC_PREP_FIRE_DELAY) then {_goNow = false};
+        };
+        if (_goNow) then {
             _assault set ["state", "GO"];
             _assault set ["hasInf", _hasInf];
             _assault set ["goTime", time];
-            // preparatory fire: the guns and aircraft take the objective's
-            // defenders first for a while (AIC_fnc_supportCycle)
-            _cmd set ["prepTarget", [_assault get "pos", time]];
+            // no preparatory fire before (no artillery): the guns and aircraft
+            // take the objective's defenders now, while the assault goes in
+            // (AIC_fnc_supportCycle)
+            if (!_prepFresh) then {_cmd set ["prepTarget", [_assault get "pos", time]]};
             _started = _started + 1;
             // support by fire, assault and reserve
             [_assault, _attacking] call _fnc_assignRoles;
@@ -475,27 +582,43 @@ private _started = 0;
             } forEach _attacking;
         };
     } else {
-        // the reserve goes in: no capture after a while, the assault bleeding,
-        // or on the staff's advice
+        // the clocks start with the first group going in near the objective
+        if (_contact < 0 && {(_attacking findIf {
+            !(([_roles, _x] call _fnc_role) in ["SBF", "RESERVE"])
+            && {((leader (_x get "group")) distance2D (_assault get "pos")) < (_objRadius + AIC_ASSAULT_CONTACT)}
+        }) >= 0}) then {
+            _assault set ["contactTime", time];
+            _goAge = 0;
+        };
+        // the reserve goes in: the assault at the objective's edge (exploit),
+        // the assault bleeding, on the staff's advice, or no capture after a
+        // long while
         if ((_assault getOrDefault ["reserveCommitted", -1]) < 0 && {[_assault, _attacking] call _fnc_reserveWaits}) then {
             private _goPower = _assault getOrDefault ["goPower", 0];
             if !(_goPower isEqualType 0) then {_goPower = 0};
-            private _nowPower = 0;
-            {
-                if (([_roles, _x] call _fnc_role) isEqualTo "ASSAULT") then {
-                    private _p = _x getOrDefault ["power", 0];
-                    if (_p isEqualType 0) then {_nowPower = _nowPower + _p};
-                };
-            } forEach _attacking;
+            private _nowPower = [_roles, _attacking] call _fnc_assaultPower;
+            private _atEdge = (_attacking findIf {
+                !(([_roles, _x] call _fnc_role) in ["SBF", "RESERVE"])
+                && {((leader (_x get "group")) distance2D (_assault get "pos")) < _objRadius}
+            }) >= 0;
+            private _byAdvice = _commitAdvice && {_adviceAssault isEqualTo "" || {_adviceAssault isEqualTo _id}};
             private _why = switch (true) do {
-                case (_goAge > AIC_RESERVE_COMMIT_TIME): {format ["no capture after %1 s", round _goAge]};
                 case (_goPower > 0 && {_nowPower < (AIC_RESERVE_POWER_FRACTION * _goPower)}): {
                     format ["assault power down to %1 of %2", round _nowPower, round _goPower]
                 };
-                case (_commitAdvice && {_adviceAssault isEqualTo "" || {_adviceAssault isEqualTo _id}}): {"on the staff's advice"};
+                case (_atEdge): {"the assault has reached the objective"};
+                case (_byAdvice): {"on the staff's advice"};
+                case (_goAge > AIC_RESERVE_COMMIT_TIME): {format ["no capture after %1 s", round _goAge]};
                 default {""};
             };
-            if (_why isNotEqualTo "") then {[_assault, _attacking, _why] call _fnc_commitReserve};
+            if (_why isNotEqualTo "") then {
+                private _n = [_assault, _attacking, _why] call _fnc_commitReserve;
+                // AIC_fnc_report: only a commitment that moved groups is announced
+                if (_byAdvice && {_n > 0}) then {
+                    _advice set ["commit", true];
+                    _assault set ["reserveAdvice", true];
+                };
+            };
         };
         // stalled: ask for more force, fire on it again, reserve or vehicles in (once)
         if (_goAge > AIC_ASSAULT_STALL && {!((_assault getOrDefault ["escalated", false]) isEqualTo true)}) then {

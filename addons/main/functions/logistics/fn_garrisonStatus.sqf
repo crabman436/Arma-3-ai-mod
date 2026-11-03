@@ -17,7 +17,11 @@
             (for a PATROL: its patrol centre, "taskPos") is within
             radius * 1.5 of the objective. Transport-only crews
             (record "transportOnly") have no power here: a truck is no
-            defender.
+            defender. Nor has a base's quick-reaction force (record "role"
+            "QRF", setting "useQRF"): it is an extra on top of the guard,
+            so its power never lets other groups of the base go as surplus,
+            and the base asks for a refill while the guard is short whether
+            the QRF is home or out.
           - "surplus": present - desired.
           - "groups": the groups counted in "present".
         Extra keys (used by the garrison system):
@@ -26,9 +30,10 @@
           - "incoming": power of groups whose home is this objective but are
             still on their way (DEFEND / PATROL / IDLE outside the radius,
             TRANSPORTED with a ride ending at this objective) or away on a
-            ride (TRANSPORT / RTB vehicle groups), or the base's quick-reaction
-            force out on a REINFORCE job (record "role" "QRF"; it also counts
-            at the place it reinforces, see below). Also the power of groups
+            ride (TRANSPORT / RTB vehicle groups). Not the base's
+            quick-reaction force out on a job: it is no part of the guard
+            (above); it still counts at the place it reinforces, see below.
+            Also the power of groups
             sent to reinforce this objective by AIC_fnc_allocateForces (task
             REINFORCE, or TRANSPORTED with a final REINFORCE, record
             "objective" = this id, home elsewhere). Lets
@@ -61,6 +66,7 @@ if (count _cmd == 0) exitWith { createHashMap };
 private _side = _cmd getOrDefault ["side", sideUnknown];
 
 private _perPriority = ([_cmd, "garrisonPerPriority"] call AIC_fnc_getSetting) max 0;
+private _useQRF = ([_cmd, "useQRF"] call AIC_fnc_getSetting) isEqualTo true;
 
 private _objectives = _cmd getOrDefault ["objectives", []];
 if !(_objectives isEqualType []) then { _objectives = []; };
@@ -142,7 +148,12 @@ private _objById = createHashMap; // id -> objective record (only the garrisoned
             private _obj = _objById get _home;
             private _task = _rec getOrDefault ["task", "IDLE"];
             private _power = _rec getOrDefault ["power", 0];
-            if (!(_power isEqualType 0) || { (_rec getOrDefault ["transportOnly", false]) isEqualTo true }) then { _power = 0; };
+            if (
+                !(_power isEqualType 0)
+                || { (_rec getOrDefault ["transportOnly", false]) isEqualTo true }
+                // the QRF is an extra on top of its base's guard, home or out
+                || { _useQRF && { (_rec getOrDefault ["role", ""]) isEqualTo "QRF" } }
+            ) then { _power = 0; };
             private _radius = _obj getOrDefault ["radius", 300];
             if !(_radius isEqualType 0) then { _radius = 300; };
             // a patrol counts where it patrols, not where it is on its round
@@ -164,10 +175,8 @@ private _objById = createHashMap; // id -> objective record (only the garrisoned
             } else {
                 // a transport on a ride (or driving back) still belongs to its
                 // home: counting it keeps the home from asking for a refill
-                // every time one of its vehicles gives somebody a lift; the
-                // same for a base's quick-reaction force out on a job
-                // (record "role" "QRF", AIC_fnc_garrisonCycle), which comes back
-                if (_task in ["TRANSPORT", "RTB"] || { _task isEqualTo "REINFORCE" && { (_rec getOrDefault ["role", ""]) isEqualTo "QRF" } }) then {
+                // every time one of its vehicles gives somebody a lift
+                if (_task in ["TRANSPORT", "RTB"]) then {
                     _entry set ["incoming", (_entry get "incoming") + _power];
                 } else {
                     // cargo only counts for the home its ride ends at

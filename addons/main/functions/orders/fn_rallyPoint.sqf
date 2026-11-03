@@ -13,9 +13,13 @@
  *   task is about (record "objective"). Falls back to the commander "hq".
  *   Sticky: a group already on RETREAT keeps the rally objective it was
  *   given (record "rallyObj") while that place is still a valid rally
- *   point, so planners asking every cycle never flip the order between two
- *   places (AIC_fnc_issueOrder skips the identical order).
- *   Side effect: writes the record's "rallyObj" (objective id, "" = hq).
+ *   point, and keeps the hq when the hq was its rally point (record
+ *   "rallyHq" true), so planners asking every cycle never flip the order
+ *   between two places (AIC_fnc_issueOrder skips the identical order).
+ *   Side effect: writes the record's "rallyObj" (objective id, "" = hq) and
+ *   "rallyHq" (true when the hq was picked). Both only mean something while
+ *   the group's task is RETREAT; AIC_fnc_monitorOrders clears them when the
+ *   retreat ends.
  *
  * Parameters:
  *   0: HASHMAP - commander
@@ -72,9 +76,11 @@ private _fnc_valid = {
 };
 
 // --- sticky while retreating -------------------------------------------------
+private _retreating = (_rec getOrDefault ["task", ""]) isEqualTo "RETREAT";
+if (_retreating && {(_rec getOrDefault ["rallyHq", false]) isEqualTo true} && {_hq isNotEqualTo []}) exitWith {_hq};
 private _keep = _rec getOrDefault ["rallyObj", ""];
 if !(_keep isEqualType "") then {_keep = ""};
-if ((_rec getOrDefault ["task", ""]) isEqualTo "RETREAT" && {_keep isNotEqualTo ""}) then {
+if (_retreating && {_keep isNotEqualTo ""}) then {
     private _obj = [_cmd, _keep] call AIC_fnc_getObjective;
     if (count _obj > 0 && {[_obj] call _fnc_valid}) then {
         private _p = _obj get "pos";
@@ -130,8 +136,14 @@ if (_behind isNotEqualTo []) then {
 };
 
 if (_pick isEqualTo []) exitWith {
-    if (count _rec > 0) then {_rec set ["rallyObj", ""]};
+    if (count _rec > 0) then {
+        _rec set ["rallyObj", ""];
+        _rec set ["rallyHq", _hq isNotEqualTo []];
+    };
     _hq
 };
-if (count _rec > 0) then {_rec set ["rallyObj", _pick select 1]};
+if (count _rec > 0) then {
+    _rec set ["rallyObj", _pick select 1];
+    _rec set ["rallyHq", false];
+};
 _pick select 2

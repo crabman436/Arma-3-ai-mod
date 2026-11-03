@@ -30,6 +30,12 @@
            attack_now, break_off, commit_reserve, prep_fires, intel_stale
            (nouls), risk (score 0..3) and, with at least two candidate
            objectives, main_effort (choice over the best five objective ids).
+           break_off is not asked while the described assault waits at its
+           assembly area for the night ("night_hold") without a loss: a
+           deliberate hold is no stalled stage. commit_reserve is about the
+           assault's own RESERVE groups (state "assault" "roles" /
+           "reserve"), intel_stale weighs the scouts already out (state
+           "scouts", objective "recon" / "scout").
            "lastAdviceAsked" and "adviceAssault" (informational: the
            assault id of the last batch asked) are set.
         The answers are never waited for: they are consumed on the next
@@ -201,9 +207,9 @@ private _questions = createHashMapFromArray [
         "Keep going: losses are bearable and the assault still has the strength, or a fresh wave, to carry the objective"
     ] call _fnc_noul],
     ["commit_reserve", [
-        "Should the reserve at base be committed to the fight now?",
-        "Commit it: a decisive fight is on, the bases are not threatened and holding back would waste the moment",
-        "Keep it back: a base or an objective may need it, or no fight justifies spending it"
+        "Should the current assault commit its reserve now: the RESERVE groups held back at its assembly area (state 'assault': 'roles', 'reserve' held or committed), sent in behind the assault groups?",
+        "Commit it: the assault is in the fight, its assault groups are worn down or the objective is within reach, and holding the reserve back would waste the moment",
+        "Keep it back: the assault is not in the fight yet, it is going well without it, it has no reserve held, or it may be needed to cover a setback"
     ] call _fnc_noul],
     ["risk", createHashMapFromArray [
         ["type", "score"],
@@ -221,11 +227,22 @@ private _questions = createHashMapFromArray [
         "No preparation: nothing worth shelling is known there, no assault is forming, or our troops are already on the objective"
     ] call _fnc_noul],
     ["intel_stale", [
-        "Is the picture of the enemy too stale or thin to commit forces on?",
-        "Too stale or thin: contacts are old, few or none, so the enemy's real strength and positions are guesswork",
-        "Good enough: recent and several contacts give a usable picture of the enemy"
+        "Is the picture of the enemy too stale or thin to commit forces on? Weigh the reconnaissance too: scouts out or ordered (state 'scouts') and, per objective, the seconds since its last recon ('recon', 9999 never) and whether a scout is on the way ('scout').",
+        "Too stale or thin: contacts are old, few or none and the objectives have not been scouted lately, so the enemy's real strength and positions are guesswork",
+        "Good enough: recent and several contacts, or a recent recon of the objectives in question, give a usable picture of the enemy (scouts already out will refresh it)"
     ] call _fnc_noul]
 ];
+
+// a deliberate night hold without a loss is no failing attack: do not ask
+// whether to call it off (assaultCycle aborts on break_off only)
+private _assaultState = _state getOrDefault ["assault", "none"];
+if (_assaultState isEqualType createHashMap && { (_assaultState getOrDefault ["night_hold", false]) isEqualTo true }) then {
+    private _lost = _assaultState getOrDefault ["lost", createHashMap];
+    if !(_lost isEqualType createHashMap) then { _lost = createHashMap; };
+    if (((_lost getOrDefault ["u", 0]) + (_lost getOrDefault ["g", 0])) == 0) then {
+        _questions deleteAt "break_off";
+    };
+};
 
 // the main effort is chosen among the best-scored objectives, by id
 private _cands = (_state getOrDefault ["objs", []]) select { _x isEqualType createHashMap && { (_x getOrDefault ["id", ""]) != "" } };

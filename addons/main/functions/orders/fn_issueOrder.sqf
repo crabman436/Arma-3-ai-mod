@@ -40,7 +40,10 @@
  *     "RECON"     -> AIC_fnc_orderRecon     (radius = objective radius):
  *                    watch the objective from an overwatch point. Record
  *                    "reconStart" is the time the job began (kept when the
- *                    same job is re-issued, e.g. by stuck detection), for
+ *                    same job is re-issued, e.g. by stuck detection) and
+ *                    "reconLimit" the s after it within which the scout must
+ *                    reach its point (AIC_RECON_TIMEOUT + AIC_RECON_TIME_PER_M
+ *                    per m from the leader to the objective), for
  *                    AIC_fnc_monitorOrders' timeout
  *     "IDLE"      -> clears waypoints, group holds in place
  *     "TRANSPORT" / "TRANSPORTED" -> only with force: re-runs
@@ -67,7 +70,8 @@
  *       commanded group (a squad placed in a helicopter, split off by
  *       AIC_fnc_splitPassengers): a far ATTACK / REINFORCE / DEFEND order
  *       becomes a ride with that very vehicle (AIC_fnc_orderTransport, the
- *       ride starts in the vehicle), any other order dismounts the group
+ *       ride starts in the vehicle; never with a quick-reaction force's
+ *       vehicle, record "role" "QRF"), any other order dismounts the group
  *       (AIC_fnc_dismountCarrier, repeated by AIC_fnc_monitorOrders).
  *     - INF groups ordered to ATTACK / REINFORCE / DEFEND farther than
  *       "transportMinDistance" (setting "useTransport" on, group not
@@ -299,6 +303,8 @@ if (_curTask isNotEqualTo "TRANSPORTED") then {
                 && { (time - _rideAbort) >= AIC_RIDE_ABORT_COOLDOWN }
                 && { (_cRec getOrDefault ["type", ""]) in ["MOTOR", "MECH", "HELI"] }
                 && { (_cRec getOrDefault ["task", "IDLE"]) in ["IDLE", "DEFEND", "PATROL"] }
+                // a base's quick-reaction force gives no rides (as AIC_fnc_findTransport)
+                && { (_cRec getOrDefault ["role", ""]) isNotEqualTo "QRF" }
                 && { canMove _carrier };
             if (_rideOk) then {
                 _cGrp setVariable ["AIC_transportVehicle", _carrier];
@@ -494,8 +500,10 @@ private _ok = switch (_task) do {
     };
     case "RECON": {
         // a new job (not the same one re-issued) starts the timeout clock
+        // (and its time limit: the way there plus the watch, AIC_fnc_monitorOrders)
         if (_curTask isNotEqualTo "RECON" || {_curObj isNotEqualTo _objective}) then {
             _record set ["reconStart", time];
+            _record set ["reconLimit", AIC_RECON_TIMEOUT + AIC_RECON_TIME_PER_M * ((getPosATL (leader _group)) distance2D _pos)];
         };
         [_group, _pos, _radius, _type, _record] call AIC_fnc_orderRecon
     };

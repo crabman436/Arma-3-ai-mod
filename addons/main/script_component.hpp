@@ -371,10 +371,12 @@
 #define AIC_NIGHT_WAIT_MAX 1800
 
 // ---------------------------------------------------------------- realism: phased assaults, reserve and QRF (F)
-// s an assault may be in GO without a capture before its reserve is
-// committed (assaultCycle)
+// s an assault may be in GO (counted from its first ASSAULT group near the
+// objective, see AIC_ASSAULT_APPROACH) without a capture before its reserve
+// is committed (assaultCycle); the reserve also goes in on events (losses,
+// the assault at the objective's edge, Jev advice)
 #ifndef AIC_RESERVE_COMMIT_TIME
-#define AIC_RESERVE_COMMIT_TIME 240
+#define AIC_RESERVE_COMMIT_TIME 600
 #endif
 // the reserve is committed when the ASSAULT groups' power falls below this
 // share of their power at GO (assaultCycle, assault "goPower")
@@ -395,4 +397,56 @@
 // goes back to its base (monitorOrders, record "qrfThreatTime")
 #ifndef AIC_QRF_RELEASE
 #define AIC_QRF_RELEASE 300
+#endif
+
+// ---------------------------------------------------------------- review fixes: planner, order queue, assaults, recon
+// s after GO before the GO clocks (reserve, stall, abort, push) run although
+// no ASSAULT group has come within the objective radius + AIC_ASSAULT_CONTACT
+// yet (assaultCycle, assault "contactTime")
+#ifndef AIC_ASSAULT_APPROACH
+#define AIC_ASSAULT_APPROACH 900
+#endif
+// m beyond the objective radius at which the first ASSAULT group starts the
+// GO clocks (assaultCycle, assault "contactTime")
+#ifndef AIC_ASSAULT_CONTACT
+#define AIC_ASSAULT_CONTACT 300
+#endif
+// s the preparatory fire gets before a staged assault goes GO, when the
+// side has artillery (assaultCycle, assault "prepTime"); the fire is called
+// once AIC_PREP_FIRE_READY of the force is at the assembly area
+#ifndef AIC_PREP_FIRE_DELAY
+#define AIC_PREP_FIRE_DELAY 90
+#endif
+#ifndef AIC_PREP_FIRE_READY
+#define AIC_PREP_FIRE_READY 0.5
+#endif
+// s per m of the way to the objective added to AIC_RECON_TIMEOUT for a
+// recon that has not reached its point (issueOrder, record "reconLimit")
+#ifndef AIC_RECON_TIME_PER_M
+#define AIC_RECON_TIME_PER_M 1.2
+#endif
+// m: scouts within this of the objective are preferred (allocateForces)
+#ifndef AIC_RECON_SCOUT_RANGE
+#define AIC_RECON_SCOUT_RANGE 2000
+#endif
+// m beyond the objective radius a scout's route keeps clear of the
+// objective (orderRecon detour waypoints)
+#ifndef AIC_RECON_DETOUR
+#define AIC_RECON_DETOUR 800
+#endif
+// most report items kept for later messages when more were due than one
+// message carries (report, "lastReport" "pending")
+#ifndef AIC_REPORT_PARTS
+#define AIC_REPORT_PARTS 3
+#endif
+#ifndef AIC_REPORT_PENDING_MAX
+#define AIC_REPORT_PENDING_MAX 9
+#endif
+
+// ---- review pass 2 (groups / intel / logistics / jev / ui) ----
+// men a garrison group needs before it posts a sentry (garrisonBuildings
+// hands one out from this size; garrisonCycle re-posts the night sentries
+// only of such groups)
+#ifndef AIC_SENTRY_MIN_GROUP
+#define AIC_SENTRY_MIN_GROUP 4
 #endif

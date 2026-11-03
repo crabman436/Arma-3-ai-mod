@@ -17,8 +17,8 @@
  *        bearings are the group's sector (its own slice of the place), the
  *        threat's side first when one is known. Sentries get the unit
  *        variable "AIC_sentry"; AIC_fnc_sentryWatch raises the alarm when
- *        one recognises an enemy. At night (sunOrMoon below AIC_NIGHT_SUN)
- *        the count doubles, up to half the group (a 4-man group posts
+ *        one recognises an enemy. At night (AIC_fnc_timeToNight 0: sunOrMoon
+ *        below AIC_NIGHT_SUN, or outside sunrise..sunset) the count doubles, up to half the group (a 4-man group posts
  *        two), spread wider around the facing; the count is set when the
  *        positions are handed out.
  *     3. Buildings. Spread over the group's sector: buildings nearest the
@@ -110,11 +110,14 @@ if (_manStatics) then {
     private _maxGuns = floor (_total / 2);
     // static weapons are entities: the spatial query, nearest first (the
     // group mans the guns of its own ground before those farther out)
-    private _statics = (_c nearEntities [["StaticWeapon"], _radius]) apply {[_x distance2D _c, _x]};
+    // (sorted as [distance, index]: never an object as a sort key)
+    private _found = _c nearEntities [["StaticWeapon"], _radius];
+    private _statics = _found apply {[_x distance2D _c, 0]};
+    {_x set [1, _forEachIndex]} forEach _statics;
     _statics sort true;
     {
         if (_guns >= _maxGuns) exitWith {};
-        private _static = _x select 1;
+        private _static = _found select (_x select 1);
         private _owner = _static getVariable ["AIC_gunner", objNull];
         if (
             alive _static
@@ -144,7 +147,8 @@ private _wanted = switch (true) do {
     default {0};
 };
 // the dark: twice the eyes on the edge, never more than half the group
-if (_wanted > 0 && {sunOrMoon < AIC_NIGHT_SUN}) then {
+// (night as AIC_fnc_timeToNight sees it: dark, or outside sunrise..sunset)
+if (_wanted > 0 && {([] call AIC_fnc_timeToNight) == 0}) then {
     _wanted = (2 * _wanted) min (floor ((count _free) / 2));
 };
 if (_wanted > 0) then {

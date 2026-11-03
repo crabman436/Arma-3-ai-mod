@@ -65,7 +65,9 @@
              task IDLE / DEFEND / PATROL, strength above "retreatThreshold",
              settled at their home, not moved to a new home in the last
              600 s (record "homeTime"), home not threatened (no threat cluster
-             within 1500 m), never the target itself as home, and
+             within 1500 m), never the target itself as home, no order
+             waiting in the commander's "orderQueue" (AIC_fnc_queuedGroups:
+             the planner already took it for a job), and
              AIC_fnc_canLeaveGarrison true (its home's surplus covers its
              power). Bases are stripped first, then the largest surplus, then
              the shortest distance. Transport-only crews never are donors.
@@ -76,7 +78,9 @@
           4. Groups at their home with task IDLE get DEFEND there, or PATROL
              when the home already has more defenders than patrols (so every
              second group patrols). A threatened home does not send out new
-             patrols.
+             patrols, and a broken or shaky group (setting "useMorale":
+             "brokenUntil", morale below AIC_MORALE_SHAKY) never patrols, as
+             AIC_fnc_drainOrders refuses it a queued PATROL.
           5. Stand-to. With a threat cluster within AIC_STANDTO_RANGE of a
              home's edge, or a sentry's alarm (objective "alarmTime" within
              AIC_ALARM_TIME; the alert is held AIC_STANDTO_HOLD s after it
@@ -88,7 +92,18 @@
              than 60 degrees off, at most every 120 s) move to the threatened
              side. Once the threat is gone and the group has not been engaged
              for 120 s, a stood-to group goes back to what it was doing
-             (record "standToFrom").
+             (record "standToFrom"; a patrol that is now broken or shaky
+             stays on DEFEND).
+          6. Night sentries. Sentries are handed out with the positions
+             (AIC_fnc_garrisonBuildings doubles them at night), so a
+             garrison placed by day would keep its day sentries all night.
+             An awake (not parked), calm INF group on DEFEND of 4 or more
+             men takes its positions again (DEFEND with force) once when
+             night falls and once when day breaks: record "nightSentries" =
+             [night, taskTime] remembers the light ([] call
+             AIC_fnc_timeToNight == 0) of the order its positions came
+             from; a new order just records the light of its own. Parked
+             garrisons keep their sentries until they are woken.
 
         With the optional homes-only flag only step 1 (without orders) runs:
         AIC_fnc_commanderCycle uses it right before AIC_fnc_allocateForces,
@@ -166,11 +181,24 @@ private _COOLDOWN = 600; // s a group must stay at a new home before it can be m
 private _donorTypes = ["INF", "MOTOR", "MECH", "ARMOR"];
 private _useQRF = ([_cmd, "useQRF"] call AIC_fnc_getSetting) isEqualTo true;
 private _useMorale = ([_cmd, "useMorale"] call AIC_fnc_getSetting) isEqualTo true;
+// groups with an order waiting in the queue (realism D) are spoken for
+private _queued = [_cmd] call AIC_fnc_queuedGroups;
+if !(_queued isEqualType createHashMap) then { _queued = createHashMap; };
 
 // a base's quick-reaction force (2a)
 private _fnc_isQrf = {
     params ["_rec"];
     _useQRF && { (_rec getOrDefault ["role", ""]) isEqualTo "QRF" }
+};
+
+// broken or shaky (setting "useMorale"): no patrols
+private _fnc_shaken = {
+    params ["_rec"];
+    if (!_useMorale) exitWith { false };
+    private _until = _rec getOrDefault ["brokenUntil", -1];
+    private _morale = _rec getOrDefault ["morale", 1];
+    (_until isEqualType 0 && { _until > time })
+    || { _morale isEqualType 0 && { _morale < AIC_MORALE_SHAKY } }
 };
 
 // radius helper
@@ -463,6 +491,8 @@ if (_maxMoves > 0 && { _deficits isNotEqualTo [] }) then {
         && { !((_rec getOrDefault ["antiAir", false]) isEqualTo true) }
         // a base's quick-reaction force stays where it is
         && { !([_rec] call _fnc_isQrf) }
+        // the planner has already taken it (its order still in the queue)
+        && { !((hashValue _grp) in _queued) }
         && { (_rec getOrDefault ["task", "IDLE"]) in _settleTasks }
         && { (_rec getOrDefault ["strength", 1]) > _threshold }
         // transfer cooldown: a group that changed home recently stays put
@@ -583,6 +613,8 @@ private _mix = createHashMap;
             && { !((_rec getOrDefault ["transportOnly", false]) isEqualTo true) }
             // the quick-reaction force stands ready, it does not patrol
             && { !([_rec] call _fnc_isQrf) }
+            // nor does a broken or shaky group (drainOrders agrees)
+            && { !([_rec] call _fnc_shaken) }
             && { !([_homeObj, _status getOrDefault [_home, createHashMap]] call _fnc_alert) };
         private _task = if (_patrol) then { "PATROL" } else { "DEFEND" };
         if ([_cmd, _grp, _task, _homeObj get "pos", _home] call AIC_fnc_issueOrder) then {
@@ -647,7 +679,7 @@ private _standTo = 0;
                 _rec set ["standTo", false];
                 if (_task isEqualTo "DEFEND") then {
                     // patrols back out, vehicles back to their place
-                    if ((_rec getOrDefault ["standToFrom", "PATROL"]) isEqualTo "PATROL") then {
+                    if ((_rec getOrDefault ["standToFrom", "PATROL"]) isEqualTo "PATROL" && { !([_rec] call _fnc_shaken) }) then {
                         [_cmd, _grp, "PATROL", _homePos, _home] call AIC_fnc_issueOrder;
                     } else {
                         [_cmd, _grp, "DEFEND", _homePos, _home, true] call AIC_fnc_issueOrder;
@@ -660,6 +692,42 @@ private _standTo = 0;
 
 if (_standTo > 0) then {
     ["garrisonCycle: %1 stands to, %2 groups take up defensive positions", [_side, _standTo]] call AIC_fnc_log;
+};
+
+// ------------------------------------------------------------ 6. night sentries
+// re-post an awake garrison's sentries once at dusk and once at dawn
+private _night = ([] call AIC_fnc_timeToNight) == 0;
+private _reposted = 0;
+{
+    _x params ["_grp", "_rec"];
+    if (
+        (_rec getOrDefault ["type", ""]) isNotEqualTo "INF"
+        || { (_rec getOrDefault ["task", ""]) isNotEqualTo "DEFEND" }
+    ) then { continue };
+    private _taskTime = _rec getOrDefault ["taskTime", -1];
+    private _stamp = _rec getOrDefault ["nightSentries", []];
+    if (!(_stamp isEqualType []) || { count _stamp < 2 } || { (_stamp select 1) isNotEqualTo _taskTime }) then {
+        // a new order: its positions were handed out in today's light
+        _rec set ["nightSentries", [_night, _taskTime]];
+        continue;
+    };
+    if ((_stamp select 0) isEqualTo _night) then { continue };
+    private _engaged = _rec getOrDefault ["lastEngaged", -1e6];
+    if (
+        dynamicSimulationEnabled _grp
+        || { (_rec getOrDefault ["parked", false]) isEqualTo true }
+        || { ({ alive _x } count (units _grp)) < AIC_SENTRY_MIN_GROUP }
+        || { _engaged isEqualType 0 && { (time - _engaged) < 120 } }
+        // about to leave on a planned order anyway
+        || { (hashValue _grp) in _queued }
+    ) then { continue };
+    if ([_cmd, _grp, "DEFEND", _rec getOrDefault ["taskPos", []], _rec getOrDefault ["objective", ""], true] call AIC_fnc_issueOrder) then {
+        _rec set ["nightSentries", [_night, _rec getOrDefault ["taskTime", -1]]];
+        _reposted = _reposted + 1;
+    };
+} forEach _entries;
+if (_reposted > 0) then {
+    ["garrisonCycle: %1 %2, %3 garrisons post their sentries again", [_side, ["day breaks", "night falls"] select _night, _reposted]] call AIC_fnc_log;
 };
 
 if (_moves > 0 || { _sentHome > 0 }) then {

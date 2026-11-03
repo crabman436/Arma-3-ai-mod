@@ -89,6 +89,7 @@ class CfgFunctions
             class rallyPoint {};
             class queueOrder {};
             class drainOrders {};
+            class queuedGroups {};
         };
 
         class support

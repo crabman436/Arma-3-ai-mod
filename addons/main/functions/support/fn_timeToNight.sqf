@@ -27,7 +27,8 @@ if (sunOrMoon < AIC_NIGHT_SUN) exitWith {0};
 private _sunrise = 6;
 private _sunset = 20;
 if (!isNil "BIS_fnc_sunriseSunsetTime") then {
-    private _times = [date] call BIS_fnc_sunriseSunsetTime;
+    // the date array itself is the argument (BIKI: date call BIS_fnc_sunriseSunsetTime)
+    private _times = date call BIS_fnc_sunriseSunsetTime;
     if (!isNil "_times" && {_times isEqualType []} && {count _times >= 2}
         && {(_times select 0) isEqualType 0} && {(_times select 1) isEqualType 0}) then {
         _sunrise = _times select 0;

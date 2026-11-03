@@ -11,8 +11,11 @@
  *   the terrain scoring every position search uses; vehicles keep out of
  *   the forest). Without a spot that sees the objective, the best cover in
  *   the band is taken, else the middle of the band.
- *   Waypoints: a long way starts with a MOVE to a point 400 m short (AWARE,
- *   NORMAL), then a MOVE to the point in STEALTH at a walk, an UNLOAD there
+ *   Waypoints: when the straight line from the leader to the point passes
+ *   within the objective radius + AIC_RECON_DETOUR, MOVEs on an arc around
+ *   the objective first (AWARE, NORMAL; at most 60 degrees apart, so a
+ *   driving scout does not take the road through the town); a long way
+ *   then goes on with a MOVE to a point 400 m short (AWARE, NORMAL), then a MOVE to the point in STEALTH at a walk, an UNLOAD there
  *   when the group drives its own vehicles (the infantry it carries
  *   dismounts, the vehicles stay), then HOLD in STEALTH. Combat mode GREEN
  *   throughout: the group defends itself but does not open fire.
@@ -106,19 +109,45 @@ private _fnc_wp = {
     _wp
 };
 
+// the way there keeps clear of the objective: when the straight line from
+// the leader to the spot passes within its radius + AIC_RECON_DETOUR (a spot
+// swung round to the side, a road through the town), waypoints on an arc
+// around the objective, far enough out that the legs between them stay clear
+private _detour = [];
+private _clear = _radius + AIC_RECON_DETOUR;
+private _lPos = getPosATL _leader;
+if ((_lPos distance2D _target) > _clear) then {
+    _lPos params ["_ax", "_ay"];
+    private _dx = (_spot select 0) - _ax;
+    private _dy = (_spot select 1) - _ay;
+    private _len2 = (_dx * _dx + _dy * _dy) max 1;
+    // the point of the line nearest the objective
+    private _t = (((((_target select 0) - _ax) * _dx + ((_target select 1) - _ay) * _dy) / _len2) max 0) min 1;
+    if (([_ax + _t * _dx, _ay + _t * _dy, 0] distance2D _target) < _clear) then {
+        private _from = _target getDir _lPos;
+        private _diff = ((_target getDir _spot) - _from + 540) % 360 - 180;
+        private _n = (ceil ((abs _diff) / 60)) max 1;
+        private _r = _clear / (cos 30);
+        for "_i" from 1 to _n do {
+            private _p = _target getPos [_r, _from + _diff * _i / _n];
+            if (!surfaceIsWater _p) then {_detour pushBack [_p select 0, _p select 1, 0]};
+        };
+    };
+};
+private _wps = _detour apply {[_x, "MOVE", "AWARE", "NORMAL", 60] call _fnc_wp};
+
 // the last stretch is crept up on, the way there is not
-private _first = [];
-private _way = _leader distance2D _spot;
-if (_way > 800) then {
-    private _short = _spot getPos [400, _spot getDir _leader];
+private _from = if (_detour isEqualTo []) then {_lPos} else {_detour select (count _detour - 1)};
+if ((_from distance2D _spot) > 800) then {
+    private _short = _spot getPos [400, _spot getDir _from];
     if (!surfaceIsWater _short) then {
-        _first = [[_short select 0, _short select 1, 0], "MOVE", "AWARE", "NORMAL", 60] call _fnc_wp;
+        _wps pushBack ([[_short select 0, _short select 1, 0], "MOVE", "AWARE", "NORMAL", 60] call _fnc_wp);
     };
 };
 private _wpAt = [_spot, "MOVE", "STEALTH", "LIMITED", 30] call _fnc_wp;
 if (_carries) then {[_spot, "UNLOAD", "STEALTH", "LIMITED", 30] call _fnc_wp};
 [_spot, "HOLD", "STEALTH", "LIMITED", 30] call _fnc_wp;
-_group setCurrentWaypoint ([_first, _wpAt] select (_first isEqualTo []));
+_group setCurrentWaypoint ([_wpAt, _wps select 0] select (_wps isNotEqualTo []));
 
 if (count _record > 0) then {
     _record set ["reconPos", _spot];

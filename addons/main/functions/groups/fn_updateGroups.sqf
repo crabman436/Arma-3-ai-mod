@@ -20,7 +20,13 @@
  *                    AIC_REORG_CALM s is reorganised: "initialSize" becomes
  *                    its alive count ("reorgTime" = time), so a remnant that
  *                    retreated fights again instead of sitting at the base
- *                    for good
+ *                    for good. With "useMorale" the bar is
+ *                    AIC_MORALE_SHAKY (or "retreatThreshold" if higher) and
+ *                    any objective the side holds will do (not only a
+ *                    base), so a half-strength squad, whose morale target
+ *                    is capped by its strength, can become steady again
+ *                    instead of staying shaky for good; a broken group is
+ *                    reorganised only once "brokenUntil" has run out
  *     - morale (setting "useMorale"; CONTRACT.md realism part B):
  *                    "morale" (0..1) follows a target of "strength"
  *                    - 0.15 while "leaderLost" (set by the UnitKilled
@@ -44,10 +50,21 @@
  *                    threat, handed to AIC_fnc_orderRetreat through the
  *                    group variable "AIC_retreatFrom"); the rally objective
  *                    becomes its "home" so the garrison system takes it
- *                    over on arrival. allowFleeing: 0.6 while broken, 0.3
- *                    below AIC_MORALE_SHAKY, else 0. A group breaks only
- *                    when its morale crosses the line (it must recover
- *                    above AIC_MORALE_BREAK before it can break again).
+ *                    over on arrival ("brokenPos" = where it broke).
+ *                    allowFleeing, only for the groups that can break
+ *                    (the same INF / MOTOR / MECH / ARMOR non-transport
+ *                    set; aircraft, guns and the mission maker's own
+ *                    settings elsewhere are left alone) and only when the
+ *                    value changes or a new order came in (record
+ *                    "fleeing" = [value, taskTime]; AIC_fnc_orderRetreat
+ *                    resets it to 0): 0.6 while broken on the first leg
+ *                    of its retreat (task RETREAT, within
+ *                    AIC_RETREAT_FIRST_LEG of "brokenPos"), so it runs
+ *                    but still reaches its rally point; 0.3 while broken
+ *                    after that or below AIC_MORALE_SHAKY; else 0. A group
+ *                    breaks only when its morale crosses the line (it must
+ *                    recover above AIC_MORALE_BREAK before it can break
+ *                    again).
  *   Records whose group is null or dead are skipped (they are removed by
  *   AIC_fnc_registerGroups). Missing records for groups in "groups" are
  *   created with AIC_fnc_newGroupRecord.
@@ -82,9 +99,20 @@ private _retreatThreshold = [_commander, "retreatThreshold"] call AIC_fnc_getSet
 
 // --- morale inputs, once per call
 private _useMorale = ([_commander, "useMorale"] call AIC_fnc_getSetting) isEqualTo true;
+// strength at or below which a calm group at a held place is reorganised
+private _reorgBar = [_retreatThreshold, _retreatThreshold max AIC_MORALE_SHAKY] select _useMorale;
 private _recentLosses = createHashMap;   // hashValue group -> men killed within AIC_LOSS_WINDOW
 private _ownZones = [];                  // [pos, radius] of the objectives the side holds
 private _breaks = [];                    // [group, record] that broke this cycle
+// allowFleeing only when the value changes or a new order came in (the
+// record keeps [value, taskTime]; AIC_fnc_orderRetreat resets it to 0)
+private _fnc_setFleeing = {
+    params ["_grp", "_record", "_value"];
+    private _stamp = [_value, _record getOrDefault ["taskTime", -1]];
+    if ((_record getOrDefault ["fleeing", []]) isEqualTo _stamp) exitWith {};
+    _grp allowFleeing _value;
+    _record set ["fleeing", _stamp];
+};
 if (_useMorale) then {
     {
         if (_x isEqualType [] && {count _x >= 3} && {(_x select 1) isEqualTo "U"} && {(time - (_x select 0)) < AIC_LOSS_WINDOW}) then {
@@ -224,15 +252,20 @@ if (_useMorale) then {
             private _strength = ((_unitRatio * _vehHealth * _woundFactor) max 0) min 1;
 
             // a remnant that has held a base in peace for a while is
-            // reorganised: what is left of it is the new full strength
-            if (_strength <= _retreatThreshold && {(count _alive) < _initial}
+            // reorganised: what is left of it is the new full strength.
+            // With morale on, any weakened squad at any held place: its
+            // morale target is capped by its strength, so it would stay
+            // shaky (out of every attack) for good otherwise
+            private _brokenNow = (_record getOrDefault ["brokenUntil", -1]) isEqualType 0 && {(_record getOrDefault ["brokenUntil", -1]) > time};
+            if (_strength <= _reorgBar && {(count _alive) < _initial}
+                && {!_useMorale || {!_brokenNow}}
                 && {(_record getOrDefault ["task", ""]) isEqualTo "DEFEND"}
                 && {(time - (_record getOrDefault ["taskTime", time])) > AIC_REORG_TIME}
                 && {!(_engaged isEqualType 0) || {(time - _engaged) > AIC_REORG_CALM}}) then {
                 private _base = [_commander, _record getOrDefault ["objective", ""]] call AIC_fnc_getObjective;
                 private _bPos = _base getOrDefault ["pos", []];
                 if (
-                    (_base getOrDefault ["isBase", false]) isEqualTo true
+                    (_useMorale || {(_base getOrDefault ["isBase", false]) isEqualTo true})
                     && {(_base getOrDefault ["owner", sideUnknown]) isEqualTo (_commander getOrDefault ["side", sideUnknown])}
                     && {count _bPos >= 2}
                     && {((leader _grp) distance2D _bPos) <= (((_base getOrDefault ["radius", 300]) max 100) * 1.5)}
@@ -276,15 +309,33 @@ if (_useMorale) then {
 
                 private _until = _record getOrDefault ["brokenUntil", -1];
                 private _broken = _until isEqualType 0 && {_until > time};
+                private _justBroke = false;
+                // only these groups break, and only their courage is AIC's business
+                private _canBreak = (_record getOrDefault ["type", "INF"]) in ["INF", "MOTOR", "MECH", "ARMOR"]
+                    && {!_transportOnly};
                 if (!_broken && {_prev >= AIC_MORALE_BREAK} && {_morale < AIC_MORALE_BREAK}
-                    && {(_record getOrDefault ["type", "INF"]) in ["INF", "MOTOR", "MECH", "ARMOR"]}
-                    && {!_transportOnly}
+                    && {_canBreak}
                     && {!((_record getOrDefault ["task", "IDLE"]) in ["TRANSPORT", "TRANSPORTED", "RTB"])}) then {
                     _record set ["brokenUntil", time + AIC_MORALE_BROKEN_TIME];
+                    _record set ["brokenPos", _lPos];
                     _broken = true;
+                    _justBroke = true;
                     _breaks pushBack [_grp, _record];
                 };
-                _grp allowFleeing (if (_broken) then {0.6} else {[0, 0.3] select (_morale < AIC_MORALE_SHAKY)});
+                // a just-broken group gets its 0.6 with the retreat order (after the loop)
+                if (_canBreak && {!_justBroke}) then {
+                    private _brokenPos = _record getOrDefault ["brokenPos", []];
+                    private _firstLeg = _broken
+                        && {(_record getOrDefault ["task", ""]) isEqualTo "RETREAT"}
+                        && {_brokenPos isEqualType []} && {count _brokenPos >= 2}
+                        && {(_lPos distance2D _brokenPos) < AIC_RETREAT_FIRST_LEG};
+                    private _flee = call {
+                        if (_firstLeg) exitWith {0.6};
+                        if (_broken || {_morale < AIC_MORALE_SHAKY}) exitWith {0.3};
+                        0
+                    };
+                    [_grp, _record, _flee] call _fnc_setFleeing;
+                };
                 _record set ["morale", _morale];
                 _record set ["moraleTime", time];
             };
@@ -304,7 +355,8 @@ if (_useMorale) then {
     if (_threat isNotEqualTo []) then {_grp setVariable ["AIC_retreatFrom", [_threat, time]]};
     if ([_commander, _grp, "RETREAT", _rally, "", true] call AIC_fnc_issueOrder) then {
         // orderRetreat calms a retreat (allowFleeing 0): a broken group runs
-        _grp allowFleeing 0.6;
+        // (its first leg, see the morale step)
+        [_grp, _record, 0.6] call _fnc_setFleeing;
         // the garrison system takes it over where it rallies
         private _rallyObj = _record getOrDefault ["rallyObj", ""];
         if (_rallyObj isEqualType "" && {_rallyObj isNotEqualTo ""} && {_rallyObj isNotEqualTo (_record getOrDefault ["home", ""])}) then {

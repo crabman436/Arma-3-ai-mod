@@ -15,7 +15,9 @@
  *                          (all waypoints done OR no known enemy contact
  *                          near the target), or older than 20 min with all
  *                          waypoints done.
- *     RETREAT / RTB      : ground: leader within 220 m of taskPos and
+ *     RETREAT / RTB      : (a finished RETREAT clears the record's
+ *                          "rallyObj" / "rallyHq", AIC_fnc_rallyPoint)
+ *                          ground: leader within 220 m of taskPos and
  *                          waypoints done or the group has stopped;
  *                          RTB also ends at once if the leader's vehicle
  *                          cannot move any more;
@@ -36,15 +38,24 @@
  *                          AIC_RECON_DWELL s, or AIC_fnc_gatherIntel has
  *                          had it report contacts at the objective since
  *                          the job began (objective "reconSeen" later than
- *                          record "reconStart"), or AIC_RECON_TIMEOUT s
- *                          after "reconStart", or the objective is gone.
- *                          The objective's "reconTime" is set to now and
- *                          its "reconGroup" cleared; the group goes back to
- *                          AWARE / YELLOW. A group engaged since the job
- *                          began (record "lastEngaged") ends the job the
+ *                          record "reconStart"), or the objective is gone.
+ *                          The objective's "reconTime" is set to now,
+ *                          "reconContacts" to the number of known contacts
+ *                          seen within its radius + AIC_RECON_CONFIRM_RANGE
+ *                          since "reconStart" (for AIC_fnc_report), and its
+ *                          "reconGroup" cleared; the group goes back to
+ *                          AWARE / YELLOW. A group under fire since the job
+ *                          began (record "lastHit": Hit / FiredNear /
+ *                          UnitKilled, not a mere sighting) ends the job the
  *                          same way (the contact is the intel) and falls
  *                          back to its rally point (AIC_fnc_rallyPoint,
  *                          forced RETREAT, away from the nearest enemy).
+ *                          A scout that has not reached its point within
+ *                          record "reconLimit" s of "reconStart" (set by
+ *                          AIC_fnc_issueOrder: AIC_RECON_TIMEOUT plus
+ *                          AIC_RECON_TIME_PER_M per m of the way; default
+ *                          AIC_RECON_TIMEOUT) times out: the job ends
+ *                          without "reconTime" (nothing was seen).
  *                          A recon not yet at its point that has not moved
  *                          for AIC_STUCK_TIMEOUT s gets the same job again
  *                          (its "reconStart" is kept).
@@ -57,8 +68,10 @@
  *                          position outside 1.5 x the base radius) stays on
  *                          the job (REINFORCE does not complete) while a
  *                          threat cluster is within the target's radius +
- *                          AIC_OBJ_THREAT_RANGE (record "qrfThreatTime" =
- *                          last time one was), and AIC_QRF_RELEASE s after
+ *                          AIC_OBJ_THREAT_RANGE or the job objective is a
+ *                          place of ours still contested (owner unknown,
+ *                          "prevOwner" the own side) (record "qrfThreatTime"
+ *                          = last time either was true), and AIC_QRF_RELEASE s after
  *                          that (and after the order) it gets DEFEND at its
  *                          base with force: it is the base's QRF again (at
  *                          once when the enemy holds the target objective).
@@ -170,9 +183,13 @@ private _fnc_setIdle = {
             // (a place the enemy has taken is no job for a QRF: home at once)
             private _jobOwner = _jobObj getOrDefault ["owner", _side];
             private _jobLost = !(_jobOwner isEqualTo _side) && {!(_jobOwner isEqualTo sideUnknown)};
-            if (!_jobLost && {(_threats findIf {
+            // a town of ours still contested (owner unknown, ours before) keeps
+            // it there although no cluster is seen: the enemy is in it
+            private _jobContested = _jobOwner isEqualTo sideUnknown
+                && {(_jobObj getOrDefault ["prevOwner", sideUnknown]) isEqualTo _side};
+            if (!_jobLost && {_jobContested || {(_threats findIf {
                 _x isEqualType createHashMap && {((_x getOrDefault ["pos", [0, 0, 0]]) distance2D _taskPos) <= (_jobR + AIC_OBJ_THREAT_RANGE)}
-            }) >= 0}) then {
+            }) >= 0}}) then {
                 _rec set ["qrfThreatTime", time];
             } else {
                 private _calm = _rec getOrDefault ["qrfThreatTime", -1e6];
@@ -273,16 +290,21 @@ private _fnc_setIdle = {
             _arrive = time;
             _rec set ["reconArrive", _arrive];
         };
-        private _engaged = _rec getOrDefault ["lastEngaged", -1e6];
-        if !(_engaged isEqualType 0) then {_engaged = -1e6};
+        // under fire (Hit / FiredNear / UnitKilled, record "lastHit"), not
+        // merely in sight of the enemy: seeing it is the scout's job
+        private _hit = _rec getOrDefault ["lastHit", -1e6];
+        if !(_hit isEqualType 0) then {_hit = -1e6};
         private _seen = _objRec getOrDefault ["reconSeen", -1e6];
         if !(_seen isEqualType 0) then {_seen = -1e6};
+        // the way there may take long on foot: the limit grows with it
+        private _limit = _rec getOrDefault ["reconLimit", AIC_RECON_TIMEOUT];
+        if !(_limit isEqualType 0) then {_limit = AIC_RECON_TIMEOUT};
         private _outcome = switch (true) do {
             case (count _objRec == 0): {"objective gone"};
-            case (_engaged > _start): {"engaged"};
+            case (_hit > _start): {"engaged"};
             case (_seen > _start): {"contacts reported"};
             case (_arrive >= 0 && {(time - _arrive) >= AIC_RECON_DWELL}): {"watched"};
-            case ((time - _start) > AIC_RECON_TIMEOUT): {"timed out"};
+            case (_arrive < 0 && {(time - _start) > _limit}): {"timed out"};
             default {""};
         };
         if (_outcome isEqualTo "") then {
@@ -294,7 +316,20 @@ private _fnc_setIdle = {
             continue;
         };
         if (count _objRec > 0) then {
-            _objRec set ["reconTime", time];
+            // a scout that never got there has seen nothing: no recon time,
+            // the planner may send another one
+            if (_outcome isNotEqualTo "timed out") then {
+                // what it found: contacts seen around the objective since the job began
+                private _range = (_objRec getOrDefault ["radius", _defRadius]) + AIC_RECON_CONFIRM_RANGE;
+                private _objPos = _objRec getOrDefault ["pos", _taskPos];
+                private _found = {
+                    _x isEqualType createHashMap
+                    && {((_x getOrDefault ["pos", [0, 0, 0]]) distance2D _objPos) <= _range}
+                    && {(_x getOrDefault ["lastSeen", -1e6]) >= _start}
+                } count _enemies;
+                _objRec set ["reconTime", time];
+                _objRec set ["reconContacts", _found];
+            };
             if ((_objRec getOrDefault ["reconGroup", ""]) isEqualTo (hashValue _group)) then {_objRec set ["reconGroup", ""]};
         };
         _rec set ["reconArrive", -1];
@@ -389,6 +424,11 @@ private _fnc_setIdle = {
                     _veh land "LAND";
                 };
             };
+        };
+        // the rally point only means something while retreating (AIC_fnc_rallyPoint)
+        if (_task == "RETREAT") then {
+            _rec set ["rallyObj", ""];
+            _rec set ["rallyHq", false];
         };
         [_rec] call _fnc_setIdle;
         _changes = _changes + 1;

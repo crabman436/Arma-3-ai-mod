@@ -249,6 +249,23 @@ private _useMorale = ([_cmd, "useMorale"] call AIC_fnc_getSetting) isEqualTo tru
 // quick-reaction forces exist only with the garrison system (AIC_fnc_garrisonCycle)
 private _useQRF = _manageGarrisons && {([_cmd, "useQRF"] call AIC_fnc_getSetting) isEqualTo true};
 
+// assaults under way (AIC_fnc_assaultFor / AIC_fnc_assaultCycle): objective id -> record
+private _liveAssaults = _cmd getOrDefault ["assaults", createHashMap];
+if !(_liveAssaults isEqualType createHashMap) then {_liveAssaults = createHashMap};
+// orders still on their way (AIC_fnc_queueOrder): hashValue group -> queue entry
+private _queuedMap = [_cmd] call AIC_fnc_queuedGroups;
+private _threatCentres = _threats apply {_x get "pos"};
+// a place of ours nobody is fighting over (AIC_fnc_rallyPoint's test)
+private _fnc_quietOwn = {
+    params ["_o"];
+    private _p = _o getOrDefault ["pos", []];
+    private _r = _o getOrDefault ["radius", 300];
+    if !(_r isEqualType 0) then {_r = 300};
+    (_o getOrDefault ["owner", sideUnknown]) isEqualTo _side
+    && {_p isEqualType []} && {count _p >= 2}
+    && {(_threatCentres findIf {(_x distance2D _p) < (_r + AIC_OBJ_THREAT_RANGE)}) < 0}
+};
+
 // ---------------------------------------------------------------------------
 // Jev advice (AIC_fnc_jevAdvisor), weight 0 = ignore
 // ---------------------------------------------------------------------------
@@ -265,6 +282,7 @@ private _fnc_adviceValue = {
 };
 private _holdReason = "";
 private _heldTarget = "";
+private _intelHoldText = "intel too old";
 if (_jevWeight > 0 && {count _advice > 0}) then {
     // commit the reserve: a smaller share stays back (never below 5 %); with
     // garrisons on, the reserve is the guard of the bases, so their desired
@@ -287,7 +305,9 @@ if (_jevWeight > 0 && {count _advice > 0}) then {
                 _entry set ["surplus", _surplus + _desired * _cut];
             };
         } forEach _garrisons;
-        _advice set ["commit", true];
+        // ("advice" "commit" is AIC_fnc_assaultCycle's: set only when a
+        // reserve was actually sent in, so the report never claims a
+        // commitment that did not happen)
     };
 
     // no new attack this cycle on bad advice; attacks already running go on
@@ -297,7 +317,7 @@ if (_jevWeight > 0 && {count _advice > 0}) then {
     if !(_riskConf isEqualType 0) then {_riskConf = 0};
     _holdReason = switch (true) do {
         case ((["attack_now", 1] call _fnc_adviceValue) < AIC_ADVICE_NO): {"the staff advises against attacking now"};
-        case ((["intel_stale", 0] call _fnc_adviceValue) > AIC_ADVICE_YES): {"intel too old"};
+        case ((["intel_stale", 0] call _fnc_adviceValue) > AIC_ADVICE_YES): {_intelHoldText};
         case ((["risk", 0] call _fnc_adviceValue) >= AIC_ADVICE_RISKY && {_riskConf >= AIC_ADVICE_SURE}): {"the plan is too risky"};
         default {""};
     };
@@ -369,8 +389,8 @@ private _fnc_cost = {
     private _suit = [_type, _target get "task", _target get "urban"] call _fnc_suit;
     private _dist = (_info get "pos") distance2D (_target get "pos");
     private _cost = (_dist * (_travelMult getOrDefault [_type, 1])) / (_suit max 0.1);
-    // continuity bonus: already working on this target
-    if ([_info, _target] call _fnc_onTarget) then {_cost = _cost * 0.5};
+    // continuity bonus: already working on this target, or ordered there
+    if ([_info, _target] call _fnc_onTarget || {[_info, _target] call _fnc_onTargetQ}) then {_cost = _cost * 0.5};
     // a base's quick-reaction force answers first (only DEFEND targets reach here)
     if ((_info get "qrfBase") != "") then {_cost = _cost * 0.2};
     // a town is taken by infantry: vehicles join once there is some
@@ -405,6 +425,20 @@ private _fnc_onTarget = {
 private _fnc_taskFits = {
     params ["_recTask", "_targetTask"];
     if (_targetTask == "ATTACK") then {_recTask == "ATTACK"} else {_recTask in ["DEFEND", "REINFORCE"]}
+};
+
+// is the group's queued order (AIC_fnc_queueOrder, still on its way) for this target?
+private _fnc_onTargetQ = {
+    params ["_info", "_target"];
+    private _qTask = _info get "qTask";
+    _qTask != "" && {[_qTask, _target get "task"] call _fnc_taskFits} && {
+        if ((_target get "id") != "") then {
+            (_info get "qObj") == (_target get "id")
+        } else {
+            (_info get "qObj") == "" && {count (_info get "qPos") >= 2}
+            && {((_info get "qPos") distance2D (_target get "pos")) < AIC_REISSUE_TOL_MOVING}
+        }
+    }
 };
 
 // is the target the group's own garrison (staying there never leaves it)?
@@ -496,26 +530,50 @@ private _fnc_takeFromGarrison = {
             && {(_recPos distance2D _p) < AIC_REISSUE_TOL_FIXED}
         };
         private _isAir = _type in ["HELI", "PLANE"];
-        // the rally point it was given (AIC_fnc_rallyPoint), while still ours
-        private _rallyId = _rec getOrDefault ["rallyObj", ""];
-        if (!(_rallyId isEqualType "") || {_isAir}) then {_rallyId = ""};
+        // the held, uncontested place it rallies at: while retreating, the
+        // rally objective AIC_fnc_rallyPoint gave it (record "rallyObj", only
+        // valid on RETREAT); otherwise the place it stands in
+        private _rallyId = "";
         private _rallyPos = [];
-        if (_rallyId != "") then {
-            private _ro = [_cmd, _rallyId] call AIC_fnc_getObjective;
-            private _rp = _ro getOrDefault ["pos", []];
-            if ((_ro getOrDefault ["owner", sideUnknown]) isEqualTo _side && {_rp isEqualType []} && {count _rp >= 2}) then {
-                _rallyPos = [_rp select 0, _rp select 1, 0];
+        private _inRally = false;
+        if !(_isAir) then {
+            if (_task == "RETREAT") then {
+                private _rid = _rec getOrDefault ["rallyObj", ""];
+                if (_rid isEqualType "" && {_rid != ""}) then {
+                    private _ro = [_cmd, _rid] call AIC_fnc_getObjective;
+                    if ([_ro] call _fnc_quietOwn) then {
+                        _rallyId = _rid;
+                        _rallyPos = [(_ro get "pos") select 0, (_ro get "pos") select 1, 0];
+                    };
+                };
             } else {
-                _rallyId = "";
+                {
+                    private _r = _x getOrDefault ["radius", 300];
+                    if !(_r isEqualType 0) then {_r = 300};
+                    private _id = _x getOrDefault ["id", ""];
+                    // (the HQ's own place is the HQ branch below)
+                    if (_id isEqualType "" && {_id != ""} && {((_x get "pos") distance2D _lpos) < (_r max _homeR)}
+                        && {((_x get "pos") distance2D _hq) >= _homeR} && {[_x] call _fnc_quietOwn}) exitWith {
+                        _rallyId = _id;
+                        _rallyPos = [(_x get "pos") select 0, (_x get "pos") select 1, 0];
+                        _inRally = true;
+                    };
+                } forEach _objectives;
             };
         };
-        private _atRally = _rallyId != "" && {((_lpos distance2D _rallyPos) < _homeR) || {[_rallyPos, [_rallyId]] call _fnc_defending}};
+        private _atRally = _rallyId != "" && {_inRally || {(_lpos distance2D _rallyPos) < _homeR} || {[_rallyPos, [_rallyId]] call _fnc_defending}};
         private _defendingHq = [_hq, ["", _hqObjId]] call _fnc_defending;
+        // the HQ is its destination unless it retreats elsewhere: a group
+        // that broke and was sent to a rally point next to the HQ is not
+        // turned round into the HQ's garrison (AIC_fnc_updateGroups)
+        private _toHq = _task != "RETREAT" || {_isAir}
+            || {(_rec getOrDefault ["rallyHq", false]) isEqualTo true}
+            || {_recPos isEqualType [] && {count _recPos >= 2} && {(_recPos distance2D _hq) < _homeR}};
         // an aircraft parked at any owned base is home: its landing place
         // need not be near the HQ (no RETREAT loop for a helicopter that set
         // down at another base)
-        private _atHome = (_lpos distance2D _hq) < _homeR
-            || {_isAir && {(_ownBasePositions findIf {(_x distance2D _lpos) < _homeR}) >= 0}};
+        private _atHome = _toHq && {(_lpos distance2D _hq) < _homeR
+            || {_isAir && {(_ownBasePositions findIf {(_x distance2D _lpos) < _homeR}) >= 0}}};
         switch (true) do {
             case (_atRally): {
                 [_grp, "DEFEND", _rallyPos, _rallyId] call _fnc_assign;
@@ -589,6 +647,19 @@ private _pool = []; // array of info hashmaps
         };
     };
 
+    // an order to a target still on its way (AIC_fnc_queueOrder): the group
+    // is already promised to that target
+    private _qTask = "";
+    private _qObj = "";
+    private _qPos = [];
+    private _q = _queuedMap getOrDefault [_hv, []];
+    if (count _q >= 5 && {(_q select 2) in ["ATTACK", "REINFORCE", "DEFEND"]}
+        && {(_q select 3) isEqualType []} && {(_q select 4) isEqualType ""}) then {
+        _qTask = _q select 2;
+        _qPos = _q select 3;
+        _qObj = _q select 4;
+    };
+
     _pool pushBack createHashMapFromArray [
         ["group", _grp],
         ["hv", _hv],
@@ -605,7 +676,10 @@ private _pool = []; // array of info hashmaps
         ["outpost", _outpost],
         ["shaky", _useMorale && {_morale < AIC_MORALE_SHAKY}],
         ["qrfBase", _qrfBase],
-        ["qrfPos", _qrfPos]
+        ["qrfPos", _qrfPos],
+        ["qTask", _qTask],
+        ["qObj", _qObj],
+        ["qPos", _qPos]
     ];
 } forEach _available;
 
@@ -632,26 +706,73 @@ if (_useRecon) then {
             };
         };
     } forEach _groupData;
-    private _queue = _cmd getOrDefault ["orderQueue", []];
-    if !(_queue isEqualType []) then {_queue = []};
     {
-        if (_x isEqualType [] && {count _x >= 5} && {(_x select 2) isEqualTo "RECON"}) then {
-            _x params ["", "_g", "", "_qPos", "_qObj"];
-            private _hv = if (_g isEqualType grpNull && {!isNull _g}) then {hashValue _g} else {""};
+        private _qe = _y;
+        if ((_qe select 2) isEqualTo "RECON") then {
+            _qe params ["", "_g", "", "_qPos", "_qObj"];
+            private _hv = _x;
             // the queued scout is planned on the same job again (the queued
             // order keeps its due time); it is out of the pool for the rest
             private _qRec = if (_qObj isEqualType "") then {[_cmd, _qObj] call AIC_fnc_getObjective} else {createHashMap};
-            if (_hv != "" && {!(_hv in _handled)} && {count _qRec > 0}
+            if (!(_hv in _handled) && {count _qRec > 0}
                 && {!((_qRec getOrDefault ["owner", sideUnknown]) isEqualTo _side)}
                 && {(_pool findIf {(_x get "hv") == _hv}) >= 0}) then {
                 [_g, "RECON", _qPos, _qObj] call _fnc_assign;
                 _reconBusy set [_qObj, true];
             };
         };
-    } forEach _queue;
+    } forEach _queuedMap;
+    // a scout that is gone: killed on the job (nothing but its death came
+    // back: the place counts as scouted, "reconContacts" -1, so the next
+    // scout is not sent into the same fire at once) or taken off the job
+    {
+        private _obj = _x;
+        private _hv = _obj getOrDefault ["reconGroup", ""];
+        if (!(_hv isEqualType "") || {_hv == ""}) then {continue};
+        private _sRec = _groupData getOrDefault [_hv, createHashMap];
+        private _sGrp = _sRec getOrDefault ["group", grpNull];
+        private _alive = _sGrp isEqualType grpNull && {!isNull _sGrp} && {({alive _x} count (units _sGrp)) > 0}
+            && {!((_sRec getOrDefault ["removed", false]) isEqualTo true)};
+        if (!_alive) then {
+            _obj set ["reconGroup", ""];
+            _obj set ["reconTime", _now];
+            _obj set ["reconContacts", -1];
+            continue;
+        };
+        private _onJob = (_sRec getOrDefault ["task", ""]) isEqualTo "RECON"
+            || {((_queuedMap getOrDefault [_hv, []]) param [2, ""]) isEqualTo "RECON"};
+        if (!_onJob) then {_obj set ["reconGroup", ""]};
+    } forEach _objectives;
 };
 
-// does a new attack on this target wait for a recon first?
+// last time anyone looked at the objective: an own leader close by
+// ("ownerTime"), a recon ("reconTime"), contacts a scout reported
+// ("reconSeen"), or a contact of ours seen around it (knownEnemies "lastSeen")
+private _enemies = _cmd getOrDefault ["knownEnemies", []];
+if !(_enemies isEqualType []) then {_enemies = []};
+private _fnc_lookedAt = {
+    params ["_obj"];
+    private _t = -1e6;
+    {
+        private _v = _obj getOrDefault [_x, -1e6];
+        if (_v isEqualType 0) then {_t = _t max _v};
+    } forEach ["ownerTime", "reconTime", "reconSeen"];
+    private _p = _obj getOrDefault ["pos", []];
+    private _r = _obj getOrDefault ["radius", 300];
+    if !(_r isEqualType 0) then {_r = 300};
+    if (count _p >= 2) then {
+        {
+            if (_x isEqualType createHashMap && {((_x getOrDefault ["pos", [0, 0, 0]]) distance2D _p) <= (_r + AIC_OBJ_THREAT_RANGE)}) then {
+                private _seen = _x getOrDefault ["lastSeen", -1e6];
+                if (_seen isEqualType 0) then {_t = _t max _seen};
+            };
+        } forEach _enemies;
+    };
+    _t
+};
+
+// does a new attack on this target wait for a recon first? (under the Jev
+// hold "intel too old" any objective does, whatever its priority)
 private _fnc_needsRecon = {
     params ["_target"];
     if (!_useRecon || {(_target get "id") == ""}) exitWith {false};
@@ -659,13 +780,8 @@ private _fnc_needsRecon = {
     if (count _obj == 0) exitWith {false};
     private _priority = _obj getOrDefault ["priority", 1];
     if !(_priority isEqualType 0) then {_priority = 1};
-    if (_priority < AIC_RECON_MIN_PRIORITY) exitWith {false};
-    // last time anyone looked: an own leader close by (ownerTime) or a recon
-    private _looked = _obj getOrDefault ["ownerTime", -1e6];
-    if !(_looked isEqualType 0) then {_looked = -1e6};
-    private _recon = _obj getOrDefault ["reconTime", -1e6];
-    if !(_recon isEqualType 0) then {_recon = -1e6};
-    (_now - (_looked max _recon)) > AIC_RECON_MAX_AGE
+    if (_priority < AIC_RECON_MIN_PRIORITY && {_holdReason != _intelHoldText}) exitWith {false};
+    (_now - ([_obj] call _fnc_lookedAt)) > AIC_RECON_MAX_AGE
 };
 
 // the scout: the cheapest group that may go (MOTOR first, then INF; lowest
@@ -681,10 +797,13 @@ private _fnc_reconScout = {
             && {!(_info get "shaky")}
             && {(_info get "task") in ["IDLE", "PATROL", "DEFEND"]}
             && {[_info, _target] call _fnc_mayLeave}) then {
+            private _d = (_info get "pos") distance2D (_target get "pos");
             _order pushBack [
+                // close scouts first: a far one on foot takes too long
+                ([0, 1] select (_d > AIC_RECON_SCOUT_RANGE)),
                 ([0, 1] select (_type == "INF")),
                 _info get "rawPower",
-                (_info get "pos") distance2D (_target get "pos"),
+                _d,
                 _forEachIndex
             ];
         };
@@ -692,7 +811,7 @@ private _fnc_reconScout = {
     _order sort true;
     private _scout = objNull;
     {
-        private _info = _left select (_x select 3);
+        private _info = _left select (_x select 4);
         if ([_info, _target] call _fnc_takeFromGarrison) exitWith {_scout = _info};
     } forEach _order;
     _scout

@@ -14,19 +14,29 @@
 
         Group event handlers (Arma 3 2.10+):
           - "EnemyDetected": AIC_fnc_groupEngaged (stamp "lastEngaged",
-            wake the group at once if it is parked).
+            wake the group at once if it is parked). A sighting is no
+            contact under fire: it does not stamp "lastHit".
           - "UnitKilled": stamps the unit's "AIC_killedAt" (time); if the
             group still has a record, queues the body in the commander's
             "deadQueue" for AIC_fnc_cleanupCycle (if "manageCleanup") and
-            calls AIC_fnc_groupEngaged. If the unit was the group's leader
+            calls AIC_fnc_groupEngaged (under fire: "lastHit" too). If the
+            unit was the group's leader
             (record "leaderUnit": the leader at registration, refreshed by
             AIC_fnc_updateGroups each cycle) it sets the record's
             "leaderLost" true and "leaderLostTime" (morale, updateGroups).
+            A unit of a group on task "RECON" marks the job's objective
+            looked at: objective "reconTime" = time (the scout's death is
+            intel too; the planner sends no second scout into the same
+            killing zone at once).
           The UnitKilled, Empty and vehicle MPKilled handlers also append
-          [time, kind, hashValue group] to the commander's "lossLog" (kind
-          "U" unit, "G" group wiped out, "V" vehicle destroyed; at most
-          AIC_LOSS_LOG_MAX entries), the casualty count AIC_fnc_jevState
-          reports to the Jev decision model.
+          [time, kind, hashValue group, objective] to the commander's
+          "lossLog" (kind "U" unit, "G" group wiped out, "V" vehicle
+          destroyed with hash ""; objective: the id the group was attacking
+          (task ATTACK, or TRANSPORTED with a final ATTACK), else ""; at
+          most AIC_LOSS_LOG_MAX entries), the casualty count
+          AIC_fnc_jevState reports to the Jev decision model. The log is
+          replaced by a new array, never changed in place: the scheduled
+          commander cycle may be iterating the old one.
           - "Empty": deletes the record's "lz" / "pickupLz" helipads, marks
             the record "removed" and takes the group out of "groups" (a new
             array), then deletes the group (AIC_fnc_deleteGroup) if
@@ -40,12 +50,14 @@
           parameter)
         Unit event handlers (every unit, guarded by "AIC_ehAttached" on the
         unit): "Hit" and "FiredNear" (hostile shooter only) call
-        AIC_fnc_groupEngaged, so a parked group wakes the instant it is
-        engaged. They are throttled to once per 10 s per group while the
-        group is awake.
+        AIC_fnc_groupEngaged with the under-fire flag ("lastHit"), so a
+        parked group wakes the instant it is engaged. They are throttled to
+        once per AIC_EH_THROTTLE s per group while the group is awake (on
+        the group variable "AIC_hitAt", so a sighting just before does not
+        swallow the first hit).
         Vehicle event handlers (vehicles the group uses, guarded by
         "AIC_ehAttached" on the vehicle): "Hit" (AIC_fnc_groupEngaged for
-        the crew's group, same throttle) and "MPKilled" (fires on the server
+        the crew's group, under fire, same throttle) and "MPKilled" (fires on the server
         whatever the vehicle's locality): stamps "AIC_killedAt" and queues
         the wreck in "deadQueue" of the commander of the side stored in the
         vehicle variable "AIC_side".
@@ -93,8 +105,8 @@ private _fnc_attachVehicle = {
         params ["_veh"];
         private _grp = group (effectiveCommander _veh);
         if (isNull _grp) exitWith {};
-        if (!dynamicSimulationEnabled _grp && { (time - (_grp getVariable ["AIC_engagedAt", -1e6])) < AIC_EH_THROTTLE }) exitWith {};
-        [_grp] call AIC_fnc_groupEngaged;
+        if (!dynamicSimulationEnabled _grp && { (time - (_grp getVariable ["AIC_hitAt", -1e6])) < AIC_EH_THROTTLE }) exitWith {};
+        [_grp, true] call AIC_fnc_groupEngaged;
     }];
     _veh addMPEventHandler ["MPKilled", {
         params ["_veh"];
@@ -103,9 +115,9 @@ private _fnc_attachVehicle = {
         private _cmd = [_veh getVariable ["AIC_side", sideUnknown]] call AIC_fnc_getCommander;
         if (count _cmd == 0) exitWith {};
         // casualty log for the Jev state (AIC_fnc_jevState): [time, kind, group hash]
-        private _log = _cmd getOrDefault ["lossLog", []];
-        _log pushBack [time, "V", ""];
-        if (count _log > AIC_LOSS_LOG_MAX) then { _log deleteRange [0, count _log - AIC_LOSS_LOG_MAX]; };
+        // a new array: the scheduled cycle may be iterating the old one
+        private _log = (_cmd getOrDefault ["lossLog", []]) + [[time, "V", "", ""]];
+        if (count _log > AIC_LOSS_LOG_MAX) then { _log = _log select [count _log - AIC_LOSS_LOG_MAX]; };
         _cmd set ["lossLog", _log];
         if !(([_cmd, "manageCleanup"] call AIC_fnc_getSetting) isEqualTo true) exitWith {};
         private _queue = _cmd getOrDefault ["deadQueue", []];
@@ -126,20 +138,20 @@ private _fnc_attachUnit = {
         params ["_unit"];
         private _grp = group _unit;
         if (isNull _grp) exitWith {};
-        if (!dynamicSimulationEnabled _grp && { (time - (_grp getVariable ["AIC_engagedAt", -1e6])) < AIC_EH_THROTTLE }) exitWith {};
-        [_grp] call AIC_fnc_groupEngaged;
+        if (!dynamicSimulationEnabled _grp && { (time - (_grp getVariable ["AIC_hitAt", -1e6])) < AIC_EH_THROTTLE }) exitWith {};
+        [_grp, true] call AIC_fnc_groupEngaged;
     }];
     _unit addEventHandler ["FiredNear", {
         params ["_unit", "_firer"];
         private _grp = group _unit;
         if (isNull _grp || { isNull _firer }) exitWith {};
-        if (!dynamicSimulationEnabled _grp && { (time - (_grp getVariable ["AIC_engagedAt", -1e6])) < AIC_EH_THROTTLE }) exitWith {};
+        if (!dynamicSimulationEnabled _grp && { (time - (_grp getVariable ["AIC_hitAt", -1e6])) < AIC_EH_THROTTLE }) exitWith {};
         // vehicle weapons report the vehicle as firer (its group is grpNull):
         // judge hostility by whoever commands it
         private _shooter = if (_firer isKindOf "CAManBase") then { _firer } else { effectiveCommander _firer };
         if (isNull _shooter) exitWith {};
         if (((side _grp) getFriend (side group _shooter)) >= AIC_HOSTILE_FRIEND) exitWith {};
-        [_grp] call AIC_fnc_groupEngaged;
+        [_grp, true] call AIC_fnc_groupEngaged;
     }];
 };
 
@@ -189,10 +201,17 @@ _group addEventHandler ["UnitKilled", {
     if !(_gd isEqualType createHashMap) exitWith {};
     private _rec = _gd getOrDefault [hashValue _group, createHashMap];
     if (!(_rec isEqualType createHashMap) || { count _rec == 0 }) exitWith {};
-    // casualty log for the Jev state (AIC_fnc_jevState): [time, kind, group hash]
-    private _log = _cmd getOrDefault ["lossLog", []];
-    _log pushBack [time, "U", hashValue _group];
-    if (count _log > AIC_LOSS_LOG_MAX) then { _log deleteRange [0, count _log - AIC_LOSS_LOG_MAX]; };
+    // casualty log for the Jev state (AIC_fnc_jevState): [time, kind, group
+    // hash, objective attacked]; a new array, the cycle may be iterating the old one
+    private _task = _rec getOrDefault ["task", ""];
+    private _final = _rec getOrDefault ["final", createHashMap];
+    private _attacking = switch (true) do {
+        case (_task isEqualTo "ATTACK"): { _rec getOrDefault ["objective", ""] };
+        case (_task isEqualTo "TRANSPORTED" && { _final isEqualType createHashMap } && { (_final getOrDefault ["task", ""]) isEqualTo "ATTACK" }): { _final getOrDefault ["objective", ""] };
+        default { "" };
+    };
+    private _log = (_cmd getOrDefault ["lossLog", []]) + [[time, "U", hashValue _group, _attacking]];
+    if (count _log > AIC_LOSS_LOG_MAX) then { _log = _log select [count _log - AIC_LOSS_LOG_MAX]; };
     _cmd set ["lossLog", _log];
     if (!isPlayer _unit && { ([_cmd, "manageCleanup"] call AIC_fnc_getSetting) isEqualTo true }) then {
         private _queue = _cmd getOrDefault ["deadQueue", []];
@@ -204,7 +223,13 @@ _group addEventHandler ["UnitKilled", {
         _rec set ["leaderLost", true];
         _rec set ["leaderLostTime", time];
     };
-    [_group] call AIC_fnc_groupEngaged;
+    // a scout killed on the job: its objective counts as looked at
+    // (AIC_fnc_allocateForces sends no second scout into the same fire at once)
+    if (_task isEqualTo "RECON") then {
+        private _obj = [_cmd, _rec getOrDefault ["objective", ""]] call AIC_fnc_getObjective;
+        if (count _obj > 0) then { _obj set ["reconTime", time]; };
+    };
+    [_group, true] call AIC_fnc_groupEngaged;
 }];
 
 _group addEventHandler ["Empty", {
@@ -219,10 +244,17 @@ _group addEventHandler ["Empty", {
     if (!(_rec isEqualType createHashMap) || { count _rec == 0 }) exitWith {};
 
     [_rec] call AIC_fnc_deleteHelipads;
-    // casualty log for the Jev state (AIC_fnc_jevState): [time, kind, group hash]
-    private _log = _cmd getOrDefault ["lossLog", []];
-    _log pushBack [time, "G", hashValue _group];
-    if (count _log > AIC_LOSS_LOG_MAX) then { _log deleteRange [0, count _log - AIC_LOSS_LOG_MAX]; };
+    // casualty log for the Jev state (AIC_fnc_jevState): [time, kind, group
+    // hash, objective attacked]; a new array, the cycle may be iterating the old one
+    private _task = _rec getOrDefault ["task", ""];
+    private _final = _rec getOrDefault ["final", createHashMap];
+    private _attacking = switch (true) do {
+        case (_task isEqualTo "ATTACK"): { _rec getOrDefault ["objective", ""] };
+        case (_task isEqualTo "TRANSPORTED" && { _final isEqualType createHashMap } && { (_final getOrDefault ["task", ""]) isEqualTo "ATTACK" }): { _final getOrDefault ["objective", ""] };
+        default { "" };
+    };
+    private _log = (_cmd getOrDefault ["lossLog", []]) + [[time, "G", hashValue _group, _attacking]];
+    if (count _log > AIC_LOSS_LOG_MAX) then { _log = _log select [count _log - AIC_LOSS_LOG_MAX]; };
     _cmd set ["lossLog", _log];
     // a ride ending with everybody dead would otherwise leave no trace in the log
     if ((_rec getOrDefault ["task", ""]) in ["TRANSPORT", "TRANSPORTED"]) then {

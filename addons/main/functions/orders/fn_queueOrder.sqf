@@ -12,6 +12,8 @@
  *       own "home": 0 (no per-km part either)
  *     - ATTACK, RECON: AIC_DELAY_ATTACK
  *     - SUPPORT: AIC_DELAY_SUPPORT (no per-km part: fire support is radioed)
+ *     - REINFORCE by a quick-reaction force (record "role" "QRF"):
+ *       AIC_DELAY_SUPPORT, no per-km part (a force on standby is radioed)
  *     - DEFEND / PATROL elsewhere, REINFORCE, anything else: AIC_DELAY_MOVE
  *   An order with no delay (also every order with "orderDelay" 0, the old
  *   behaviour) and an order the group already has (same task and
@@ -24,6 +26,14 @@
  *   Queue entry: [dueTime, group, task, pos, objectiveId, force,
  *   taskTimeAtQueue, queueTime]; the last two let AIC_fnc_drainOrders see
  *   whether the group got another order meanwhile.
+ *   Cost: the plan loop calls this for every plan entry, so the queue is
+ *   changed in place (one commander's queue is only touched by its own
+ *   cycle) and found through the commander key "orderQueueIndex"
+ *   (HashMap hashValue group -> index in "orderQueue"), rebuilt in one pass
+ *   when it is missing; every other writer of "orderQueue" (drainOrders,
+ *   assaultCycle) replaces the array and deletes the index. A dropped entry
+ *   becomes an empty array until the next AIC_fnc_drainOrders (every reader
+ *   skips entries with fewer than 5 elements).
  *
  * Parameters:
  *   0: HASHMAP - commander
@@ -56,12 +66,37 @@ if (!isServer) exitWith {false};
 if (count _cmd == 0 || {isNull _group} || {_task isEqualTo ""}) exitWith {false};
 
 _task = toUpperANSI _task;
-private _queue = _cmd getOrDefault ["orderQueue", []];
-if !(_queue isEqualType []) then {_queue = []};
+private _queue = _cmd getOrDefault ["orderQueue", -1];
+if !(_queue isEqualType []) then {
+    _queue = [];
+    _cmd set ["orderQueue", _queue];
+    _cmd deleteAt "orderQueueIndex";
+};
+private _hv = hashValue _group;
 
+// the queue position of a group: the index, rebuilt in one pass when missing
+// or stale (a writer replaced the queue)
+private _fnc_index = {
+    private _index = _cmd getOrDefault ["orderQueueIndex", createHashMap];
+    if !(_index isEqualType createHashMap) then {_index = createHashMap};
+    private _i = _index getOrDefault [_hv, -1];
+    if (_i >= 0 && {_i < count _queue} && {((_queue select _i) param [1, grpNull]) isEqualTo _group}) exitWith {_i};
+    if (!("orderQueueIndex" in _cmd) || {_i >= 0}) then {
+        _index = createHashMap;
+        {
+            if (_x isEqualType [] && {count _x >= 5} && {(_x select 1) isEqualType grpNull} && {!isNull (_x select 1)}) then {
+                _index set [hashValue (_x select 1), _forEachIndex];
+            };
+        } forEach _queue;
+        _cmd set ["orderQueueIndex", _index];
+    };
+    _index getOrDefault [_hv, -1]
+};
 private _fnc_dropQueued = {
-    if ((_queue findIf {(_x select 1) isEqualTo _group}) >= 0) then {
-        _cmd set ["orderQueue", _queue select {(_x select 1) isNotEqualTo _group}];
+    private _i = call _fnc_index;
+    if (_i >= 0) then {
+        _queue set [_i, []];
+        (_cmd get "orderQueueIndex") deleteAt _hv;
     };
 };
 private _fnc_issueNow = {
@@ -96,25 +131,27 @@ if (_hasIt) exitWith {call _fnc_issueNow};
 // --- delay
 private _home = _rec getOrDefault ["home", ""];
 if !(_home isEqualType "") then {_home = ""};
+// a quick-reaction force on standby is called by radio, like fire support
+private _qrf = _task isEqualTo "REINFORCE" && {(_rec getOrDefault ["role", ""]) isEqualTo "QRF"};
 private _base = switch (true) do {
     case (_task in ["IDLE", "RETREAT", "RTB"]): {0};
     case (_task in ["DEFEND", "PATROL"] && {_home isNotEqualTo ""} && {_objective isEqualTo _home}): {0};
     case (_task in ["ATTACK", "RECON"]): {AIC_DELAY_ATTACK};
-    case (_task isEqualTo "SUPPORT"): {AIC_DELAY_SUPPORT};
+    case (_task isEqualTo "SUPPORT" || {_qrf}): {AIC_DELAY_SUPPORT};
     default {AIC_DELAY_MOVE};
 };
 if (_base <= 0) exitWith {call _fnc_issueNow};
 
 private _km = 0;
 private _hq = _cmd getOrDefault ["hq", []];
-if (_task isNotEqualTo "SUPPORT" && {[_hq] call _fnc_validPos}) then {
+if (_task isNotEqualTo "SUPPORT" && {!_qrf} && {[_hq] call _fnc_validPos}) then {
     _km = ((getPosATL (leader _group)) distance2D _hq) / 1000;
 };
 private _delay = _mult * (_base + AIC_DELAY_PER_KM * _km);
 if (_delay <= 0) exitWith {call _fnc_issueNow};
 
 // --- the same order already on its way keeps its due time
-private _idx = _queue findIf {(_x select 1) isEqualTo _group};
+private _idx = call _fnc_index;
 if (_idx >= 0) then {
     private _old = _queue select _idx;
     private _same = (_old select 2) isEqualTo _task && {(_old select 4) isEqualTo _objective} && {
@@ -125,14 +162,18 @@ if (_idx >= 0) then {
     };
     if (_same) exitWith {};
     _idx = -1;
-    _queue = _queue select {(_x select 1) isNotEqualTo _group};
+    call _fnc_dropQueued;
 };
 if (_idx >= 0) exitWith {true};
 
 private _taskTime = _rec getOrDefault ["taskTime", -1];
 if !(_taskTime isEqualType 0) then {_taskTime = -1};
-// a new array, never changed in place (the queue may be read by a suspended drain)
-_cmd set ["orderQueue", _queue + [[time + _delay, _group, _task, +_pos, _objective, _force, _taskTime, time]]];
+// in place (see the header): the index points at the new entry
+private _at = _queue pushBack [time + _delay, _group, _task, +_pos, _objective, _force, _taskTime, time];
+private _index = _cmd getOrDefault ["orderQueueIndex", createHashMap];
+if !(_index isEqualType createHashMap) then {_index = createHashMap};
+_index set [_hv, _at];
+_cmd set ["orderQueueIndex", _index];
 
 if (!isNil "AIC_ns" && { AIC_ns getOrDefault ["debug", false] isEqualTo true }) then {
     ["queueOrder: %1 group %2 %3 obj '%4' due in %5 s", [
