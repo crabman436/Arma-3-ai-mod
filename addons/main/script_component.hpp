@@ -434,6 +434,14 @@
 #ifndef AIC_RECON_DETOUR
 #define AIC_RECON_DETOUR 800
 #endif
+// recons of one objective that timed out (objective "reconFails") after
+// which it counts as looked at for AIC_RECON_MAX_AGE / 2 s from the last
+// timeout ("reconFailTime"), so the attack goes ahead unscouted and a place
+// no scout reaches is tried at most once per such window (monitorOrders,
+// allocateForces)
+#ifndef AIC_RECON_MAX_FAILS
+#define AIC_RECON_MAX_FAILS 2
+#endif
 // most report items kept for later messages when more were due than one
 // message carries (report, "lastReport" "pending")
 #ifndef AIC_REPORT_PARTS

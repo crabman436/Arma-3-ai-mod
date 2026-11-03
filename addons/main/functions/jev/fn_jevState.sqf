@@ -13,8 +13,9 @@
           "grp": type -> [groups, average strength %, power]
           "lost10m": {"u" units, "v" vehicles, "g" groups} from the
             commander's "lossLog" (appended by the Killed / Empty handlers of
-            AIC_fnc_attachGroupEHs; trimmed here to AIC_LOSS_WINDOW s into a
-            new array, never in place: the handlers replace it too)
+            AIC_fnc_attachGroupEHs, which cap it at AIC_LOSS_LOG_MAX entries;
+            the last AIC_LOSS_WINDOW s are read here, the key is not
+            written back)
           "objs": the 8 best-scored objectives: {"id", "name", "own"
             (us / enemy / friend / none), "pri", "km", "brg" (from HQ),
             "score", "ours" (own power inside), "coming" (own power ordered
@@ -161,13 +162,14 @@ private _grp = createHashMap;
 } forEach _byType;
 
 // ------------------------------------------------------------------ casualties
-// the handlers only append, so the old entries sit at the front: trim into a
-// new array (the handlers replace the array too; nobody changes one in place)
+// the handlers only append, so the old entries sit at the front: the recent
+// ones are read into a local copy. The key itself is never written back here
+// (a handler may append while this scheduled code is suspended); the
+// handlers cap it at AIC_LOSS_LOG_MAX entries
 private _log = _cmd getOrDefault ["lossLog", []];
 if !(_log isEqualType []) then { _log = []; };
 private _firstFresh = _log findIf { _x isEqualType [] && { count _x >= 2 } && { (_now - (_x select 0)) <= AIC_LOSS_WINDOW } };
 _log = if (_firstFresh < 0) then { [] } else { _log select [_firstFresh] };
-_cmd set ["lossLog", _log];
 private _lost = createHashMapFromArray [["u", 0], ["v", 0], ["g", 0]];
 {
     if (_x isEqualType [] && { count _x >= 2 }) then {

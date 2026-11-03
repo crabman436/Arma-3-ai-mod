@@ -80,7 +80,8 @@
  *      max 0.6) DEFENDs HQ or the most threatened own objective. Formed when
  *      the pool has >= 3 groups (>= 1 in DEFENSIVE). Infantry/motorised and
  *      close groups are preferred; groups that would massively overshoot the
- *      remaining need are taken last.
+ *      remaining need are taken last. Groups still DEFENDing the reserve spot
+ *      stay in it (stable), unless an order of theirs is queued.
  *   6. Greedy staffing per target (highest score first): candidates sorted
  *      once per target (re-sorted once when the first infantry joins an
  *      urban attack) by travel cost / type suitability (armour/mech for open ground,
@@ -131,7 +132,12 @@
  *   no living record: killed on the job) marks the objective scouted
  *   ("reconTime" now, "reconContacts" -1), so the next scout is not sent
  *   into the same fire at once; a scout taken off the job (no RECON task
- *   or queued RECON) just clears "reconGroup".
+ *   or queued RECON) just clears "reconGroup". A place no scout reaches
+ *   (AIC_RECON_MAX_FAILS timed-out recons, objective "reconFails" /
+ *   "reconFailTime" from AIC_fnc_monitorOrders) needs no recon for
+ *   AIC_RECON_MAX_AGE / 2 s after the last timeout: the attack goes ahead
+ *   unscouted (the Jev hold "intel too old" still holds it), and it is tried
+ *   again at most once per such window.
  *
  *   Morale (setting "useMorale"): a group whose record "morale" is below
  *   AIC_MORALE_SHAKY joins no attack it is not already on.
@@ -825,6 +831,10 @@ private _fnc_needsRecon = {
     private _priority = _obj getOrDefault ["priority", 1];
     if !(_priority isEqualType 0) then {_priority = 1};
     if (_priority < AIC_RECON_MIN_PRIORITY && {_holdReason != _intelHoldText}) exitWith {false};
+    // no scout got there AIC_RECON_MAX_FAILS times (AIC_fnc_monitorOrders):
+    // not scouted again for AIC_RECON_MAX_AGE / 2 s after the last timeout
+    private _failAt = _obj getOrDefault ["reconFailTime", -1e6];
+    if (_failAt isEqualType 0 && {(_now - _failAt) <= (AIC_RECON_MAX_AGE / 2)}) exitWith {false};
     (_now - ([_obj] call _fnc_lookedAt)) > AIC_RECON_MAX_AGE
 };
 
@@ -1074,6 +1084,8 @@ if (_formReserve) then {
         if (_reservePower >= _reserveNeed) exitWith {};
         private _info = _x;
         if ((_info get "hv") in _handled) then {continue};
+        // an order still on its way is the group's job (step 5 keeps it)
+        if ((_info get "qTask") != "") then {continue};
         if ((_info get "task") == "DEFEND"
             && {(_now - (_info get "taskTime")) < _stableWindow}
             && {[_info, _reserveTarget] call _fnc_onTarget}) then {

@@ -108,9 +108,9 @@ if !(_garrisons isEqualType createHashMap) then { _garrisons = createHashMap; };
 
 private _trip = _cargoPos distance2D _dest;
 
-// groups with an order waiting in the queue (realism D) are spoken for
-private _queued = [_cmd] call AIC_fnc_queuedGroups;
-if !(_queued isEqualType createHashMap) then { _queued = createHashMap; };
+// groups with an order waiting in the queue (realism D) are spoken for;
+// asked only when the pool is built (a cached pool already left them out)
+private _queued = createHashMap;
 
 // ---------------------------------------------------------------- the pool
 // the candidate list of this order, if the last call built it: same cargo
@@ -133,6 +133,8 @@ if (_fresh) then {
     // helicopters stay down in the weather that grounds CAS
     private _heliWeather = [true] call AIC_fnc_flyingWeather;
     private _preferHeli = _useAir && { _heliWeather } && { _trip > _heliDist };
+    _queued = [_cmd] call AIC_fnc_queuedGroups;
+    if !(_queued isEqualType createHashMap) then { _queued = createHashMap; };
 
     {
         private _rec = _y;

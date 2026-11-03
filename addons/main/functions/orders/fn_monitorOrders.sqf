@@ -55,7 +55,12 @@
  *                          AIC_fnc_issueOrder: AIC_RECON_TIMEOUT plus
  *                          AIC_RECON_TIME_PER_M per m of the way; default
  *                          AIC_RECON_TIMEOUT) times out: the job ends
- *                          without "reconTime" (nothing was seen).
+ *                          without "reconTime" (nothing was seen); the
+ *                          objective's "reconFails" counts these (reset by
+ *                          a recon that got there), and from
+ *                          AIC_RECON_MAX_FAILS on each timeout stamps
+ *                          "reconFailTime" (AIC_fnc_allocateForces then
+ *                          treats the place as looked at for a while).
  *                          A recon not yet at its point that has not moved
  *                          for AIC_STUCK_TIMEOUT s gets the same job again
  *                          (its "reconStart" is kept).
@@ -317,8 +322,17 @@ private _fnc_setIdle = {
         };
         if (count _objRec > 0) then {
             // a scout that never got there has seen nothing: no recon time,
-            // the planner may send another one
-            if (_outcome isNotEqualTo "timed out") then {
+            // the planner may send another one, but not for ever: after
+            // AIC_RECON_MAX_FAILS timeouts the place counts as looked at
+            // for a while ("reconFailTime", AIC_fnc_allocateForces)
+            if (_outcome isEqualTo "timed out") then {
+                private _fails = _objRec getOrDefault ["reconFails", 0];
+                if !(_fails isEqualType 0) then {_fails = 0};
+                _fails = _fails + 1;
+                _objRec set ["reconFails", _fails];
+                if (_fails >= AIC_RECON_MAX_FAILS) then {_objRec set ["reconFailTime", time]};
+            } else {
+                _objRec set ["reconFails", 0];
                 // what it found: contacts seen around the objective since the job began
                 private _range = (_objRec getOrDefault ["radius", _defRadius]) + AIC_RECON_CONFIRM_RANGE;
                 private _objPos = _objRec getOrDefault ["pos", _taskPos];

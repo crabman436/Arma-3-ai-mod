@@ -378,7 +378,9 @@ the assembly area, and the assault waits 90 s for that fire before it goes in
 (not when it is under fire or the staff says attack now). An assault that has
 waited 30 minutes since it was planned goes anyway, unless its groups are
 still making their way there (then the 30 minutes count from the first
-arrival). The clocks of a running assault (reserve, escalation, abort) start
+arrival); after an hour it goes in any case, with whoever is there. An
+assault that goes straight in (no assembly area found) runs the same clocks
+from the moment it was planned. The clocks of a running assault (reserve, escalation, abort) start
 when its first assault group comes within 300 m of the objective's edge, at
 the latest 15 minutes after it went in. A failed or called-off assault cancels
 the attack orders still waiting for that objective, and HQ says so ("Assault
@@ -651,8 +653,9 @@ arrives the group carries on with what it was doing. A waiting order is
 dropped when the group dies or breaks, when it gets a retreat, ride, recon or
 attack order meanwhile, when the next plan no longer wants it (the planner
 changed its mind, held the attack or released the group), and an attack order
-when its objective has been taken, its last assault failed or was called off,
-or the staff holds new attacks there. Garrison routine (defend, patrol) does
+when its objective has been taken or its last assault failed or was called
+off (a staff hold works through the plan: a held attack is not planned, a
+place scouted lately still is). Garrison routine (defend, patrol) does
 not cancel a waiting order, and a group with an order waiting is not used as
 a garrison transfer or a ride. A quick-reaction force is called like a
 support job: 20 s, whatever the distance. Players hear "Attack
@@ -672,12 +675,15 @@ the spot, or as soon as it reports enemies it has seen there itself (the
 estimate of the defenders is updated); HQ reports "Recon of X: N contacts",
 "no contacts" or "the scouts were lost". A scout that has not reached its spot
 within 15 minutes plus about 1.2 s per metre of the way gives up without a
-report, and another may be sent. Scouts within 2 km are preferred, and a
+report, and another may be sent; after two such failures the place counts as
+looked at for 7.5 minutes after each one, so the attack goes ahead unscouted
+(unless the staff holds it for old intel) and a place no scout reaches is
+tried again at most once in that time. Scouts within 2 km are preferred, and a
 scout whose way would pass close by the place makes a detour around it; a
 scout that is shot at (not merely one that spots the enemy) falls back to its
-rally point - the contact is the report. A scout killed on the job also
-counts as a look at the place, so no second scout walks into the same fire
-at once. A recon is sent even to a place the general cannot attack yet, or
+rally point - the contact is the report. A scout that is shot at or loses men ends its job with a report the next
+cycle, and one wiped out on the job counts as a look at the place ("the
+scouts were lost"), so no second scout walks into the same fire at once. A recon is sent even to a place the general cannot attack yet, or
 while the staff holds new attacks: scouting is how a wrong guess about its
 defenders is corrected. The attack is planned on
 the next cycle after that. At most two new scouts go out per cycle; with no
@@ -706,8 +712,9 @@ infantry goes in, every group gets a job:
   position about 250 m outside the objective and fire in support, on open
   ground as well as at a town.
 - **Assault**: two thirds of the other infantry groups (rounded up), those
-  already at the assembly area and the strongest first, go in at a walk on a
-  broad front.
+  already inside the objective (always assault, never reserve), then those
+  at the assembly area and the strongest first, go in at a walk on a broad
+  front.
 - **Reserve**: the rest wait at the assembly area. With fewer than three
   infantry groups there is no reserve (in practice it takes four: one is the
   machine-gun team and two thirds of two rounds up to two).
@@ -715,7 +722,7 @@ infantry goes in, every group gets a job:
 The reserve is committed when the assaulting groups (every attacking group
 that is not support by fire or reserve, split fireteams included) are down to
 60 % of their strength, when one of them gets inside the objective (to exploit
-it), when the Jev staff advises committing the reserve, or when the place has
+it; not one that was inside already when the assault began), when the Jev staff advises committing the reserve, or when the place has
 not fallen ten minutes after the assault groups reached it; HQ reports
 "Reserve committed on X" (with "on the staff's advice" when it was). A stalling assault sends in the reserve before it
 sends the vehicles on overwatch in. Groups that arrive later simply attack.

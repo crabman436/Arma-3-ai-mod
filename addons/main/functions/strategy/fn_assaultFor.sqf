@@ -27,7 +27,8 @@
  *   group's side (the HQ's side if that group is already close), or up to 90
  *   degrees around if that spot is wet or has an enemy known within 300 m,
  *   moved to the best cover within 200 m of it (AIC_fnc_bestPlace).
- *   An assault that finds no such spot starts in state "GO". A group whose
+ *   An assault that finds no such spot starts in state "GO" (with "goTime"
+ *   set to its creation time). A group whose
  *   leader is already inside the objective radius gets no assault (empty
  *   HashMap, an existing one is not returned either): it fights where it is
  *   and is never sent out to stage (AIC_fnc_issueOrder checks the same).
@@ -133,6 +134,8 @@ private _assault = createHashMapFromArray [
     ["slots", 0],
     ["nightHold", false]
 ];
+// created straight in GO: the GO clocks (AIC_fnc_assaultCycle) run from now
+if (_stage isEqualTo []) then {_assault set ["goTime", time]};
 _assaults set [_objective, _assault];
 
 ["%1: assault on '%2' planned, %3", [

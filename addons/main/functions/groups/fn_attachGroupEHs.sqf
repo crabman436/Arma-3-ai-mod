@@ -24,10 +24,10 @@
             (record "leaderUnit": the leader at registration, refreshed by
             AIC_fnc_updateGroups each cycle) it sets the record's
             "leaderLost" true and "leaderLostTime" (morale, updateGroups).
-            A unit of a group on task "RECON" marks the job's objective
-            looked at: objective "reconTime" = time (the scout's death is
-            intel too; the planner sends no second scout into the same
-            killing zone at once).
+            A RECON group's loss ends its job through "lastHit"
+            (AIC_fnc_monitorOrders, "engaged": "reconTime" and
+            "reconContacts" set there; a scout wiped out is handled by
+            AIC_fnc_allocateForces).
           The UnitKilled, Empty and vehicle MPKilled handlers also append
           [time, kind, hashValue group, objective] to the commander's
           "lossLog" (kind "U" unit, "G" group wiped out, "V" vehicle
@@ -223,12 +223,8 @@ _group addEventHandler ["UnitKilled", {
         _rec set ["leaderLost", true];
         _rec set ["leaderLostTime", time];
     };
-    // a scout killed on the job: its objective counts as looked at
-    // (AIC_fnc_allocateForces sends no second scout into the same fire at once)
-    if (_task isEqualTo "RECON") then {
-        private _obj = [_cmd, _rec getOrDefault ["objective", ""]] call AIC_fnc_getObjective;
-        if (count _obj > 0) then { _obj set ["reconTime", time]; };
-    };
+    // (a scout hit on the job: "lastHit" below ends it in
+    // AIC_fnc_monitorOrders, which sets "reconTime" / "reconContacts")
     [_group, true] call AIC_fnc_groupEngaged;
 }];
 

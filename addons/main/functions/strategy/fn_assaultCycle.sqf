@@ -11,7 +11,9 @@
  *   rides under way, AIC_ASSAULT_MAX_TOTAL seconds after the assault was
  *   planned in any case (after the first arrival instead while a member is
  *   still getting closer: moved within AIC_STUCK_TIMEOUT s, or its order
- *   still queued), or at once if a waiting group comes under fire (record
+ *   still queued; but never later than AIC_ASSAULT_MAX_TOTAL +
+ *   AIC_NIGHT_WAIT_MAX s after it was planned, whoever is in place), or at
+ *   once if a waiting group comes under fire (record
  *   "lastHit" younger than 30 s: Hit / FiredNear / UnitKilled, not a mere
  *   sighting). With artillery of its own (setting "useArtillery", an ARTY
  *   group) the commander's "prepTarget" is set once AIC_PREP_FIRE_READY of
@@ -82,10 +84,12 @@
  *     "SBF"     - support by fire: vehicle groups with real weapons
  *                 (AIC_fnc_vehicleWeapons) and, with 2+ infantry groups,
  *                 the infantry group with the most machine guns (then the
- *                 fewest men); they hold an overwatch position
+ *                 fewest men; one outside the objective first); they hold
+ *                 an overwatch position
  *     "ASSAULT" - AIC_ASSAULT_SHARE of the other infantry groups (rounded
- *                 up, at least 1), those at the assembly area and the
- *                 strongest first; they go in
+ *                 up, at least 1), those already inside the objective
+ *                 (always ASSAULT, assault "insideAtGo"), then those at the
+ *                 assembly area and the strongest first; they go in
  *     "RESERVE" - the rest (only with 3+ infantry groups), held at the
  *                 assembly area
  *   Groups joining later have no role and attack as before. The power going
@@ -95,7 +99,8 @@
  *   (ATTACK through AIC_fnc_issueOrder with force, role ASSAULT; assault
  *   "reserveCommitted" = time) when that power falls below
  *   AIC_RESERVE_POWER_FRACTION of "goPower", when a group going in is
- *   inside the objective radius (exploit), when the staff advises
+ *   inside the objective radius (exploit; not one that was inside at GO),
+ *   when the staff advises
  *   commit_reserve (p > AIC_ADVICE_YES, confidence >= AIC_ADVICE_SURE; only
  *   the assault the batch was about, if it named one; when that moved a
  *   group, "advice" "commit" and assault "reserveAdvice" are set for
@@ -224,44 +229,54 @@ private _fnc_assaultPower = {
 };
 // hands out SBF / ASSAULT / RESERVE when the assault goes GO
 private _fnc_assignRoles = {
-    params ["_assault", "_list"];
+    params ["_assault", "_list", "_radius"];
     private _inf = _list select {(_x getOrDefault ["type", ""]) isEqualTo "INF"};
     // no infantry: the vehicles go in as before
     if (_inf isEqualTo []) exitWith {};
+    // groups already inside the objective: never sent back out as reserve,
+    // and no reason to commit the reserve (assault "insideAtGo")
+    private _pos = _assault get "pos";
+    private _inside = (_list select {((leader (_x get "group")) distance2D _pos) < _radius}) apply {hashValue (_x get "group")};
+    _assault set ["insideAtGo", _inside];
     private _roles = createHashMap;
     {
         if (!((_x getOrDefault ["type", ""]) isEqualTo "INF") && {[_x get "group"] call _fnc_armed}) then {
             _roles set [hashValue (_x get "group"), "SBF"];
         };
     } forEach _list;
-    // the machine-gun team: most machine guns, then the smallest team
+    // the machine-gun team: one outside the objective first, then most
+    // machine guns, then the smallest team
     private _rest = +_inf;
     if (count _inf >= 2) then {
         private _rank = [];
         {
             private _i = _forEachIndex;
             private _g = _x get "group";
-            _rank pushBack [-([_g] call _fnc_mgCount), {alive _x} count (units _g), _i];
+            _rank pushBack [[0, 1] select ((hashValue _g) in _inside), -([_g] call _fnc_mgCount), {alive _x} count (units _g), _i];
         } forEach _inf;
         _rank sort true;
-        private _sbf = _rest deleteAt ((_rank select 0) select 2);
+        private _sbf = _rest deleteAt ((_rank select 0) select 3);
         _roles set [hashValue (_sbf get "group"), "SBF"];
     };
-    // the strongest groups already at the assembly area lead the assault
+    // the groups already inside, then the strongest groups at the assembly
+    // area lead the assault
     private _order = [];
+    private _nInside = 0;
     {
         private _lpos = getPosATL (leader (_x get "group"));
         private _sp = _x getOrDefault ["stagePos", []];
         private _inPlace = (_x getOrDefault ["staged", false]) isEqualTo true && {count _sp >= 2} && {(_lpos distance2D _sp) < 120};
+        private _in = (hashValue (_x get "group")) in _inside;
+        if (_in) then {_nInside = _nInside + 1};
         private _p = _x getOrDefault ["power", 0];
         if !(_p isEqualType 0) then {_p = 0};
-        _order pushBack [[1, 0] select _inPlace, -_p, _forEachIndex];
+        _order pushBack [[[2, 1] select _inPlace, 0] select _in, -_p, _forEachIndex];
     } forEach _rest;
     _order sort true;
     // (- 0.02: two thirds of 3 is 2, not 3)
     private _nAssault = count _rest;
     if (count _inf >= 3) then {
-        _nAssault = ((ceil (((count _rest) * AIC_ASSAULT_SHARE) - 0.02)) max 1) min (count _rest);
+        _nAssault = ((ceil (((count _rest) * AIC_ASSAULT_SHARE) - 0.02)) max 1 max _nInside) min (count _rest);
     };
     {
         private _rec = _rest select (_x select 2);
@@ -403,7 +418,10 @@ private _started = 0;
     // group they run anyway AIC_ASSAULT_APPROACH s after GO.
     private _contact = _assault getOrDefault ["contactTime", -1];
     if !(_contact isEqualType 0) then {_contact = -1};
-    private _goAge = (time - ([(_assault getOrDefault ["goTime", time]) + AIC_ASSAULT_APPROACH, _contact] select (_contact >= 0))) max 0;
+    // (an assault created in GO without "goTime": its creation time)
+    private _goTime = _assault getOrDefault ["goTime", _assault getOrDefault ["time", time]];
+    if !(_goTime isEqualType 0) then {_goTime = time};
+    private _goAge = (time - ([_goTime + AIC_ASSAULT_APPROACH, _contact] select (_contact >= 0))) max 0;
     private _failed = (_assault get "state") isEqualTo "GO" && {_goAge > AIC_ASSAULT_ABORT};
     // the attackers have lost heart (AIC_fnc_updateGroups "morale")
     private _shaken = false;
@@ -546,10 +564,15 @@ private _started = 0;
         // long ride does not make the assault go with nobody in place; and
         // while members still ride there the short wait holds. The total cap
         // counts from the planning, but from the first arrival while groups
-        // are still getting closer (a long march on foot)
+        // are still getting closer (a long march on foot). Whatever the
+        // progress, the stage ends AIC_ASSAULT_MAX_TOTAL + AIC_NIGHT_WAIT_MAX
+        // s after the planning (a stuck group is re-issued by
+        // AIC_fnc_monitorOrders and so always looks as if it moved): it goes
+        // with whoever is there, and the GO clocks end it if nobody gets in
         private _totalFrom = [_assault get "time", _first] select _progressing;
         private _goNow = !_nightWait && {
             _underFire
+            || {(time - (_assault get "time")) > (AIC_ASSAULT_MAX_TOTAL + AIC_NIGHT_WAIT_MAX)}
             || {_ready > 0 && {_ready >= (AIC_ASSAULT_READY * _power)}}
             || {_first >= 0 && {(time - _first) > AIC_ASSAULT_WAIT} && {_riding isEqualTo []} && {_pending isEqualTo []}}
             || {_first >= 0 && {(time - _first) > AIC_ASSAULT_MAX_WAIT}}
@@ -583,7 +606,7 @@ private _started = 0;
             if (!_prepFresh) then {_cmd set ["prepTarget", [_assault get "pos", time]]};
             _started = _started + 1;
             // support by fire, assault and reserve
-            [_assault, _attacking] call _fnc_assignRoles;
+            [_assault, _attacking, _objRadius] call _fnc_assignRoles;
             private _note = switch (true) do {
                 case (_underFire): {" (under fire)"};
                 case (_early && {_ready < (AIC_ASSAULT_READY * _power)}): {" (early, on the staff's advice)"};
@@ -612,8 +635,11 @@ private _started = 0;
             private _goPower = _assault getOrDefault ["goPower", 0];
             if !(_goPower isEqualType 0) then {_goPower = 0};
             private _nowPower = [_roles, _attacking] call _fnc_assaultPower;
+            // (groups that were inside already at GO do not count)
+            private _insideAtGo = _assault getOrDefault ["insideAtGo", []];
             private _atEdge = (_attacking findIf {
                 !(([_roles, _x] call _fnc_role) in ["SBF", "RESERVE"])
+                && {!((hashValue (_x get "group")) in _insideAtGo)}
                 && {((leader (_x get "group")) distance2D (_assault get "pos")) < _objRadius}
             }) >= 0;
             private _byAdvice = _commitAdvice && {_adviceAssault isEqualTo "" || {_adviceAssault isEqualTo _id}};

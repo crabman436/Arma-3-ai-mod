@@ -23,13 +23,13 @@
  *       same task and objective (objective-less: position within the
  *       AIC_fnc_issueOrder tolerance). Only the plan loop queues orders, so
  *       a group the planner dropped (a held, capped or released attack, a
- *       garrison leftover) loses its stale order;
- *     - an ATTACK on an objective that has become ours, whose last assault
- *       failed or was called off ("failedUntil" later than now, or the
- *       commander's "adviceAbort" [time, id] younger than
- *       AIC_ADVICE_ABORT_COOLDOWN), or that is held back on Jev advice
- *       ("advice" "hold_reason" set) while no group of ours is on ATTACK
- *       there or riding there (a new attack, not a reinforcement).
+ *       garrison leftover) loses its stale order. A Jev hold works through
+ *       this check alone: the planner knows which attacks it held (and
+ *       which it let through, e.g. a freshly scouted objective);
+ *     - an ATTACK on an objective that has become ours, or whose last
+ *       assault failed or was called off ("failedUntil" later than now, or
+ *       the commander's "adviceAbort" [time, id] younger than
+ *       AIC_ADVICE_ABORT_COOLDOWN).
  *   An order the group already has is skipped by AIC_fnc_issueOrder's
  *   same-order check (queued orders are never forced: forced orders are
  *   not delayed).
@@ -92,32 +92,12 @@ private _fnc_inPlan = {
     }
 };
 
-// attacks that are called off or held: objective id -> true
-private _advice = _cmd getOrDefault ["advice", createHashMap];
-if !(_advice isEqualType createHashMap) then {_advice = createHashMap};
-private _hold = _advice getOrDefault ["hold_reason", ""];
-private _holdOn = _hold isEqualType "" && {_hold isNotEqualTo ""};
+// attacks that are called off
 private _abortId = "";
 private _abort = _cmd getOrDefault ["adviceAbort", []];
 if (_abort isEqualType [] && {count _abort >= 2} && {(_abort select 0) isEqualType 0}
     && {(time - (_abort select 0)) < AIC_ADVICE_ABORT_COOLDOWN} && {(_abort select 1) isEqualType ""}) then {
     _abortId = _abort select 1;
-};
-// objectives a group of ours is attacking or riding to (only needed under a hold)
-private _fought = createHashMap;
-if (_holdOn) then {
-    {
-        if (_y isEqualType createHashMap) then {
-            private _t = _y getOrDefault ["task", ""];
-            if (_t isEqualTo "ATTACK") then {_fought set [_y getOrDefault ["objective", ""], true]};
-            if (_t isEqualTo "TRANSPORTED") then {
-                private _f = _y getOrDefault ["final", createHashMap];
-                if (_f isEqualType createHashMap && {(_f getOrDefault ["task", ""]) isEqualTo "ATTACK"}) then {
-                    _fought set [_f getOrDefault ["objective", ""], true];
-                };
-            };
-        };
-    } forEach _groupData;
 };
 private _fnc_attackOff = {
     params ["_objective"];
@@ -127,8 +107,7 @@ private _fnc_attackOff = {
     if (count _obj == 0) exitWith {true};
     if ((_obj getOrDefault ["owner", sideUnknown]) isEqualTo _side) exitWith {true};
     private _until = _obj getOrDefault ["failedUntil", -1];
-    if (_until isEqualType 0 && {_until > time}) exitWith {true};
-    _holdOn && {!(_objective in _fought)}
+    _until isEqualType 0 && {_until > time}
 };
 
 private _keep = [];
