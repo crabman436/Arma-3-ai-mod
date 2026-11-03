@@ -13,6 +13,15 @@ side to let two AI generals fight each other.
 - Runs on the server only, so it works in singleplayer, hosted and dedicated MP.
 - Function tag `AIC`, PBO prefix `z\aic\addons\main`.
 
+## Project coordination and review findings
+
+The [live review tracker](docs/REVIEW_TRACKER.md) records dated bugs, improvement
+work, owners, fix commits, verification results, and history. Contributors and AI
+models should start with [AGENTS.md](AGENTS.md) and the
+[coordination and handoff guide](docs/MODEL_HANDOFF.md) before claiming work.
+The [2026-11-03 review](docs/reviews/2026-11-03-initial-review.md) preserves the
+original evidence; current status lives in the tracker.
+
 ## Features
 
 - **Full-side command**: every AI group of the side (infantry, motorised,
