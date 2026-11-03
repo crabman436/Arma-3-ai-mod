@@ -7,7 +7,10 @@
  *   a twelfth of the radius apart (8 m at least, 40 m at most), so the call
  *   stays cheap. The best dry spot with a positive score wins; with a flat
  *   size the spot must also be flat and empty for that size (isFlatEmpty),
- *   so a vehicle or helicopter fits.
+ *   so a vehicle or helicopter fits. With a position to look at, the spot
+ *   must also have a terrain line of sight to it (eye 2 m above the spot,
+ *   2 m above the position; trees and buildings are not counted), as an
+ *   overwatch or observation post needs (AIC_fnc_orderRecon).
  *   The one place every position search goes through (landing zones,
  *   assembly areas, overwatch, flanking points, motor pools), so they all
  *   read the terrain the same way.
@@ -18,24 +21,28 @@
  *   2: STRING - expression, e.g. "meadow - forest - 3*houses - 10*sea"
  *   3: NUMBER - (optional) flat / empty size the spot must have, 0 = any,
  *               default 0
+ *   4: ARRAY  - (optional) position the spot must see, [] = any, default []
  *
  * Returns:
  *   ARRAY - [x, y, 0], or [] when nothing scores above zero
  *
  * Example:
  *   private _lz = [_pos, 150, "meadow - forest - 2*trees - 3*houses - 10*sea", 12] call AIC_fnc_bestPlace;
+ *   private _op = [_pos, 150, "2*hills + forest - 2*houses - 10*sea", 0, _objPos] call AIC_fnc_bestPlace;
  */
 
 params [
     ["_center", [], [[]]],
     ["_radius", 150, [0]],
     ["_expression", "", [""]],
-    ["_flat", 0, [0]]
+    ["_flat", 0, [0]],
+    ["_lookAt", [], [[]]]
 ];
 
 if (count _center < 2 || {_radius <= 0} || {_expression isEqualTo ""}) exitWith {[]};
 private _c = [_center select 0, _center select 1, 0];
 private _precision = ((_radius / 12) max 8) min 40;
+private _eyeTarget = if (count _lookAt >= 2) then {(AGLToASL [_lookAt select 0, _lookAt select 1, 0]) vectorAdd [0, 0, 2]} else {[]};
 
 private _found = [];
 {
@@ -44,6 +51,7 @@ private _found = [];
     private _q = [_p select 0, _p select 1, 0];
     if (surfaceIsWater _q) then {continue};
     if (_flat > 0 && {(_q isFlatEmpty [_flat, -1, 0.35, _flat, 0, false]) isEqualTo []}) then {continue};
+    if (_eyeTarget isNotEqualTo [] && {terrainIntersectASL [(AGLToASL _q) vectorAdd [0, 0, 2], _eyeTarget]}) then {continue};
     _found = _q;
     break;
 } forEach (selectBestPlaces [_c, _radius, _expression, _precision, 8]);

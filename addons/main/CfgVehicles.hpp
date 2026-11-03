@@ -211,6 +211,22 @@ class CfgVehicles
                 typeName = "NUMBER";
                 defaultValue = "0.6";
             };
+            class UseMorale: Checkbox
+            {
+                property = "AIC_ModuleCommander_UseMorale";
+                displayName = "Morale";
+                tooltip = "Groups have morale: losses and a fallen leader shake them, rest in a held town restores it. Shaky groups are not sent on new attacks, broken groups fall back to a rally point and stay out of the fight for 10 minutes.";
+                typeName = "BOOL";
+                defaultValue = "true";
+            };
+            class UseRecon: Checkbox
+            {
+                property = "AIC_ModuleCommander_UseRecon";
+                displayName = "Reconnaissance";
+                tooltip = "Before attacking an important objective it has no fresh intel on, the general sends a small group to watch it from a distance first.";
+                typeName = "BOOL";
+                defaultValue = "true";
+            };
             class ModuleDescription: ModuleDescription {};
         };
 

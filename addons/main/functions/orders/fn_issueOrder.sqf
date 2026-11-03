@@ -28,12 +28,20 @@
  *                    holds a sector within AIC_SECTOR_MIN_GAP degrees.
  *     "PATROL"    -> AIC_fnc_orderPatrol    (radius = objective radius, or
  *                                            setting "objectiveRadius")
- *     "RETREAT"   -> AIC_fnc_orderRetreat   (empty pos -> commander "hq")
+ *     "RETREAT"   -> AIC_fnc_orderRetreat   (empty pos -> commander "hq"),
+ *                    away from the nearest known threat first (within
+ *                    AIC_THREAT_RADIUS of the leader) unless the caller
+ *                    handed one over in the group variable "AIC_retreatFrom"
  *     "REINFORCE" -> AIC_fnc_orderReinforce
  *     "SUPPORT"   -> air: SAD over pos then LOITER near HQ;
  *                    ground: AIC_fnc_orderReinforce
  *     "RTB"       -> AIC_fnc_orderRetreat (a transport going home after a
  *                    drop; empty pos -> its "home" objective, then "hq")
+ *     "RECON"     -> AIC_fnc_orderRecon     (radius = objective radius):
+ *                    watch the objective from an overwatch point. Record
+ *                    "reconStart" is the time the job began (kept when the
+ *                    same job is re-issued, e.g. by stuck detection), for
+ *                    AIC_fnc_monitorOrders' timeout
  *     "IDLE"      -> clears waypoints, group holds in place
  *     "TRANSPORT" / "TRANSPORTED" -> only with force: re-runs
  *                    AIC_fnc_orderTransport for the pair stored in the
@@ -41,6 +49,10 @@
  *   Empty/invalid position falls back to: objective position, then (for
  *   RTB) the group's "home" objective, then (for RETREAT/DEFEND/RTB) the
  *   HQ, then the leader's position.
+ *
+ *   A group on "RECON" is not re-ordered while the job runs (like a
+ *   transport ride, it is followed by AIC_fnc_monitorOrders, which ends
+ *   it): any order but a RETREAT is skipped unless _force is true.
  *
  *   Logistics:
  *     - Groups whose current task is "TRANSPORT" or "TRANSPORTED" are
@@ -102,7 +114,7 @@ if (count _cmd == 0 || {isNull _group} || {_task isEqualTo ""}) exitWith {false}
 if (({alive _x} count units _group) == 0) exitWith {false};
 
 _task = toUpperANSI _task;
-if !(_task in ["IDLE", "ATTACK", "DEFEND", "PATROL", "RETREAT", "REINFORCE", "SUPPORT", "RTB", "TRANSPORT", "TRANSPORTED"]) exitWith {
+if !(_task in ["IDLE", "ATTACK", "DEFEND", "PATROL", "RETREAT", "REINFORCE", "SUPPORT", "RTB", "TRANSPORT", "TRANSPORTED", "RECON"]) exitWith {
     ["issueOrder: unknown task '%1' for group %2", [_task, groupId _group]] call AIC_fnc_log;
     false
 };
@@ -133,6 +145,14 @@ if !(_curTask isEqualType "") then { _curTask = "IDLE"; };
 if (!_force && {_curTask in ["TRANSPORT", "TRANSPORTED"]}) exitWith {
     if (!isNil "AIC_ns" && { AIC_ns getOrDefault ["debug", false] isEqualTo true }) then {
         ["issueOrder: group %1 is %2, order %3 skipped (transport system owns it)", [groupId _group, _curTask, _task]] call AIC_fnc_log;
+    };
+    false
+};
+// --- Externally managed: a recon job (AIC_fnc_monitorOrders ends it) -----------
+// (a falling-back group may always retreat)
+if (!_force && {_curTask isEqualTo "RECON"} && {_task isNotEqualTo "RETREAT"}) exitWith {
+    if (!isNil "AIC_ns" && { AIC_ns getOrDefault ["debug", false] isEqualTo true }) then {
+        ["issueOrder: group %1 is on RECON, order %2 skipped", [groupId _group, _task]] call AIC_fnc_log;
     };
     false
 };
@@ -439,7 +459,16 @@ private _ok = switch (_task) do {
         };
         [_group, _pos, _radius, _type, _link] call AIC_fnc_orderPatrol
     };
-    case "RETREAT":   { [_group, _pos, _type] call AIC_fnc_orderRetreat };
+    case "RETREAT": {
+        // away from the enemy first; a threat the caller handed over
+        // ("AIC_retreatFrom" = [pos, time], set just now) takes precedence
+        private _handed = _group getVariable ["AIC_retreatFrom", []];
+        private _from = [];
+        if !(_handed isEqualType [] && {count _handed == 2} && {(_handed select 1) isEqualType 0} && {(time - (_handed select 1)) < 5}) then {
+            _from = [_cmd, getPosATL (leader _group), AIC_THREAT_RADIUS] call AIC_fnc_nearestThreat;
+        };
+        [_group, _pos, _type, _from] call AIC_fnc_orderRetreat
+    };
     case "RTB":       { [_group, _pos, _type] call AIC_fnc_orderRetreat };
     case "REINFORCE": { [_group, _pos, _type] call AIC_fnc_orderReinforce };
     case "SUPPORT": {
@@ -461,6 +490,13 @@ private _ok = switch (_task) do {
         } else {
             [_group, _pos, _type] call AIC_fnc_orderReinforce
         };
+    };
+    case "RECON": {
+        // a new job (not the same one re-issued) starts the timeout clock
+        if (_curTask isNotEqualTo "RECON" || {_curObj isNotEqualTo _objective}) then {
+            _record set ["reconStart", time];
+        };
+        [_group, _pos, _radius, _type, _record] call AIC_fnc_orderRecon
     };
     case "IDLE": {
         [_group] call AIC_fnc_clearWaypoints;

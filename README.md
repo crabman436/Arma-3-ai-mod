@@ -180,12 +180,16 @@ change them live through `(_cmd get "settings") set [key, value]`.
 | `artyCooldown` | 120 | Seconds between fire missions |
 | `airCooldown` | 180 | Seconds between new CAS sorties (an aircraft already up goes straight on) |
 | `casSkill` | 0.8 | Air crews on CAS are raised to this skill where lower (-1 leaves them) |
+| `useMorale` | true | Groups have morale: losses and a fallen leader shake them, shaky groups get no new attacks, broken groups fall back to a rally point (see "Morale, rally points and reaction times") |
+| `orderDelay` | 1.0 | Multiplier on the time planned orders take to reach the groups; 0 = at once (the old behaviour) |
+| `useRecon` | true | Before attacking an important objective with stale intel, send a small group to watch it first |
+| `nightAssaults` | true | Staged assaults on towns wait for the night when it is less than 30 minutes away |
 
 The Eden module sets Side, Aggression, LoopInterval, UseArtillery, UseAir,
 AutoObjectives, DebugMarkers, ReportToPlayers, ManageDynSim, ManageGarrisons,
 UseTransport, ManageCleanup, SplitPassengers, DynamicSquads, StagedAssaults,
-SpreadGroups, UseVehicleParks, UseSupplyTrucks and GarrisonManStatics. The
-others keep their defaults. The settings
+SpreadGroups, UseVehicleParks, UseSupplyTrucks, GarrisonManStatics, UseMorale
+and UseRecon. The others keep their defaults. The settings
 for parking, garrisons and transport are listed in the next section, the
 cleanup settings in "Performance and cleanup".
 
@@ -598,6 +602,33 @@ group (a set piece, an intel item on a corpse), set `AIC_keep`:
 ```sqf
 _wreck setVariable ["AIC_keep", true];
 ```
+
+### Morale, rally points and reaction times
+
+**Morale** (`useMorale`). Every group has a morale between 0 and 1. It
+follows the group's strength, minus 0.15 for a while after its leader fell
+and 0.1 for every tenth of the group killed in the last 10 minutes, plus a
+little for skilled troops. Bad news hits at once; morale comes back slowly,
+fastest when the group rests in a place its side holds. A **shaky** group
+(below 0.6) still defends and patrols but is not sent on new attacks, and
+its men may flee. A **broken** group (below 0.35) runs: it falls back to its
+rally point, takes no orders for 10 minutes and is never pulled out of a
+garrison, then rejoins the garrison where it rallied.
+
+**Rally points.** A group that falls back goes to the nearest objective or
+base its side holds that is not under threat and lies behind it, never
+towards the enemy (unless there is nothing else) and never back to the place
+it is fleeing. Without one it goes to the HQ. Ground groups first move 300 m
+straight away from the threat before turning towards the rally point.
+
+**Reaction times** (`orderDelay`). The general's plans take time to reach the
+troops: about 30 s plus 10 s per km from the HQ for a move, 90 s plus 10 s per
+km for an attack or a recon, 20 s for a support job. Retreats, forced orders
+and orders to defend a group's own home go out at once. Until the order
+arrives the group carries on with what it was doing; an order to a group that
+dies, breaks or is sent elsewhere meanwhile is dropped. Players hear "Attack
+on X: orders issued" when a delayed attack goes out. `orderDelay` scales all
+of it; 0 gives every order at once, as before.
 
 ### Mission-maker tip
 

@@ -6,7 +6,8 @@
         Reads the module attributes (including the logistics checkboxes
         ManageDynSim, ManageGarrisons, UseTransport, ManageCleanup, SplitPassengers,
         DynamicSquads, StagedAssaults, SpreadGroups, UseVehicleParks, UseSupplyTrucks
-        and GarrisonManStatics, and the Jev attributes UseJev and JevWeight), builds a settings
+        and GarrisonManStatics, the Jev attributes UseJev and JevWeight, and the
+        realism checkboxes UseMorale and UseRecon), builds a settings
         HashMap and creates the commander via AIC_fnc_createCommander. Objective modules
         synchronised to this module are registered and added to the
         commander. When the module is deactivated (synced trigger
@@ -64,7 +65,9 @@ private _settings = createHashMapFromArray [
     ["garrisonManStatics", [_logic, "GarrisonManStatics", true] call AIC_fnc_moduleAttr],
     ["manageCleanup", [_logic, "ManageCleanup", true] call AIC_fnc_moduleAttr],
     ["jevEnabled", [_logic, "UseJev", true] call AIC_fnc_moduleAttr],
-    ["jevWeight", (([_logic, "JevWeight", 0.6] call AIC_fnc_moduleAttr) max 0) min 1]
+    ["jevWeight", (([_logic, "JevWeight", 0.6] call AIC_fnc_moduleAttr) max 0) min 1],
+    ["useMorale", [_logic, "UseMorale", true] call AIC_fnc_moduleAttr],
+    ["useRecon", [_logic, "UseRecon", true] call AIC_fnc_moduleAttr]
 ];
 
 // --- synced objective modules: make sure they are known before objectives are collected

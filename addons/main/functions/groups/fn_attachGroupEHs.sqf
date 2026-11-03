@@ -18,7 +18,10 @@
           - "UnitKilled": stamps the unit's "AIC_killedAt" (time); if the
             group still has a record, queues the body in the commander's
             "deadQueue" for AIC_fnc_cleanupCycle (if "manageCleanup") and
-            calls AIC_fnc_groupEngaged.
+            calls AIC_fnc_groupEngaged. If the unit was the group's leader
+            (record "leaderUnit": the leader at registration, refreshed by
+            AIC_fnc_updateGroups each cycle) it sets the record's
+            "leaderLost" true and "leaderLostTime" (morale, updateGroups).
           The UnitKilled, Empty and vehicle MPKilled handlers also append
           [time, kind, hashValue group] to the commander's "lossLog" (kind
           "U" unit, "G" group wiped out, "V" vehicle destroyed; at most
@@ -154,6 +157,13 @@ if (!isNull _object) exitWith {
 if (_group getVariable ["AIC_ehAttached", false]) exitWith { false };
 _group setVariable ["AIC_ehAttached", true];
 
+// the leader at registration, for the morale "leaderLost" test of the UnitKilled handler
+private _gd = _cmd getOrDefault ["groupData", createHashMap];
+if (_gd isEqualType createHashMap) then {
+    private _rec = _gd getOrDefault [hashValue _group, createHashMap];
+    if (_rec isEqualType createHashMap && {count _rec > 0}) then { _rec set ["leaderUnit", leader _group]; };
+};
+
 { [_x] call _fnc_attachUnit; } forEach (units _group);
 {
     private _veh = objectParent _x;
@@ -188,6 +198,11 @@ _group addEventHandler ["UnitKilled", {
         private _queue = _cmd getOrDefault ["deadQueue", []];
         _queue pushBack _unit;
         _cmd set ["deadQueue", _queue];
+    };
+    // morale (AIC_fnc_updateGroups): the leader fell
+    if (_unit isEqualTo (_rec getOrDefault ["leaderUnit", objNull])) then {
+        _rec set ["leaderLost", true];
+        _rec set ["leaderLostTime", time];
     };
     [_group] call AIC_fnc_groupEngaged;
 }];

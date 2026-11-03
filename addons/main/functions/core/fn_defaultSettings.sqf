@@ -5,7 +5,8 @@
         Returns a fresh HashMap with the default commander settings
         (see CONTRACT.md, "Settings HashMap" and the logistics extension:
         dynamic simulation, garrisons and transport; garbage management;
-        the Jev decision model).
+        the Jev decision model; the realism extension: recon, morale,
+        order delays, night assaults).
 
     Parameters:
         None
@@ -69,5 +70,11 @@ createHashMapFromArray [
     ["jevMinConfidence", 0.3],
     ["jevInterval", 0],
     ["jevModel", "jev-latest"],
-    ["jevMaxPerMinute", 30]
+    ["jevMaxPerMinute", 30],
+
+    // --- realism (CONTRACT.md, "Realism extension")
+    ["useRecon", true],
+    ["useMorale", true],
+    ["orderDelay", 1.0],
+    ["nightAssaults", true]
 ]

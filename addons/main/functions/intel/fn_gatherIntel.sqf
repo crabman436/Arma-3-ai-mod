@@ -21,6 +21,12 @@
             (stale) data while lastSeen is within 300 s and the enemy group
             still has alive units; otherwise they are forgotten.
         Writes "knownEnemies" (array of contact records) and "enemyPower".
+          - reconnaissance: the contacts a group on task "RECON" itself
+            detected this cycle within its objective's radius plus
+            AIC_RECON_CONFIRM_RANGE confirm the objective's enemy estimate:
+            "estPower" becomes at least their summed power, "estTime" and
+            "reconSeen" are set to now (AIC_fnc_monitorOrders then ends the
+            job; AIC_fnc_updateObjectives decays the estimate from there).
 
     Parameters:
         0: HASHMAP - commander
@@ -62,13 +68,29 @@ private _previous = createHashMap;
 private _contacts = [];
 private _seen = createHashMap; // hashValue -> true for groups detected this cycle
 
+// ------------------------------------------------------------ own groups on reconnaissance
+// hashValue own group -> [objective record, HashMap hashValue enemy group -> true]
+private _reconJobs = createHashMap;
+private _groupData = _cmd getOrDefault ["groupData", createHashMap];
+if (_groupData isEqualType createHashMap) then {
+    {
+        if (_y isEqualType createHashMap && { (_y getOrDefault ["task", ""]) isEqualTo "RECON" }) then {
+            private _objId = _y getOrDefault ["objective", ""];
+            private _o = if (_objId isEqualType "") then { [_cmd, _objId] call AIC_fnc_getObjective } else { createHashMap };
+            if (count _o > 0) then { _reconJobs set [_x, [_o, createHashMap]]; };
+        };
+    } forEach _groupData;
+};
+
 // ------------------------------------------------------------ what the observers know
 // one target query per observer leader: every target it knows about with the
 // perceived position, perceived side and position error, in one engine call
 if (_observers isNotEqualTo []) then {
     private _best = createHashMap; // hashValue enemy group -> [error, pos, observer leader, probe, group]
     {
-        _x params ["", "", "_ownLeader"];
+        _x params ["", "_ownGroup", "_ownLeader"];
+        private _reconKeys = (_reconJobs getOrDefault [hashValue _ownGroup, [createHashMap, createHashMap]]) select 1;
+        private _isRecon = (hashValue _ownGroup) in _reconJobs;
         {
             _x params ["_tPos", "", "_tSide", "", "_obj", "_err"];
             // side only comes with enough knowledge: that is the detection threshold
@@ -81,6 +103,7 @@ if (_observers isNotEqualTo []) then {
             private _eg = if (_obj isKindOf "CAManBase") then { group _obj } else { group (effectiveCommander _obj) };
             if (isNull _eg) then { continue };
             private _key = hashValue _eg;
+            if (_isRecon) then { _reconKeys set [_key, true]; };
             private _cur = _best getOrDefault [_key, []];
             if (_cur isEqualTo [] || { _err < (_cur select 0) }) then {
                 _best set [_key, [_err, [_tPos select 0, _tPos select 1, 0], _ownLeader, _obj, _eg]];
@@ -120,6 +143,38 @@ if (_observers isNotEqualTo []) then {
         _seen set [_x, true];
     } forEach _best;
 };
+
+// ------------------------------------------------------------ reconnaissance confirms the estimate
+{
+    _y params ["_obj", "_keys"];
+    if (count _keys == 0) then { continue };
+    private _oPos = _obj getOrDefault ["pos", []];
+    if (!(_oPos isEqualType []) || { count _oPos < 2 }) then { continue };
+    private _oRadius = _obj getOrDefault ["radius", 300];
+    if !(_oRadius isEqualType 0) then { _oRadius = 300; };
+    private _sum = 0;
+    private _n = 0;
+    {
+        if (
+            (hashValue (_x getOrDefault ["group", grpNull])) in _keys
+            && { ((_x get "pos") distance2D _oPos) <= (_oRadius + AIC_RECON_CONFIRM_RANGE) }
+        ) then {
+            private _p = _x getOrDefault ["power", 0];
+            if (_p isEqualType 0) then { _sum = _sum + _p; };
+            _n = _n + 1;
+        };
+    } forEach _contacts;
+    if (_n > 0) then {
+        private _est = _obj getOrDefault ["estPower", 0];
+        if !(_est isEqualType 0) then { _est = 0; };
+        _obj set ["estPower", _est max _sum];
+        _obj set ["estTime", _now];
+        _obj set ["reconSeen", _now];
+        if (!isNil "AIC_ns" && { AIC_ns getOrDefault ["debug", false] isEqualTo true }) then {
+            ["gatherIntel: %1 recon reports %2 enemy groups (power %3) at '%4'", [_side, _n, _sum, _obj getOrDefault ["id", ""]]] call AIC_fnc_log;
+        };
+    };
+} forEach _reconJobs;
 
 // ------------------------------------------------------------ keep recent, not re-detected contacts
 {

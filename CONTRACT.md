@@ -127,6 +127,9 @@ User-tunable values are settings, not constants.
 | `AIC_SUPPLY_AMMO_LOW` | 0.4 | supplyCycle: weighted share of loaded real-weapon magazines below which a vehicle asks for ammo |
 | `AIC_AIRFIELD_TURNAROUND_RANGE` | 3000 | rearmCycle: a plane is down at its airfield within this of the airfield's `ilsPosition` |
 | `AIC_HELI_LAND_ATTEMPTS` | 2 | monitorOrders: returns to the park after which an idle helicopter lands where it is |
+| `AIC_MORALE_BREAK`, `AIC_MORALE_SHAKY`, `AIC_MORALE_BROKEN_TIME`, `AIC_MORALE_LEADER_RECOVER` | 0.35, 0.6, 600, 600 | morale (realism B): broken / shaky thresholds, s a broken group stays out, s a fallen leader weighs on morale (updateGroups, availableGroups, canLeaveGarrison, drainOrders; SHAKY also allocateForces, assaultCycle) |
+| `AIC_DELAY_MOVE`, `AIC_DELAY_ATTACK`, `AIC_DELAY_SUPPORT`, `AIC_DELAY_PER_KM` | 30, 90, 20, 10 | queueOrder: order delays (s) before the `"orderDelay"` multiplier |
+| `AIC_RALLY_THREAT_CONE`, `AIC_RETREAT_FIRST_LEG` | 60, 300 | rallyPoint: degrees around the threat bearing that count as "in front"; orderRetreat: first leg (m) away from the threat |
 
 ## Commander state (HashMap)
 
@@ -155,6 +158,8 @@ Created by `AIC_fnc_createCommander`. Keys (all strings):
 | `"markers"` | array of marker names created for debug | ui |
 | `"loopHandle"` | script handle | core |
 | `"teamCounter"` | number — last `"teamId"` handed out by `AIC_fnc_splitGroup` (ids start at 1) | groups |
+| `"orderQueue"` | array of `[dueTime, group, task, pos, objectiveId, force, taskTimeAtQueue, queueTime]` — planned orders waiting for their delay (realism D) | orders (`AIC_fnc_queueOrder`, `AIC_fnc_drainOrders`) |
+| `"ordersOut"` | HashMap objective id -> time: delayed ATTACK orders that went out since the last report | orders (`AIC_fnc_drainOrders`), cleared by ui (`AIC_fnc_report`) |
 | `"transportPool"` | HashMap `{"cargo" (hashValue of the cargo group), "dest", "time", "entries"}` — the candidate vehicles of the last transport search, reused by the probes of the same order (same cargo and destination, a few seconds old); see `AIC_fnc_findTransport` | logistics |
 
 Further commander keys are documented with their subsystems below:
@@ -211,6 +216,8 @@ HashMap with keys:
 - `"garrisonWatchDir"` (orders): bearing the garrison of an INF DEFEND group watches (-1 = none), written by `AIC_fnc_monitorGarrison`.
 - `"standTo"`, `"standToTime"` (logistics): set by `AIC_fnc_garrisonCycle`. `"standTo"`: a patrol called in by an approaching threat, sent back on patrol once it has gone. `"standToTime"`: last time a garrison vehicle was moved to the threatened side.
 - `"teamId"`, `"teamTime"`, `"lastSplit"` (groups): set by `AIC_fnc_splitGroup`. `"teamId"`: shared by the teams of one split squad, 0 = not a team. `"teamTime"`: split, or end of the last ride. `"lastSplit"`: `time` of the last split, kept after merging.
+- `"morale"`, `"moraleTime"`, `"leaderLost"`, `"leaderLostTime"`, `"leaderUnit"`, `"brokenUntil"` (groups, realism B): morale 0..1 (default 1) and the time it was last computed (`AIC_fnc_updateGroups`); `"leaderLost"` bool and its time, set by the UnitKilled handler of `AIC_fnc_attachGroupEHs` when the killed unit is `"leaderUnit"` (the leader at registration, refreshed by updateGroups while alive), cleared after `AIC_MORALE_LEADER_RECOVER` s; `"brokenUntil"` time until which a broken group is out of the fight. Only written while `"useMorale"` is on.
+- `"rallyObj"` (orders, realism C): objective id of the last rally point `AIC_fnc_rallyPoint` chose for the group (`""` = HQ); kept while the group is on RETREAT so repeated calls return the same place.
 - `"removed"` (groups): set to true by the `"Empty"` handler; the record is dropped by the next `AIC_fnc_registerGroups` sweep.
 - `"ownVehicles"` (groups): array of the vehicles the group drove last, written by `AIC_fnc_updateGroups`; a crew that bailed out keeps its trucks while they stand within 300 m (`"transportOnly"` test).
 - `"parkPad"` (logistics): the invisible helipad of the group's place in a base's helicopter park (`AIC_fnc_parkSlot`), objNull if none; `AIC_fnc_monitorOrders` lands a returning helicopter on it.
@@ -343,7 +350,8 @@ HashMap: `"group"`, `"task"`, `"pos"`, `"objective"` (id or `""`).
 - `AIC_fnc_roadPos` — `[pos, radius(optional, 150)] call` → `[x,y,0]` of the nearest road within the radius, else of pos.
 - `AIC_fnc_waterPos` — `[pos, from(pos or object), maxDist(optional, 1000)] call` → `[x,y,0]`: pos if it is water, else the first water point on the line towards `from` in 50 m steps; `[]` if none.
 - `AIC_fnc_orderPatrol` — `[group, pos, radius, type(optional), link(optional)] call`. 4–5 random MOVE waypoints within radius + CYCLE, SAFE/AWARE. `link` (`[]` = none): a next objective ground vehicles drive to on their round (`issueOrder` passes an owned objective within `AIC_PATROL_LINK_RANGE` for armed cars).
-- `AIC_fnc_orderRetreat` — `[group, pos] call`. Clear, MOVE fast to pos, CARELESS->AWARE on arrival, `allowFleeing 0` reset.
+- `AIC_fnc_orderRetreat` — `[group, pos, type(optional), fromPos(optional)] call`. Clear, MOVE fast to pos, CARELESS->AWARE on arrival, `allowFleeing 0` reset. With `fromPos` (or the group variable `"AIC_retreatFrom"`) a first leg away from the threat (realism C).
+- `AIC_fnc_rallyPoint`, `AIC_fnc_queueOrder`, `AIC_fnc_drainOrders` — see the realism extension, parts C and D.
 - `AIC_fnc_orderReinforce` — `[group, pos] call`. Fast move then SAD.
 - `AIC_fnc_monitorOrders` — `[commander] call`. Groups whose task is done → set `"IDLE"`; stuck groups (no movement in 180s far from target, not in contact: no enemy within 400 m, not engaged in the last 120 s, leader not in COMBAT) → re-issue with force. Awake INF groups on DEFEND are passed to `AIC_fnc_monitorGarrison`. Completion rules: ATTACK on a known objective only when that objective's `"owner"` equals the commander's side (otherwise the task is kept; if all its waypoints are done, the leader is within the arrival radius and the task is older than 600 s, it is re-issued with force as a re-sweep); ATTACK without objective / REINFORCE when near taskPos and (waypoints done or no known contact nearby), or waypoints done and > 20 min; RETREAT ground within 220 m and (waypoints done or stopped), HELI within 300 m after 30 s, PLANE within 1500 m after 60 s; SUPPORT after 600 s; PATROL/DEFEND never.
 
@@ -861,6 +869,14 @@ Builds on the belief-state intel already in place (objective `estPower`/`estTime
 - `AIC_fnc_drainOrders` — `[cmd] call`, from `commanderCycle` right after the plan is issued (and also at the start of the cycle so orders due during the sleep go out promptly): issues every due order through `issueOrder`.
 - `commanderCycle`: the plan loop calls `queueOrder` instead of `issueOrder`; everything else (garrison, transport, assault) still calls `issueOrder` directly (those are reactions, not new plans).
 - `report` tells players when a delayed attack order goes out ("Attack on X: orders issued").
+
+### As built (B, C, D) — where the code adds to or differs from the above
+
+- B: morale = `strength` − 0.15 (`leaderLost`) − 0.1 × floor(10 × men killed in `AIC_LOSS_WINDOW` / `initialSize`) + 0.1 × average skill, clamped 0..1, as a *target*: a lower target applies at once, a higher one is approached by +0.05 per cycle when calm (`lastEngaged` > 120 s) inside a held objective and **+0.02 per cycle when calm elsewhere** (otherwise a group shaken in the field, e.g. on an outpost, would stay shaky for good). Morale is computed for every group; only INF / MOTOR / MECH / ARMOR groups that are not transport-only crews and not on TRANSPORT / TRANSPORTED / RTB break. A group breaks when its morale **crosses** `AIC_MORALE_BREAK` (it must recover above it before it can break again, so a still-low group is not re-broken when `brokenUntil` runs out). The break RETREAT is issued after the update loop; the rally objective becomes the record's `"home"` (+ `"homeTime"`) so `garrisonCycle` takes the group over on arrival (monitorOrders completes RETREAT → IDLE as before). `"leaderLostTime"` and `"leaderUnit"` are extra keys; `"leaderUnit"` is refreshed every cycle to the living leader, so a successor's death also counts.
+- C: `rallyPoint` treats an objective as contested when a threat cluster is within its radius + `AIC_OBJ_THREAT_RANGE`; "behind" uses `AIC_RALLY_THREAT_CONE`; the objective the group stands in and its current record `"objective"` are excluded; when nothing is behind, the HQ is preferred over a candidate in front if the HQ itself is not in front. It writes the record's `"rallyObj"` and is sticky while the group RETREATs (same place again while still valid), so the planner calling it every cycle does not flip the order.
+- C: `issueOrder` (not owned here) calls `orderRetreat` with three parameters. The threat therefore also reaches `orderRetreat` through the group variable `"AIC_retreatFrom"` = `[threatPos, time]`, set by the caller right before `issueOrder` and consumed by `orderRetreat` (ignored when older than 5 s). The first leg is only used for INF / MOTOR / MECH / ARMOR, when the rally point is farther than the leg and the leg does not end in water.
+- D: the per-km part is the distance from the HQ to the **group's leader** (the way the order travels), not to the target; SUPPORT has no per-km part. DEFEND / PATROL of the group's own `"home"`, IDLE, RETREAT, RTB, forced orders and an order the group already has go to `issueOrder` at once (and drop any queued order of that group). A re-queued identical order keeps its due time. Queue entries carry two extra fields (`taskTimeAtQueue`, `queueTime`). `drainOrders` drops an entry when the group is dead / has no record, when its record `"taskTime"` changed since queueing **and** its task is now RETREAT, RTB, TRANSPORT, TRANSPORTED, RECON or ATTACK (the record does not say whether an order was forced; garrison routine DEFEND / PATROL / IDLE does not cancel a plan), or when the group is broken and the order is ATTACK / RECON / REINFORCE / SUPPORT / PATROL. Due orders go out infantry first, then by due time. `drainOrders` runs after `updateGroups` at the start of the cycle and right after the plan loop.
+- D: `report`: `drainOrders` notes each delayed ATTACK on an objective that went out in commander `"ordersOut"`; `report` turns each into "Attack on X: orders issued" and clears the key when a message is sent (kept while throttled).
 
 ## E. Weather and night (owner: support/strategy)
 

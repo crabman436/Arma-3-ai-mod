@@ -30,6 +30,24 @@
  *                          where it is, land "LAND", instead of flying the
  *                          RTB loop again; reset once it is on the ground).
  *     SUPPORT            : after 10 min (air sorties end in a loiter).
+ *     RECON              : the group has watched from its overwatch point
+ *                          (record "reconPos", within AIC_RECON_ARRIVE m;
+ *                          "reconArrive" = time it got there) for
+ *                          AIC_RECON_DWELL s, or AIC_fnc_gatherIntel has
+ *                          had it report contacts at the objective since
+ *                          the job began (objective "reconSeen" later than
+ *                          record "reconStart"), or AIC_RECON_TIMEOUT s
+ *                          after "reconStart", or the objective is gone.
+ *                          The objective's "reconTime" is set to now and
+ *                          its "reconGroup" cleared; the group goes back to
+ *                          AWARE / YELLOW. A group engaged since the job
+ *                          began (record "lastEngaged") ends the job the
+ *                          same way (the contact is the intel) and falls
+ *                          back to its rally point (AIC_fnc_rallyPoint,
+ *                          forced RETREAT, away from the nearest enemy).
+ *                          A recon not yet at its point that has not moved
+ *                          for AIC_STUCK_TIMEOUT s gets the same job again
+ *                          (its "reconStart" is kept).
  *     PATROL / DEFEND    : standing orders, never auto-complete. An awake
  *                          INF group on DEFEND occupies buildings through
  *                          AIC_fnc_monitorGarrison (one step per cycle).
@@ -77,6 +95,7 @@ private _changes = 0;
 private _reissue = [];
 private _attackSplits = [];
 private _goHome = [];
+private _fallBack = [];
 
 private _fnc_setIdle = {
     params ["_rec"];
@@ -189,6 +208,56 @@ private _fnc_setIdle = {
         };
     };
     private _arriveR = ((_radius * 0.6) max 100) min 300;
+
+    // --- RECON: ends after the dwell, on fresh intel, on contact or on timeout
+    if (_task == "RECON") then {
+        private _start = _rec getOrDefault ["reconStart", _taskTime];
+        if !(_start isEqualType 0) then {_start = _taskTime};
+        private _spot = _rec getOrDefault ["reconPos", []];
+        if (!(_spot isEqualType []) || {count _spot < 2}) then {_spot = _taskPos};
+        private _arrive = _rec getOrDefault ["reconArrive", -1];
+        if !(_arrive isEqualType 0) then {_arrive = -1};
+        if (_arrive < 0 && {(_leaderPos distance2D _spot) < AIC_RECON_ARRIVE}) then {
+            _arrive = time;
+            _rec set ["reconArrive", _arrive];
+        };
+        private _engaged = _rec getOrDefault ["lastEngaged", -1e6];
+        if !(_engaged isEqualType 0) then {_engaged = -1e6};
+        private _seen = _objRec getOrDefault ["reconSeen", -1e6];
+        if !(_seen isEqualType 0) then {_seen = -1e6};
+        private _outcome = switch (true) do {
+            case (count _objRec == 0): {"objective gone"};
+            case (_engaged > _start): {"engaged"};
+            case (_seen > _start): {"contacts reported"};
+            case (_arrive >= 0 && {(time - _arrive) >= AIC_RECON_DWELL}): {"watched"};
+            case ((time - _start) > AIC_RECON_TIMEOUT): {"timed out"};
+            default {""};
+        };
+        if (_outcome isEqualTo "") then {
+            // held up on the way there: the same job again
+            if (_arrive < 0 && {(time - _lastMoveTime) >= AIC_STUCK_TIMEOUT}) then {
+                private _veh = objectParent _leader;
+                if (isNull _veh || {canMove _veh}) then {_reissue pushBack [_group, _task, +_taskPos, _objId, _rec]};
+            };
+            continue;
+        };
+        if (count _objRec > 0) then {
+            _objRec set ["reconTime", time];
+            if ((_objRec getOrDefault ["reconGroup", ""]) isEqualTo (hashValue _group)) then {_objRec set ["reconGroup", ""]};
+        };
+        _rec set ["reconArrive", -1];
+        [_group] call AIC_fnc_clearWaypoints;
+        _group setBehaviour "AWARE";
+        _group setCombatMode "YELLOW";
+        [_rec] call _fnc_setIdle;
+        _changes = _changes + 1;
+        if (_outcome == "engaged") then {
+            private _enemy = _leader findNearestEnemy _leader;
+            _fallBack pushBack [_group, if (isNull _enemy) then {+_taskPos} else {getPosATL _enemy}];
+        };
+        ["%1: group %2 ends its recon of '%3' (%4)", [_side, groupId _group, _objId, _outcome]] call AIC_fnc_log;
+        continue;
+    };
 
     // --- infantry DEFEND: occupy buildings once arrived (unscheduled, one
     // step per cycle; AIC_fnc_dynSimCycle parks the group only when done).
@@ -357,6 +426,17 @@ private _fnc_setIdle = {
     [_cmd, _x, "RTB", _slot, "", true] call AIC_fnc_issueOrder;
     _changes = _changes + 1;
 } forEach _goHome;
+
+// a recon that ran into the enemy falls back to its rally point (forced: the
+// planner's next RETREAT for it is then the same order)
+{
+    _x params ["_group", "_from"];
+    if (!isNull _group) then {
+        private _rally = [_cmd, _group, _from] call AIC_fnc_rallyPoint;
+        _group setVariable ["AIC_retreatFrom", [_from, time]];
+        [_cmd, _group, "RETREAT", _rally, "", true] call AIC_fnc_issueOrder;
+    };
+} forEach _fallBack;
 
 // Re-issue outside the iteration (issueOrder may touch groupData)
 {

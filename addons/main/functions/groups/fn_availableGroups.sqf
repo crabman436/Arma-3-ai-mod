@@ -3,8 +3,11 @@
  * Description:
  *   Returns the commander's groups that can be given a manoeuvre task:
  *     - group not null and has alive units
- *     - record task is not "RETREAT", "TRANSPORT", "TRANSPORTED" or "RTB"
- *       (retreating groups and groups owned by the transport system)
+ *     - record task is not "RETREAT", "TRANSPORT", "TRANSPORTED", "RTB" or
+ *       "RECON" (retreating groups, groups owned by the transport system,
+ *       groups watching an objective)
+ *     - not broken: with setting "useMorale", record "brokenUntil" is not
+ *       later than now (a group whose morale broke stays out of the fight)
  *     - record strength is above setting "retreatThreshold"
  *     - record "transportOnly" is not true (unarmed vehicle crews are left
  *       to the transport system)
@@ -37,7 +40,8 @@ if (_groups isEqualTo [] || {!(_groupData isEqualType createHashMap)}) exitWith 
 
 private _threshold = [_commander, "retreatThreshold"] call AIC_fnc_getSetting;
 
-private _excludedTasks = ["RETREAT", "TRANSPORT", "TRANSPORTED", "RTB"];
+private _excludedTasks = ["RETREAT", "TRANSPORT", "TRANSPORTED", "RTB", "RECON"];
+private _useMorale = ([_commander, "useMorale"] call AIC_fnc_getSetting) isEqualTo true;
 
 private _upperTypes = _types apply {toUpperANSI _x};
 private _useFilter = _upperTypes isNotEqualTo [];
@@ -62,7 +66,12 @@ private _result = [];
             private _transportOnly = (_record getOrDefault ["transportOnly", false]) isEqualTo true;
             // neither do anti-air vehicles
             private _antiAir = (_record getOrDefault ["antiAir", false]) isEqualTo true;
-            if (_typeOk && {!_transportOnly} && {!_antiAir} && {!(_task in _excludedTasks)} && {_strength > _threshold}) then {
+            // a broken group (AIC_fnc_updateGroups) is out of the fight for a while
+            private _broken = _useMorale && {
+                private _until = _record getOrDefault ["brokenUntil", -1];
+                _until isEqualType 0 && {_until > time}
+            };
+            if (_typeOk && {!_transportOnly} && {!_antiAir} && {!_broken} && {!(_task in _excludedTasks)} && {_strength > _threshold}) then {
                 _result pushBack [_record getOrDefault ["power", 0], _forEachIndex];
             };
         };

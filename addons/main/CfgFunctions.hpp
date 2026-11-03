@@ -85,6 +85,10 @@ class CfgFunctions
             class bestPlace {};
             class setMarch {};
             class splitForAttack {};
+            class orderRecon {};
+            class rallyPoint {};
+            class queueOrder {};
+            class drainOrders {};
         };
 
         class support
@@ -98,6 +102,7 @@ class CfgFunctions
             class heldAirfield {};
             class rearmCycle {};
             class artilleryMagScore {};
+            class timeToNight {};
         };
 
         class logistics

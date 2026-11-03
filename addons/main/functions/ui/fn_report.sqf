@@ -32,6 +32,11 @@
             assault called off (commander "adviceAbort" [time, id], once
             per abort) and the reserve committed ("advice" "commit", once
             per stretch of commits) ("hold", "holdTime", "abort", "commit")
+          - delayed attack orders that went out: AIC_fnc_drainOrders notes
+            the objective in the commander key "ordersOut" (HashMap id ->
+            time) when a queued ATTACK is issued ("Attack on X: orders
+            issued"); the key is cleared once the message is sent, and kept
+            while throttled
         At most one message per 20 s ("time"); up to three changes are
         joined into one message. While throttled the old baseline is kept,
         so pending changes are reported on the next allowed call. The first
@@ -248,6 +253,13 @@ if (_commit && { !((_last getOrDefault ["commit", false]) isEqualTo true) }) the
     _parts pushBack "Reserve committed to the fight on the staff's advice";
 };
 
+// delayed attack orders that reached the groups (AIC_fnc_drainOrders)
+private _ordersOut = _cmd getOrDefault ["ordersOut", createHashMap];
+if !(_ordersOut isEqualType createHashMap) then { _ordersOut = createHashMap; };
+{
+    _parts pushBack format ["Attack on %1: orders issued", _objNames getOrDefault [_x, _x]];
+} forEach (keys _ordersOut);
+
 // --- nothing new: keep baseline current (forget vanished threats)
 if (_parts isEqualTo []) exitWith {
     [_last] call _fnc_storeBaseline;
@@ -259,6 +271,7 @@ if ((_now - (_last getOrDefault ["time", -1e6])) < _throttle) exitWith { false }
 
 [_last] call _fnc_storeBaseline;
 _last set ["time", _now];
+_cmd set ["ordersOut", createHashMap];
 
 private _text = (_parts select [0, 3]) joinString ". ";
 if (count _parts > 3) then { _text = _text + format [". (+%1 more)", count _parts - 3]; };

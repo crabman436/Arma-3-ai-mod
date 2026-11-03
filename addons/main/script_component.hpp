@@ -289,3 +289,83 @@
 // below this share of loaded magazines on a real weapon's turret a vehicle
 // asks for the ammo truck (supplyCycle)
 #define AIC_SUPPLY_AMMO_LOW 0.4
+
+// ---------------------------------------------------------------- realism: morale, rally points, tempo (B, C, D)
+// (each guarded: another subsystem may define the same value)
+// morale below this: the group is broken - forced RETREAT to its rally point,
+// out of every new task until "brokenUntil" (updateGroups, availableGroups,
+// canLeaveGarrison)
+#ifndef AIC_MORALE_BREAK
+#define AIC_MORALE_BREAK 0.35
+#endif
+// morale below this: shaky - allowFleeing 0.3, no new attack assignments
+// (updateGroups, allocateForces, assaultCycle)
+#ifndef AIC_MORALE_SHAKY
+#define AIC_MORALE_SHAKY 0.6
+#endif
+// s a broken group stays out of the fight (record "brokenUntil")
+#ifndef AIC_MORALE_BROKEN_TIME
+#define AIC_MORALE_BROKEN_TIME 600
+#endif
+// s after which the loss of the leader no longer weighs on morale
+#ifndef AIC_MORALE_LEADER_RECOVER
+#define AIC_MORALE_LEADER_RECOVER 600
+#endif
+// order delays (s, times setting "orderDelay"): a move elsewhere (DEFEND /
+// REINFORCE / PATROL), an ATTACK or RECON, a SUPPORT, plus s per km from the HQ
+// (queueOrder)
+#ifndef AIC_DELAY_MOVE
+#define AIC_DELAY_MOVE 30
+#endif
+#ifndef AIC_DELAY_ATTACK
+#define AIC_DELAY_ATTACK 90
+#endif
+#ifndef AIC_DELAY_SUPPORT
+#define AIC_DELAY_SUPPORT 20
+#endif
+#ifndef AIC_DELAY_PER_KM
+#define AIC_DELAY_PER_KM 10
+#endif
+// degrees: a rally point within this of the bearing to the threat is "in
+// front", not behind (rallyPoint)
+#ifndef AIC_RALLY_THREAT_CONE
+#define AIC_RALLY_THREAT_CONE 60
+#endif
+// m: first leg of a retreat, straight away from the threat (orderRetreat)
+#ifndef AIC_RETREAT_FIRST_LEG
+#define AIC_RETREAT_FIRST_LEG 300
+#endif
+
+// ---------------------------------------------------------------- realism: reconnaissance, weather and night (A, E)
+// objectives of at least this priority are scouted before a new attack
+// (allocateForces)
+#define AIC_RECON_MIN_PRIORITY 2
+// s: an objective nobody has looked at ("ownerTime") or scouted ("reconTime")
+// for this long is scouted before a new attack (allocateForces)
+#define AIC_RECON_MAX_AGE 900
+// new RECON jobs handed out per planning cycle (allocateForces)
+#define AIC_RECON_MAX_JOBS 2
+// m from the objective centre: the overwatch point of a recon (orderRecon;
+// at least radius + 250 / radius + 550 for big objectives)
+#define AIC_RECON_STANDOFF_MIN 600
+#define AIC_RECON_STANDOFF_MAX 900
+// s a recon watches from its point before the job is done (monitorOrders)
+#define AIC_RECON_DWELL 240
+// s after which a recon job ends whatever happened (monitorOrders)
+#define AIC_RECON_TIMEOUT 900
+// m: a recon group is at its overwatch point within this (monitorOrders)
+#define AIC_RECON_ARRIVE 75
+// m beyond the objective radius: contacts a RECON group sees this close to
+// its objective confirm the estimate (gatherIntel)
+#define AIC_RECON_CONFIRM_RANGE 500
+// no CAS tasking above this fog / rain (supportCycle)
+#define AIC_CAS_MAX_FOG 0.4
+#define AIC_CAS_MAX_RAIN 0.6
+// m/s: helicopters are not tasked in a wind stronger than this (supportCycle)
+#define AIC_HELI_MAX_WIND 12
+// sunOrMoon below this counts as night (timeToNight, assaultCycle,
+// garrisonBuildings)
+#define AIC_NIGHT_SUN 0.5
+// s: a staged urban assault waits for the night when it is at most this far
+// away (assaultCycle, setting "nightAssaults")
+#define AIC_NIGHT_WAIT_MAX 1800
