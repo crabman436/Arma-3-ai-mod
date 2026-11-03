@@ -52,6 +52,32 @@
  *   AIC_ADVICE_ABORT_COOLDOWN s) and "advice" "abort" holds the id for
  *   AIC_fnc_report. attack_now p > AIC_ADVICE_YES advances a staging assault
  *   as soon as any member is at the assembly area.
+ *   Phased assault (realism F): when an assault with infantry goes GO, its
+ *   groups on ATTACK get roles (assault "roles": hashValue group -> role,
+ *   read by AIC_fnc_orderAssault, which also writes the group record's
+ *   "assaultRole"):
+ *     "SBF"     - support by fire: vehicle groups with real weapons
+ *                 (AIC_fnc_vehicleWeapons) and, with 2+ infantry groups,
+ *                 the infantry group with the most machine guns (then the
+ *                 fewest men); they hold an overwatch position
+ *     "ASSAULT" - AIC_ASSAULT_SHARE of the other infantry groups (rounded
+ *                 up, at least 1), those at the assembly area and the
+ *                 strongest first; they go in
+ *     "RESERVE" - the rest (only with 3+ infantry groups), held at the
+ *                 assembly area
+ *   Groups joining later have no role and attack as before. "goPower" is the
+ *   ASSAULT groups' power at GO. The reserve is committed (ATTACK through
+ *   AIC_fnc_issueOrder with force, role ASSAULT; assault "reserveCommitted"
+ *   = time) when GO has lasted AIC_RESERVE_COMMIT_TIME s without a capture,
+ *   when the ASSAULT groups' power falls below AIC_RESERVE_POWER_FRACTION of
+ *   "goPower", or when the staff advises commit_reserve (p > AIC_ADVICE_YES,
+ *   confidence >= AIC_ADVICE_SURE; only the assault the batch was about, if
+ *   it named one). Every rule that sends the vehicles on overwatch in
+ *   (stall escalation, push) commits an uncommitted reserve first and sends
+ *   the vehicles on a later cycle; vehicles sent in become ASSAULT. The
+ *   SBF and RESERVE groups do not count for "every infantry group's
+ *   waypoints done", and the SBF infantry not for "the infantry is gone".
+ *   Without infantry, or with "stagedAssaults" off, there are no roles.
  *
  * Parameters:
  *   0: HASHMAP - commander
@@ -90,6 +116,7 @@ private _advice = _cmd getOrDefault ["advice", createHashMap];
 if !(_advice isEqualType createHashMap) then {_advice = createHashMap};
 private _attackNow = false;
 private _breakOff = false;
+private _commitAdvice = false;
 private _adviceAssault = "";
 if ((([_cmd, "jevWeight"] call AIC_fnc_getSetting) max 0) > 0 && {count _advice > 0}) then {
     private _fnc_adviceP = {
@@ -108,6 +135,139 @@ if ((([_cmd, "jevWeight"] call AIC_fnc_getSetting) max 0) > 0 && {count _advice 
         && {(time - (_cmd getOrDefault ["adviceAbortTime", -1e6])) >= AIC_ADVICE_ABORT_COOLDOWN};
     _adviceAssault = _advice getOrDefault ["_assault", ""];
     if !(_adviceAssault isEqualType "") then {_adviceAssault = ""};
+    // commit the reserve (realism F): read like break_off, as it changes a
+    // running assault
+    (["commit_reserve"] call _fnc_adviceP) params ["_pCommit", "_cCommit"];
+    _commitAdvice = _pCommit > AIC_ADVICE_YES && {_cCommit >= AIC_ADVICE_SURE};
+};
+
+// --- phased assault (realism F) -------------------------------------------------
+// the group's role in an assault ("" = none: attacks as before)
+private _fnc_role = {
+    params ["_roles", "_rec"];
+    _roles getOrDefault [hashValue (_rec getOrDefault ["group", grpNull]), ""]
+};
+// machine guns carried by the group's men (classes cached in AIC_ns "mgClasses")
+private _fnc_mgCount = {
+    params ["_grp"];
+    private _cache = AIC_ns getOrDefault ["mgClasses", createHashMap];
+    AIC_ns set ["mgClasses", _cache];
+    private _n = 0;
+    {
+        private _w = primaryWeapon _x;
+        if (_w isNotEqualTo "") then {
+            private _mg = _cache getOrDefault [_w, -1];
+            if !(_mg isEqualType true) then {
+                _mg = (([_w] call BIS_fnc_itemType) select 1) isEqualTo "MachineGun";
+                _cache set [_w, _mg];
+            };
+            if (_mg) then {_n = _n + 1};
+        };
+    } forEach ((units _grp) select {alive _x});
+    _n
+};
+// does the group crew a vehicle with real weapons?
+private _fnc_armed = {
+    params ["_grp"];
+    private _vehs = [];
+    {
+        private _v = objectParent _x;
+        if (!isNull _v && {alive _v} && {!(_v in _vehs)}) then {_vehs pushBack _v};
+    } forEach ((units _grp) select {alive _x});
+    (_vehs findIf {([_x] call AIC_fnc_vehicleWeapons) isNotEqualTo []}) >= 0
+};
+// hands out SBF / ASSAULT / RESERVE when the assault goes GO
+private _fnc_assignRoles = {
+    params ["_assault", "_list"];
+    private _inf = _list select {(_x getOrDefault ["type", ""]) isEqualTo "INF"};
+    // no infantry: the vehicles go in as before
+    if (_inf isEqualTo []) exitWith {};
+    private _roles = createHashMap;
+    {
+        if (!((_x getOrDefault ["type", ""]) isEqualTo "INF") && {[_x get "group"] call _fnc_armed}) then {
+            _roles set [hashValue (_x get "group"), "SBF"];
+        };
+    } forEach _list;
+    // the machine-gun team: most machine guns, then the smallest team
+    private _rest = +_inf;
+    if (count _inf >= 2) then {
+        private _rank = [];
+        {
+            private _i = _forEachIndex;
+            private _g = _x get "group";
+            _rank pushBack [-([_g] call _fnc_mgCount), {alive _x} count (units _g), _i];
+        } forEach _inf;
+        _rank sort true;
+        private _sbf = _rest deleteAt ((_rank select 0) select 2);
+        _roles set [hashValue (_sbf get "group"), "SBF"];
+    };
+    // the strongest groups already at the assembly area lead the assault
+    private _order = [];
+    {
+        private _lpos = getPosATL (leader (_x get "group"));
+        private _sp = _x getOrDefault ["stagePos", []];
+        private _inPlace = (_x getOrDefault ["staged", false]) isEqualTo true && {count _sp >= 2} && {(_lpos distance2D _sp) < 120};
+        private _p = _x getOrDefault ["power", 0];
+        if !(_p isEqualType 0) then {_p = 0};
+        _order pushBack [[1, 0] select _inPlace, -_p, _forEachIndex];
+    } forEach _rest;
+    _order sort true;
+    // (- 0.02: two thirds of 3 is 2, not 3)
+    private _nAssault = count _rest;
+    if (count _inf >= 3) then {
+        _nAssault = ((ceil (((count _rest) * AIC_ASSAULT_SHARE) - 0.02)) max 1) min (count _rest);
+    };
+    private _goPower = 0;
+    {
+        private _rec = _rest select (_x select 2);
+        private _role = ["RESERVE", "ASSAULT"] select (_forEachIndex < _nAssault);
+        _roles set [hashValue (_rec get "group"), _role];
+        if (_role isEqualTo "ASSAULT") then {_goPower = _goPower - (_x select 1)};
+    } forEach _order;
+    _assault set ["roles", _roles];
+    _assault set ["goPower", _goPower];
+    _assault set ["reserveCommitted", -1];
+    private _count = createHashMap;
+    {_count set [_y, (_count getOrDefault [_y, 0]) + 1]} forEach _roles;
+    ["%1: assault on '%2' roles: %3 support by fire, %4 assault, %5 reserve", [
+        _side, _assault get "id", _count getOrDefault ["SBF", 0], _count getOrDefault ["ASSAULT", 0], _count getOrDefault ["RESERVE", 0]
+    ]] call AIC_fnc_log;
+};
+// is a reserve still waiting to be committed?
+private _fnc_reserveWaits = {
+    params ["_assault", "_list"];
+    private _roles = _assault getOrDefault ["roles", createHashMap];
+    count _roles > 0 && {(_list findIf {([_roles, _x] call _fnc_role) isEqualTo "RESERVE"}) >= 0}
+};
+// the reserve goes in: ATTACK with force, role ASSAULT
+private _fnc_commitReserve = {
+    params ["_assault", "_list", "_why"];
+    private _roles = _assault getOrDefault ["roles", createHashMap];
+    private _n = 0;
+    {
+        if (([_roles, _x] call _fnc_role) isEqualTo "RESERVE") then {
+            _roles set [hashValue (_x get "group"), "ASSAULT"];
+            if ([_cmd, _x get "group", "ATTACK", _assault get "pos", _assault get "id", true] call AIC_fnc_issueOrder) then {_n = _n + 1};
+        };
+    } forEach _list;
+    // reserve groups that are no longer on the attack lose the role too
+    {
+        if ((_roles get _x) isEqualTo "RESERVE") then {_roles set [_x, "ASSAULT"]};
+    } forEach (keys _roles);
+    _assault set ["reserveCommitted", time];
+    ["%1: assault on '%2': reserve committed (%3), %4 groups go in", [_side, _assault get "id", _why, _n]] call AIC_fnc_log;
+    _n
+};
+// the vehicles (and the machine-gun team) on overwatch go in, as ASSAULT
+private _fnc_pushOverwatch = {
+    params ["_assault", "_list"];
+    private _roles = _assault getOrDefault ["roles", createHashMap];
+    {
+        if ((_x getOrDefault ["overwatch", false]) isEqualTo true) then {
+            if (([_roles, _x] call _fnc_role) isEqualTo "SBF") then {_roles set [hashValue (_x get "group"), "ASSAULT"]};
+            [_cmd, _x get "group", "ATTACK", _assault get "pos", _assault get "id", true] call AIC_fnc_issueOrder;
+        };
+    } forEach _list;
 };
 
 // where a group regroups after an aborted assault: its home garrison if we
@@ -228,7 +388,12 @@ private _started = 0;
         continue;
     };
 
-    private _hasInf = (_members findIf {(_x getOrDefault ["type", ""]) isEqualTo "INF"}) >= 0;
+    // (the machine-gun team on overwatch is not the infantry in the assault)
+    private _roles = _assault getOrDefault ["roles", createHashMap];
+    if !(_roles isEqualType createHashMap) then {_roles = createHashMap};
+    private _hasInf = (_members findIf {
+        (_x getOrDefault ["type", ""]) isEqualTo "INF" && {!(([_roles, _x] call _fnc_role) isEqualTo "SBF")}
+    }) >= 0;
     private _objRadius = _obj getOrDefault ["radius", 300];
     if !(_objRadius isEqualType 0) then {_objRadius = 300};
 
@@ -295,6 +460,8 @@ private _started = 0;
             // defenders first for a while (AIC_fnc_supportCycle)
             _cmd set ["prepTarget", [_assault get "pos", time]];
             _started = _started + 1;
+            // support by fire, assault and reserve
+            [_assault, _attacking] call _fnc_assignRoles;
             private _note = switch (true) do {
                 case (_underFire): {" (under fire)"};
                 case (_early && {_ready < (AIC_ASSAULT_READY * _power)}): {" (early, on the staff's advice)"};
@@ -308,49 +475,68 @@ private _started = 0;
             } forEach _attacking;
         };
     } else {
-        // stalled: ask for more force, fire on it again, vehicles in (once)
+        // the reserve goes in: no capture after a while, the assault bleeding,
+        // or on the staff's advice
+        if ((_assault getOrDefault ["reserveCommitted", -1]) < 0 && {[_assault, _attacking] call _fnc_reserveWaits}) then {
+            private _goPower = _assault getOrDefault ["goPower", 0];
+            if !(_goPower isEqualType 0) then {_goPower = 0};
+            private _nowPower = 0;
+            {
+                if (([_roles, _x] call _fnc_role) isEqualTo "ASSAULT") then {
+                    private _p = _x getOrDefault ["power", 0];
+                    if (_p isEqualType 0) then {_nowPower = _nowPower + _p};
+                };
+            } forEach _attacking;
+            private _why = switch (true) do {
+                case (_goAge > AIC_RESERVE_COMMIT_TIME): {format ["no capture after %1 s", round _goAge]};
+                case (_goPower > 0 && {_nowPower < (AIC_RESERVE_POWER_FRACTION * _goPower)}): {
+                    format ["assault power down to %1 of %2", round _nowPower, round _goPower]
+                };
+                case (_commitAdvice && {_adviceAssault isEqualTo "" || {_adviceAssault isEqualTo _id}}): {"on the staff's advice"};
+                default {""};
+            };
+            if (_why isNotEqualTo "") then {[_assault, _attacking, _why] call _fnc_commitReserve};
+        };
+        // stalled: ask for more force, fire on it again, reserve or vehicles in (once)
         if (_goAge > AIC_ASSAULT_STALL && {!((_assault getOrDefault ["escalated", false]) isEqualTo true)}) then {
             _assault set ["escalated", true];
             _obj set ["attackBoost", AIC_ASSAULT_BOOST];
             _cmd set ["prepTarget", [_assault get "pos", time]];
             ["%1: assault on '%2' is stalling after %3 s, more force and fire asked for", [_side, _id, round _goAge]] call AIC_fnc_log;
-            if ((_assault get "hasInf") && {(_attacking findIf {(_x getOrDefault ["overwatch", false]) isEqualTo true}) >= 0}) then {
-                _assault set ["hasInf", false];
-                {
-                    if ((_x getOrDefault ["overwatch", false]) isEqualTo true) then {
-                        [_cmd, _x get "group", "ATTACK", _assault get "pos", _id, true] call AIC_fnc_issueOrder;
-                    };
-                } forEach _attacking;
+            if ([_assault, _attacking] call _fnc_reserveWaits) then {
+                [_assault, _attacking, "the assault is stalling"] call _fnc_commitReserve;
+            } else {
+                if ((_assault get "hasInf") && {(_attacking findIf {(_x getOrDefault ["overwatch", false]) isEqualTo true}) >= 0}) then {
+                    _assault set ["hasInf", false];
+                    [_assault, _attacking] call _fnc_pushOverwatch;
+                };
             };
         };
-        // the infantry has swept the place without taking it (every infantry
-        // group's waypoints done), or the assault has run twice the push time:
-        // the vehicles on overwatch go in to tip it
+        // the infantry has swept the place without taking it (every assaulting
+        // infantry group's waypoints done), or the assault has run twice the
+        // push time: the reserve, then the vehicles on overwatch go in to tip it
         private _infDone = _hasInf && {
             (_attacking findIf {
                 (_x getOrDefault ["type", ""]) isEqualTo "INF"
+                && {!(([_roles, _x] call _fnc_role) in ["SBF", "RESERVE"])}
                 && {(currentWaypoint (_x get "group")) < (count waypoints (_x get "group"))}
             }) < 0
         };
         if ((_assault get "hasInf") && {_hasInf}
             && {(_goAge > AIC_ASSAULT_PUSH && {_infDone}) || {_goAge > 2 * AIC_ASSAULT_PUSH}}
             && {(_attacking findIf {(_x getOrDefault ["overwatch", false]) isEqualTo true}) >= 0}) then {
-            _assault set ["hasInf", false];
-            ["%1: assault on '%2' has stalled, the vehicles go in", [_side, _id]] call AIC_fnc_log;
-            {
-                if ((_x getOrDefault ["overwatch", false]) isEqualTo true) then {
-                    [_cmd, _x get "group", "ATTACK", _assault get "pos", _id, true] call AIC_fnc_issueOrder;
-                };
-            } forEach _attacking;
+            if ([_assault, _attacking] call _fnc_reserveWaits) then {
+                [_assault, _attacking, "the assault has stalled"] call _fnc_commitReserve;
+            } else {
+                _assault set ["hasInf", false];
+                ["%1: assault on '%2' has stalled, the vehicles go in", [_side, _id]] call AIC_fnc_log;
+                [_assault, _attacking] call _fnc_pushOverwatch;
+            };
         };
         // the infantry is gone: the vehicles have to go in themselves
         if ((_assault get "hasInf") && {!_hasInf}) then {
             _assault set ["hasInf", false];
-            {
-                if ((_x getOrDefault ["overwatch", false]) isEqualTo true) then {
-                    [_cmd, _x get "group", "ATTACK", _assault get "pos", _id, true] call AIC_fnc_issueOrder;
-                };
-            } forEach _attacking;
+            [_assault, _attacking] call _fnc_pushOverwatch;
         };
     };
 } forEach (keys _assaults);

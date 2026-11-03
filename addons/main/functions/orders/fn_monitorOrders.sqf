@@ -48,6 +48,21 @@
  *                          A recon not yet at its point that has not moved
  *                          for AIC_STUCK_TIMEOUT s gets the same job again
  *                          (its "reconStart" is kept).
+ *                          ATTACK on an objective also ends on capture for
+ *                          a group waiting at the assembly area (record
+ *                          "staged", e.g. an assault's RESERVE).
+ *     QRF (realism F)    : a quick-reaction force (record "role" "QRF",
+ *                          AIC_fnc_garrisonCycle) on REINFORCE / DEFEND
+ *                          away from its base (record "qrfBase": task
+ *                          position outside 1.5 x the base radius) stays on
+ *                          the job (REINFORCE does not complete) while a
+ *                          threat cluster is within the target's radius +
+ *                          AIC_OBJ_THREAT_RANGE (record "qrfThreatTime" =
+ *                          last time one was), and AIC_QRF_RELEASE s after
+ *                          that (and after the order) it gets DEFEND at its
+ *                          base with force: it is the base's QRF again (at
+ *                          once when the enemy holds the target objective).
+ *                          Settings "useQRF" and "manageGarrisons".
  *     PATROL / DEFEND    : standing orders, never auto-complete. An awake
  *                          INF group on DEFEND occupies buildings through
  *                          AIC_fnc_monitorGarrison (one step per cycle).
@@ -90,12 +105,17 @@ private _side = _cmd getOrDefault ["side", sideUnknown];
 private _enemies = _cmd getOrDefault ["knownEnemies", []];
 if !(_enemies isEqualType []) then { _enemies = []; };
 private _defRadius = [_cmd, "objectiveRadius"] call AIC_fnc_getSetting;
+private _useQRF = ([_cmd, "useQRF"] call AIC_fnc_getSetting) isEqualTo true
+    && {([_cmd, "manageGarrisons"] call AIC_fnc_getSetting) isEqualTo true};
+private _threats = _cmd getOrDefault ["threats", []];
+if !(_threats isEqualType []) then { _threats = []; };
 
 private _changes = 0;
 private _reissue = [];
 private _attackSplits = [];
 private _goHome = [];
 private _fallBack = [];
+private _qrfHome = [];
 
 private _fnc_setIdle = {
     params ["_rec"];
@@ -132,6 +152,38 @@ private _fnc_setIdle = {
         _rec set ["lastMoveTime", time];
     };
     private _lastMoveTime = _rec getOrDefault ["lastMoveTime", time];
+
+    // --- a quick-reaction force away from its base (before the parked test:
+    // a QRF parked on a quiet DEFEND job must still be called home)
+    private _qrfOut = false;
+    if (_useQRF && {(_rec getOrDefault ["role", ""]) isEqualTo "QRF"} && {_task in ["REINFORCE", "DEFEND"]}
+        && {_taskPos isEqualType []} && {count _taskPos >= 2}) then {
+        private _base = [_cmd, _rec getOrDefault ["qrfBase", ""]] call AIC_fnc_getObjective;
+        private _bPos = _base getOrDefault ["pos", []];
+        private _bRadius = _base getOrDefault ["radius", 300];
+        if !(_bRadius isEqualType 0) then { _bRadius = 300; };
+        if (count _bPos >= 2 && {(_taskPos distance2D _bPos) > (_bRadius * 1.5)}) then {
+            _qrfOut = true;
+            private _jobObj = [_cmd, _rec getOrDefault ["objective", ""]] call AIC_fnc_getObjective;
+            private _jobR = _jobObj getOrDefault ["radius", 150];
+            if !(_jobR isEqualType 0) then { _jobR = 150; };
+            // (a place the enemy has taken is no job for a QRF: home at once)
+            private _jobOwner = _jobObj getOrDefault ["owner", _side];
+            private _jobLost = !(_jobOwner isEqualTo _side) && {!(_jobOwner isEqualTo sideUnknown)};
+            if (!_jobLost && {(_threats findIf {
+                _x isEqualType createHashMap && {((_x getOrDefault ["pos", [0, 0, 0]]) distance2D _taskPos) <= (_jobR + AIC_OBJ_THREAT_RANGE)}
+            }) >= 0}) then {
+                _rec set ["qrfThreatTime", time];
+            } else {
+                private _calm = _rec getOrDefault ["qrfThreatTime", -1e6];
+                if !(_calm isEqualType 0) then { _calm = -1e6; };
+                if (_jobLost || {(time - (_calm max _taskTime)) > AIC_QRF_RELEASE}) then {
+                    _qrfHome pushBack [_group, _base];
+                    continue;
+                };
+            };
+        };
+    };
 
     // Parked groups are frozen on purpose: never treat them as stuck
     if (dynamicSimulationEnabled _group || {(_rec getOrDefault ["parked", false]) isEqualTo true}) then {
@@ -285,7 +337,8 @@ private _fnc_setIdle = {
                 // Until then the task/objective stay, so issueOrder's
                 // same-objective skip keeps the group from being re-ordered.
                 ((_objRec getOrDefault ["owner", sideUnknown]) isEqualTo _side)
-                && {_dist < _arriveR || {_wpDone} || {(_rec getOrDefault ["overwatch", false]) isEqualTo true}}
+                && {_dist < _arriveR || {_wpDone} || {(_rec getOrDefault ["overwatch", false]) isEqualTo true}
+                    || {(_rec getOrDefault ["staged", false]) isEqualTo true}}
                 && {_age > 30}
             } else {
                 private _near = _dist < _arriveR;
@@ -317,6 +370,8 @@ private _fnc_setIdle = {
         case "SUPPORT": { _age > 600 };
         default { false };
     };
+    // a QRF stays on its job until AIC_QRF_RELEASE s after the threat
+    if (_qrfOut) then { _done = false; };
     if (_done) then {
         if (_task in ["RETREAT", "RTB"]) then {
             _group setBehaviour "AWARE";
@@ -437,6 +492,19 @@ private _fnc_setIdle = {
         [_cmd, _group, "RETREAT", _rally, "", true] call AIC_fnc_issueOrder;
     };
 } forEach _fallBack;
+
+// a quick-reaction force whose job is done goes back to its base and is its
+// QRF again (AIC_fnc_garrisonCycle keeps the role while home is the base)
+{
+    _x params ["_group", "_base"];
+    if (!isNull _group) then {
+        ["%1: QRF group %2 returns to '%3', the threat has gone", [_side, groupId _group, _base get "id"]] call AIC_fnc_log;
+        private _rec = _groupData getOrDefault [hashValue _group, createHashMap];
+        _rec deleteAt "qrfThreatTime";
+        [_cmd, _group, "DEFEND", _base get "pos", _base get "id", true] call AIC_fnc_issueOrder;
+        _changes = _changes + 1;
+    };
+} forEach _qrfHome;
 
 // Re-issue outside the iteration (issueOrder may touch groupData)
 {

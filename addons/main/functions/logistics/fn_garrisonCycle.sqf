@@ -38,7 +38,25 @@
                  the planner sent them to, else the nearest. They are sent
                  there, whatever their settled task, after AIC_DEPOT_DELAY s
                  and never with another group's troops aboard.
+               - a base's quick-reaction force (record "role" "QRF", see
+                 2a) keeps the base as home: it never joins another
+                 garrison while idle elsewhere, nor adopts an objective it
+                 defends, it is sent back to the base instead.
           2. AIC_fnc_garrisonStatus is recomputed.
+          2a. Quick-reaction forces (setting "useQRF"; realism F). A QRF
+             keeps its role (record "role" "QRF", "qrfBase" = base id)
+             while its base is still held and still its home, it is not
+             broken (setting "useMorale", record "brokenUntil") and its
+             task is IDLE / DEFEND / PATROL / REINFORCE (a REINFORCE away
+             is its job, AIC_fnc_allocateForces / AIC_fnc_monitorOrders);
+             otherwise, or when it is a second QRF of the same base, the
+             role is cleared. A held base (objective "isBase", owned) without
+             a QRF gets one: its strongest MOTOR / MECH group (power) with
+             home there, at the base, task IDLE / DEFEND / PATROL, strength
+             >= 0.7, not transport-only, not anti-air and, with "useMorale",
+             morale >= AIC_MORALE_SHAKY and not broken. A QRF is never a
+             transfer donor (3.) and never patrols (4.). With "useQRF" off
+             every role is cleared.
           3. Transfers. Objectives whose deficit (desired - present -
              incoming) is more than 2 power for AIC_DEFICIT_CYCLES cycles in
              a row (objective key "deficitCycles", so a threat cluster that
@@ -146,6 +164,14 @@ private _firstRun = !((_cmd getOrDefault ["homesAssigned", false]) isEqualTo tru
 private _settleTasks = ["IDLE", "DEFEND", "PATROL"];
 private _COOLDOWN = 600; // s a group must stay at a new home before it can be moved again
 private _donorTypes = ["INF", "MOTOR", "MECH", "ARMOR"];
+private _useQRF = ([_cmd, "useQRF"] call AIC_fnc_getSetting) isEqualTo true;
+private _useMorale = ([_cmd, "useMorale"] call AIC_fnc_getSetting) isEqualTo true;
+
+// a base's quick-reaction force (2a)
+private _fnc_isQrf = {
+    params ["_rec"];
+    _useQRF && { (_rec getOrDefault ["role", ""]) isEqualTo "QRF" }
+};
 
 // radius helper
 private _fnc_radius = {
@@ -261,9 +287,11 @@ private _sentHome = 0;
             };
         };
 
-        // DEFENDing an owned objective (allocateForces, transport drop) -> it is now home
+        // DEFENDing an owned objective (allocateForces, transport drop) -> it
+        // is now home (a QRF's home stays its base)
+        private _qrf = [_rec] call _fnc_isQrf;
         private _curObj = _rec getOrDefault ["objective", ""];
-        if (!_depot && { _task isEqualTo "DEFEND" } && { _curObj isEqualType "" } && { _curObj in _homeIds } && { _curObj isNotEqualTo _home }) then {
+        if (!_depot && { !_qrf } && { _task isEqualTo "DEFEND" } && { _curObj isEqualType "" } && { _curObj in _homeIds } && { _curObj isNotEqualTo _home }) then {
             if (_home isNotEqualTo "") then { _rec set ["homeTime", time]; };
             _home = _curObj;
         };
@@ -283,7 +311,7 @@ private _sentHome = 0;
                 if (_home isEqualTo "") then { _home = _hqId; };
             } else {
                 // idle away from home: join a local garrison
-                if (_task isEqualTo "IDLE" && { _home in _homeIds } && { !([_grp, _objById get _home] call _fnc_atObjective) }) then {
+                if (_task isEqualTo "IDLE" && { !_qrf } && { _home in _homeIds } && { !([_grp, _objById get _home] call _fnc_atObjective) }) then {
                     private _local = [_leaderPos] call _fnc_nearestHome;
                     if (_local isNotEqualTo "") then { _home = _local; };
                 };
@@ -327,6 +355,84 @@ _cmd set ["homesAssigned", true];
 if (_homesOnly) exitWith { 0 };
 private _status = [_cmd] call AIC_fnc_garrisonStatus;
 
+// ------------------------------------------------------------ 2a. quick-reaction forces
+private _baseIds = (_homes select { (_x getOrDefault ["isBase", false]) isEqualTo true }) apply { _x get "id" };
+private _qrfHeld = createHashMap; // base id -> true: it has its QRF
+private _fnc_broken = {
+    params ["_rec"];
+    private _until = _rec getOrDefault ["brokenUntil", -1];
+    _useMorale && { _until isEqualType 0 } && { _until > time }
+};
+// keep or clear the roles handed out earlier
+{
+    _x params ["_grp", "_rec"];
+    if ((_rec getOrDefault ["role", ""]) isNotEqualTo "QRF") then { continue };
+    private _base = _rec getOrDefault ["qrfBase", ""];
+    if !(_base isEqualType "") then { _base = ""; };
+    private _task = _rec getOrDefault ["task", "IDLE"];
+    private _why = switch (true) do {
+        case (!_useQRF): { "quick-reaction forces are off" };
+        case (!(_base in _baseIds)): { "its base is no longer held" };
+        case (_base in _qrfHeld): { "the base has one already" };
+        case ((_rec getOrDefault ["home", ""]) isNotEqualTo _base): { "it has a new home" };
+        case ([_rec] call _fnc_broken): { "it is broken" };
+        case (!(_task in ["IDLE", "DEFEND", "PATROL", "REINFORCE"])): { format ["it is on %1", _task] };
+        default { "" };
+    };
+    if (_why isEqualTo "") then {
+        _qrfHeld set [_base, true];
+    } else {
+        _rec deleteAt "role";
+        _rec deleteAt "qrfBase";
+        _rec deleteAt "qrfThreatTime";
+        ["garrisonCycle: %1 group %2 is no longer the QRF of '%3', %4", [_side, groupId _grp, _base, _why]] call AIC_fnc_log;
+    };
+} forEach _entries;
+// every held base without one gets its strongest ready motorised / mechanised group
+if (_useQRF) then {
+    {
+        private _baseId = _x;
+        if (_baseId in _qrfHeld) then { continue };
+        private _baseObj = _objById get _baseId;
+        private _best = [];
+        private _bestPower = -1;
+        {
+            _x params ["_grp", "_rec"];
+            private _power = _rec getOrDefault ["power", 0];
+            if !(_power isEqualType 0) then { _power = 0; };
+            private _morale = _rec getOrDefault ["morale", 1];
+            if !(_morale isEqualType 0) then { _morale = 1; };
+            private _strength = _rec getOrDefault ["strength", 1];
+            if !(_strength isEqualType 0) then { _strength = 1; };
+            if (
+                _power > _bestPower
+                && { (_rec getOrDefault ["type", ""]) in ["MOTOR", "MECH"] }
+                && { (_rec getOrDefault ["role", ""]) isNotEqualTo "QRF" }
+                && { (_rec getOrDefault ["home", ""]) isEqualTo _baseId }
+                && { (_rec getOrDefault ["task", "IDLE"]) in _settleTasks }
+                && { _strength >= 0.7 }
+                && { !((_rec getOrDefault ["transportOnly", false]) isEqualTo true) }
+                && { !((_rec getOrDefault ["antiAir", false]) isEqualTo true) }
+                && { !_useMorale || { _morale >= AIC_MORALE_SHAKY } }
+                && { !([_rec] call _fnc_broken) }
+                && { [_grp, _baseObj] call _fnc_atObjective }
+            ) then {
+                _best = _x;
+                _bestPower = _power;
+            };
+        } forEach _entries;
+        if (_best isNotEqualTo []) then {
+            _best params ["_grp", "_rec"];
+            _rec set ["role", "QRF"];
+            _rec set ["qrfBase", _baseId];
+            _qrfHeld set [_baseId, true];
+            ["garrisonCycle: %1 group %2 (%3, power %4) is the QRF of '%5'", [
+                _side, groupId _grp, _rec getOrDefault ["type", ""], round _bestPower, _baseId
+            ]] call AIC_fnc_log;
+        };
+    } forEach _baseIds;
+};
+
 // ------------------------------------------------------------ 3. transfers
 private _moves = 0;
 
@@ -355,6 +461,8 @@ if (_maxMoves > 0 && { _deficits isNotEqualTo [] }) then {
         (_rec getOrDefault ["type", ""]) in _donorTypes
         && { !((_rec getOrDefault ["transportOnly", false]) isEqualTo true) }
         && { !((_rec getOrDefault ["antiAir", false]) isEqualTo true) }
+        // a base's quick-reaction force stays where it is
+        && { !([_rec] call _fnc_isQrf) }
         && { (_rec getOrDefault ["task", "IDLE"]) in _settleTasks }
         && { (_rec getOrDefault ["strength", 1]) > _threshold }
         // transfer cooldown: a group that changed home recently stays put
@@ -473,6 +581,8 @@ private _mix = createHashMap;
             && { (_rec getOrDefault ["type", ""]) in ["INF", "MOTOR"] }
             && { !((_rec getOrDefault ["antiAir", false]) isEqualTo true) }
             && { !((_rec getOrDefault ["transportOnly", false]) isEqualTo true) }
+            // the quick-reaction force stands ready, it does not patrol
+            && { !([_rec] call _fnc_isQrf) }
             && { !([_homeObj, _status getOrDefault [_home, createHashMap]] call _fnc_alert) };
         private _task = if (_patrol) then { "PATROL" } else { "DEFEND" };
         if ([_cmd, _grp, _task, _homeObj get "pos", _home] call AIC_fnc_issueOrder) then {

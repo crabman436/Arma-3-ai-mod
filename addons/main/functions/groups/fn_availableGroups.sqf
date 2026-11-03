@@ -13,11 +13,16 @@
  *       to the transport system)
  *     - type filter: if a non-empty types array is given, only groups whose
  *       record type is in it; otherwise every type except "STATIC" and "ARTY".
+ *     - not a base's quick-reaction force (record "role" "QRF", set by
+ *       AIC_fnc_garrisonCycle while settings "useQRF" and "manageGarrisons"
+ *       are on), unless param 2 is true: AIC_fnc_allocateForces takes the
+ *       QRF only for DEFEND targets near its base and filters it itself.
  *   Groups without a record are ignored.
  *
  * Parameters:
  *   0: HASHMAP - commander
  *   1: ARRAY   - (optional) allowed type strings, e.g. ["HELI","PLANE"]. Default: []
+ *   2: BOOL    - (optional) include quick-reaction forces. Default: false
  *
  * Returns:
  *   ARRAY - groups, sorted by descending power
@@ -29,7 +34,8 @@
 
 params [
     ["_commander", createHashMap, [createHashMap]],
-    ["_types", [], [[]]]
+    ["_types", [], [[]]],
+    ["_includeQRF", false, [false]]
 ];
 
 if (count _commander == 0) exitWith {[]};
@@ -42,6 +48,10 @@ private _threshold = [_commander, "retreatThreshold"] call AIC_fnc_getSetting;
 
 private _excludedTasks = ["RETREAT", "TRANSPORT", "TRANSPORTED", "RTB", "RECON"];
 private _useMorale = ([_commander, "useMorale"] call AIC_fnc_getSetting) isEqualTo true;
+// a base's quick-reaction force is kept for the base (AIC_fnc_garrisonCycle)
+private _skipQRF = !_includeQRF
+    && {([_commander, "useQRF"] call AIC_fnc_getSetting) isEqualTo true}
+    && {([_commander, "manageGarrisons"] call AIC_fnc_getSetting) isEqualTo true};
 
 private _upperTypes = _types apply {toUpperANSI _x};
 private _useFilter = _upperTypes isNotEqualTo [];
@@ -71,7 +81,8 @@ private _result = [];
                 private _until = _record getOrDefault ["brokenUntil", -1];
                 _until isEqualType 0 && {_until > time}
             };
-            if (_typeOk && {!_transportOnly} && {!_antiAir} && {!_broken} && {!(_task in _excludedTasks)} && {_strength > _threshold}) then {
+            private _qrf = _skipQRF && {(_record getOrDefault ["role", ""]) isEqualTo "QRF"};
+            if (_typeOk && {!_qrf} && {!_transportOnly} && {!_antiAir} && {!_broken} && {!(_task in _excludedTasks)} && {_strength > _threshold}) then {
                 _result pushBack [_record getOrDefault ["power", 0], _forEachIndex];
             };
         };

@@ -227,6 +227,14 @@ class CfgVehicles
                 typeName = "BOOL";
                 defaultValue = "true";
             };
+            class UseQRF: Checkbox
+            {
+                property = "AIC_ModuleCommander_UseQRF";
+                displayName = "Quick-reaction forces";
+                tooltip = "Each held base keeps its best motorised or mechanised group ready as a quick-reaction force. It answers attacks on our positions within 5 km and returns to its base once the threat is gone.";
+                typeName = "BOOL";
+                defaultValue = "true";
+            };
             class ModuleDescription: ModuleDescription {};
         };
 

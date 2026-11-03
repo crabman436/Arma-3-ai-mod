@@ -350,6 +350,7 @@ if (_task isEqualTo "TRANSPORTED") exitWith {
 // --- Dispatch ----------------------------------------------------------------
 _record set ["staged", false];
 _record set ["overwatch", false];
+_record set ["assaultRole", ""];
 // a new order ends any landing (only AIC_fnc_transportCycle lands at an LZ)
 if (_type == "HELI") then {
     private _air = objectParent (leader _group);

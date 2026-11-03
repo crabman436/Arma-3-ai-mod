@@ -26,7 +26,9 @@
           - "incoming": power of groups whose home is this objective but are
             still on their way (DEFEND / PATROL / IDLE outside the radius,
             TRANSPORTED with a ride ending at this objective) or away on a
-            ride (TRANSPORT / RTB vehicle groups). Also the power of groups
+            ride (TRANSPORT / RTB vehicle groups), or the base's quick-reaction
+            force out on a REINFORCE job (record "role" "QRF"; it also counts
+            at the place it reinforces, see below). Also the power of groups
             sent to reinforce this objective by AIC_fnc_allocateForces (task
             REINFORCE, or TRANSPORTED with a final REINFORCE, record
             "objective" = this id, home elsewhere). Lets
@@ -162,8 +164,10 @@ private _objById = createHashMap; // id -> objective record (only the garrisoned
             } else {
                 // a transport on a ride (or driving back) still belongs to its
                 // home: counting it keeps the home from asking for a refill
-                // every time one of its vehicles gives somebody a lift
-                if (_task in ["TRANSPORT", "RTB"]) then {
+                // every time one of its vehicles gives somebody a lift; the
+                // same for a base's quick-reaction force out on a job
+                // (record "role" "QRF", AIC_fnc_garrisonCycle), which comes back
+                if (_task in ["TRANSPORT", "RTB"] || { _task isEqualTo "REINFORCE" && { (_rec getOrDefault ["role", ""]) isEqualTo "QRF" } }) then {
                     _entry set ["incoming", (_entry get "incoming") + _power];
                 } else {
                     // cargo only counts for the home its ride ends at

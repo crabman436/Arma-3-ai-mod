@@ -184,12 +184,13 @@ change them live through `(_cmd get "settings") set [key, value]`.
 | `orderDelay` | 1.0 | Multiplier on the time planned orders take to reach the groups; 0 = at once (the old behaviour) |
 | `useRecon` | true | Before attacking an important objective with stale intel, send a small group to watch it first |
 | `nightAssaults` | true | Staged assaults on towns wait for the night when it is less than 30 minutes away |
+| `useQRF` | true | Each held base keeps its best motorised / mechanised group ready as a quick-reaction force for attacks within 5 km (needs `manageGarrisons`; see "Phased assaults, reserves and quick-reaction forces") |
 
 The Eden module sets Side, Aggression, LoopInterval, UseArtillery, UseAir,
 AutoObjectives, DebugMarkers, ReportToPlayers, ManageDynSim, ManageGarrisons,
 UseTransport, ManageCleanup, SplitPassengers, DynamicSquads, StagedAssaults,
-SpreadGroups, UseVehicleParks, UseSupplyTrucks, GarrisonManStatics, UseMorale
-and UseRecon. The others keep their defaults. The settings
+SpreadGroups, UseVehicleParks, UseSupplyTrucks, GarrisonManStatics, UseMorale,
+UseRecon and UseQRF. The others keep their defaults. The settings
 for parking, garrisons and transport are listed in the next section, the
 cleanup settings in "Performance and cleanup".
 
@@ -653,6 +654,39 @@ garrisons post twice the sentries at their edge (up to half of each group).
 
 **Weather.** No close air support in fog above 0.4 or rain above 0.6, and no
 helicopter sorties in wind above 12 m/s. Artillery fires in any weather.
+
+### Phased assaults, reserves and quick-reaction forces
+
+**Phased assaults** (part of `stagedAssaults`). When a staged assault with
+infantry goes in, every group gets a job:
+
+- **Support by fire**: the vehicles with real weapons and one infantry team,
+  the one with the most machine guns (or the smallest), take up an overwatch
+  position about 250 m outside the objective and fire in support, on open
+  ground as well as at a town.
+- **Assault**: two thirds of the other infantry groups (rounded up), those
+  already at the assembly area and the strongest first, go in at a walk on a
+  broad front.
+- **Reserve**: the rest wait at the assembly area. With fewer than three
+  infantry groups there is no reserve (in practice it takes four: one is the
+  machine-gun team and two thirds of two rounds up to two).
+
+The reserve is committed when the place has not fallen four minutes after
+the assault went in, when the assaulting groups are down to 60 % of their
+strength, or when the Jev staff advises committing the reserve; HQ reports
+"Reserve committed on X". A stalling assault sends in the reserve before it
+sends the vehicles on overwatch in. Groups that arrive later simply attack.
+
+**Quick-reaction forces** (`useQRF`, with `manageGarrisons`). Every base the
+general holds keeps its strongest motorised or mechanised group that is at the
+base, at 70 % strength or more and not shaken as its quick-reaction force
+(QRF). The QRF does not patrol, is never moved to another garrison, never
+gives rides and never joins an attack or a recon. When a place of ours within
+5 km of its base is threatened, it is the first group sent to reinforce it.
+Five minutes after the last enemy force near that place was seen (at once if
+the enemy took it) it drives back to its base and is the QRF again. A QRF
+that breaks, retreats or gets a new home loses the role, and the base picks a
+new one.
 
 ### Mission-maker tip
 

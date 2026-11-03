@@ -32,6 +32,10 @@
             assault called off (commander "adviceAbort" [time, id], once
             per abort) and the reserve committed ("advice" "commit", once
             per stretch of commits) ("hold", "holdTime", "abort", "commit")
+          - an assault's reserve committed (realism F, assault
+            "reserveCommitted" set by AIC_fnc_assaultCycle): "Reserve
+            committed on X", once per assault ("reserves": assault key ->
+            objective id)
           - delayed attack orders that went out: AIC_fnc_drainOrders notes
             the objective in the commander key "ordersOut" (HashMap id ->
             time) when a queued ATTACK is issued ("Attack on X: orders
@@ -112,6 +116,16 @@ if (_abortRec isEqualType [] && { count _abortRec >= 2 } && { (_abortRec select 
 };
 private _commit = (_advice getOrDefault ["commit", false]) isEqualTo true;
 
+// assaults whose reserve went in (AIC_fnc_assaultCycle): assault key -> objective id
+private _reserves = createHashMap;
+private _assaults = _cmd getOrDefault ["assaults", createHashMap];
+if !(_assaults isEqualType createHashMap) then { _assaults = createHashMap; };
+{
+    if !(_y isEqualType createHashMap) then { continue };
+    private _t = _y getOrDefault ["reserveCommitted", -1];
+    if (_t isEqualType 0 && { _t >= 0 }) then { _reserves set [_y getOrDefault ["key", _x], _x]; };
+} forEach _assaults;
+
 private _fnc_storeBaseline = {
     params ["_last"];
     _last set ["stance", _stance];
@@ -127,6 +141,7 @@ private _fnc_storeBaseline = {
     };
     _last set ["abort", _abort];
     _last set ["commit", _commit];
+    _last set ["reserves", _reserves];
 };
 
 // --- first call: baseline + greeting
@@ -252,6 +267,13 @@ if (_abort != "" && { _abort != (_last getOrDefault ["abort", ""]) }) then {
 if (_commit && { !((_last getOrDefault ["commit", false]) isEqualTo true) }) then {
     _parts pushBack "Reserve committed to the fight on the staff's advice";
 };
+
+// assault reserves committed, each announced once
+private _lastReserves = _last getOrDefault ["reserves", createHashMap];
+if !(_lastReserves isEqualType createHashMap) then { _lastReserves = createHashMap; };
+{
+    if !(_x in _lastReserves) then { _parts pushBack format ["Reserve committed on %1", _objNames getOrDefault [_y, _y]]; };
+} forEach _reserves;
 
 // delayed attack orders that reached the groups (AIC_fnc_drainOrders)
 private _ordersOut = _cmd getOrDefault ["ordersOut", createHashMap];

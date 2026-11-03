@@ -369,3 +369,30 @@
 // s: a staged urban assault waits for the night when it is at most this far
 // away (assaultCycle, setting "nightAssaults")
 #define AIC_NIGHT_WAIT_MAX 1800
+
+// ---------------------------------------------------------------- realism: phased assaults, reserve and QRF (F)
+// s an assault may be in GO without a capture before its reserve is
+// committed (assaultCycle)
+#ifndef AIC_RESERVE_COMMIT_TIME
+#define AIC_RESERVE_COMMIT_TIME 240
+#endif
+// the reserve is committed when the ASSAULT groups' power falls below this
+// share of their power at GO (assaultCycle, assault "goPower")
+#ifndef AIC_RESERVE_POWER_FRACTION
+#define AIC_RESERVE_POWER_FRACTION 0.6
+#endif
+// share of the infantry (after the support-by-fire team) that goes in as
+// the ASSAULT element, rounded up; the rest is the RESERVE (assaultCycle)
+#ifndef AIC_ASSAULT_SHARE
+#define AIC_ASSAULT_SHARE 0.67
+#endif
+// m: a base's quick-reaction force answers DEFEND targets this close to the
+// base (allocateForces)
+#ifndef AIC_QRF_RANGE
+#define AIC_QRF_RANGE 5000
+#endif
+// s without a threat cluster near its target after which a deployed QRF
+// goes back to its base (monitorOrders, record "qrfThreatTime")
+#ifndef AIC_QRF_RELEASE
+#define AIC_QRF_RELEASE 300
+#endif

@@ -6,7 +6,7 @@
         (see CONTRACT.md, "Settings HashMap" and the logistics extension:
         dynamic simulation, garrisons and transport; garbage management;
         the Jev decision model; the realism extension: recon, morale,
-        order delays, night assaults).
+        order delays, night assaults, quick-reaction forces).
 
     Parameters:
         None
@@ -76,5 +76,6 @@ createHashMapFromArray [
     ["useRecon", true],
     ["useMorale", true],
     ["orderDelay", 1.0],
-    ["nightAssaults", true]
+    ["nightAssaults", true],
+    ["useQRF", true]
 ]

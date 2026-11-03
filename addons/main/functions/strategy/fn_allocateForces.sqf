@@ -96,6 +96,16 @@
  *   Morale (setting "useMorale"): a group whose record "morale" is below
  *   AIC_MORALE_SHAKY joins no attack it is not already on.
  *
+ *   Quick-reaction forces (settings "useQRF" and "manageGarrisons"; record
+ *   "role" "QRF", "qrfBase", AIC_fnc_garrisonCycle): a QRF is in the pool
+ *   (AIC_fnc_availableGroups with QRFs) but is only staffed onto DEFEND
+ *   targets within AIC_QRF_RANGE of its base, never onto an attack, a recon
+ *   or a patrol, whatever its garrison's surplus; it is the cheapest
+ *   candidate there (cost x 0.2) and goes as REINFORCE to any target but its
+ *   own base. A QRF still on such a job when the target is no longer
+ *   threatened keeps its order (AIC_fnc_monitorOrders sends it home
+ *   AIC_QRF_RELEASE s later).
+ *
  *   Logistics extension:
  *   - Groups on a TRANSPORT, TRANSPORTED or RTB task are never planned (the
  *     transport system owns them). TRANSPORTED groups count toward the
@@ -236,6 +246,8 @@ private _stableWindow = 300;
 
 private _useRecon = ([_cmd, "useRecon"] call AIC_fnc_getSetting) isEqualTo true;
 private _useMorale = ([_cmd, "useMorale"] call AIC_fnc_getSetting) isEqualTo true;
+// quick-reaction forces exist only with the garrison system (AIC_fnc_garrisonCycle)
+private _useQRF = _manageGarrisons && {([_cmd, "useQRF"] call AIC_fnc_getSetting) isEqualTo true};
 
 // ---------------------------------------------------------------------------
 // Jev advice (AIC_fnc_jevAdvisor), weight 0 = ignore
@@ -359,6 +371,8 @@ private _fnc_cost = {
     private _cost = (_dist * (_travelMult getOrDefault [_type, 1])) / (_suit max 0.1);
     // continuity bonus: already working on this target
     if ([_info, _target] call _fnc_onTarget) then {_cost = _cost * 0.5};
+    // a base's quick-reaction force answers first (only DEFEND targets reach here)
+    if ((_info get "qrfBase") != "") then {_cost = _cost * 0.2};
     // a town is taken by infantry: vehicles join once there is some
     if (_type != "INF" && {(_target get "task") == "ATTACK"} && {_target get "urban"}
         && {((_target get "members") findIf {((_x select 0) get "type") == "INF"}) < 0}) then {
@@ -408,9 +422,17 @@ private _fnc_outpostOk = {
     && {((_info get "outpost") distance2D (_target get "pos")) < AIC_THREAT_RADIUS}
 };
 
+// a quick-reaction force answers DEFEND targets near its base, nothing else
+private _fnc_qrfOk = {
+    params ["_info", "_target"];
+    (_target get "task") == "DEFEND"
+    && {((_info get "qrfPos") distance2D (_target get "pos")) <= AIC_QRF_RANGE}
+};
+
 // side-effect free estimate of AIC_fnc_canLeaveGarrison (feasibility / candidate lists)
 private _fnc_mayLeave = {
     params ["_info", "_target"];
+    if ((_info get "qrfBase") != "") exitWith {[_info, _target] call _fnc_qrfOk};
     if ((_info get "outpost") isNotEqualTo []) exitWith {[_info, _target] call _fnc_outpostOk};
     if (!_manageGarrisons || {!(_info get "garrisoned")}) exitWith {true};
     if ([_info, _target] call _fnc_isHome) exitWith {true};
@@ -429,6 +451,7 @@ private _fnc_mayLeave = {
 // commit-time check: asks AIC_fnc_canLeaveGarrison (reserves the surplus)
 private _fnc_takeFromGarrison = {
     params ["_info", "_target"];
+    if ((_info get "qrfBase") != "") exitWith {[_info, _target] call _fnc_qrfOk};
     if ((_info get "outpost") isNotEqualTo []) exitWith {[_info, _target] call _fnc_outpostOk};
     if (!_manageGarrisons || {!(_info get "garrisoned")}) exitWith {true};
     if ([_info, _target] call _fnc_isHome) exitWith {true};
@@ -518,7 +541,7 @@ private _fnc_takeFromGarrison = {
 // ---------------------------------------------------------------------------
 // 2. Pool of manoeuvre groups
 // ---------------------------------------------------------------------------
-private _available = [_cmd] call AIC_fnc_availableGroups;
+private _available = [_cmd, [], true] call AIC_fnc_availableGroups;
 if (isNil "_available" || {!(_available isEqualType [])}) then {_available = []};
 
 private _pool = []; // array of info hashmaps
@@ -554,6 +577,17 @@ private _pool = []; // array of info hashmaps
     // shaken (AIC_fnc_updateGroups): no new attack
     private _morale = _rec getOrDefault ["morale", 1];
     if !(_morale isEqualType 0) then {_morale = 1};
+    // a base's quick-reaction force (AIC_fnc_garrisonCycle), while it holds the base
+    private _qrfBase = "";
+    private _qrfPos = [];
+    if (_useQRF && {(_rec getOrDefault ["role", ""]) isEqualTo "QRF"}) then {
+        private _base = [_cmd, _rec getOrDefault ["qrfBase", ""]] call AIC_fnc_getObjective;
+        private _bPos = _base getOrDefault ["pos", []];
+        if ((_base getOrDefault ["owner", sideUnknown]) isEqualTo _side && {_bPos isEqualType []} && {count _bPos >= 2}) then {
+            _qrfBase = _base get "id";
+            _qrfPos = [_bPos select 0, _bPos select 1, 0];
+        };
+    };
 
     _pool pushBack createHashMapFromArray [
         ["group", _grp],
@@ -569,7 +603,9 @@ private _pool = []; // array of info hashmaps
         ["taskPos", _taskPos],
         ["taskTime", _taskTime],
         ["outpost", _outpost],
-        ["shaky", _useMorale && {_morale < AIC_MORALE_SHAKY}]
+        ["shaky", _useMorale && {_morale < AIC_MORALE_SHAKY}],
+        ["qrfBase", _qrfBase],
+        ["qrfPos", _qrfPos]
     ];
 } forEach _available;
 
@@ -1069,6 +1105,8 @@ private _staffedAttackTargets = [];
             private _d = (_best get "pos") distance2D (_target get "pos");
             if (_d > ((_target get "radius") * 2) max 600) then {_gTask = "REINFORCE"};
         };
+        // the QRF reinforces and keeps its base (it comes back afterwards)
+        if ((_best get "qrfBase") != "" && {!([_best, _target] call _fnc_isHome)}) then {_gTask = "REINFORCE"};
         private _eff = (_best get "power") * ([_best get "type", _task, _target get "urban"] call _fnc_suit);
         _target set ["committed", (_target get "committed") + _eff];
         (_target get "members") pushBack [_best, _gTask];
@@ -1128,7 +1166,7 @@ private _ownIds = _ownObjectives apply {_x get "id"};
     private _gpos = _info get "pos";
 
     // OFFENSIVE: pile onto the nearest staffed attack
-    if (_stance == "OFFENSIVE" && {_staffedAttackTargets isNotEqualTo []} && {!(_info get "shaky")}) then {
+    if (_stance == "OFFENSIVE" && {_staffedAttackTargets isNotEqualTo []} && {!(_info get "shaky")} && {(_info get "qrfBase") == ""}) then {
         private _bestT = objNull;
         private _bestD = 1e12;
         {
@@ -1180,6 +1218,13 @@ if (_manageGarrisons) then {
         private _recTask = _info get "task";
         if !(_recTask in ["ATTACK", "REINFORCE", "SUPPORT"]) then {continue};
         private _recObj = _info get "objective";
+        // a QRF whose target is quiet now stays until AIC_fnc_monitorOrders
+        // sends it home (AIC_QRF_RELEASE); the same order is skipped by issueOrder
+        if ((_info get "qrfBase") != "" && {_recTask == "REINFORCE"}
+            && {(_info get "taskPos") isEqualType []} && {count (_info get "taskPos") >= 2}) then {
+            [_info get "group", _recTask, _info get "taskPos", _recObj] call _fnc_assign;
+            continue;
+        };
         private _home = _info get "home";
         private _dest = call {
             // an objective it reinforced, or just captured (updateObjectives

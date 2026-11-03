@@ -6,7 +6,8 @@
         group to a destination (server only).
         Candidates are own groups (records in "groupData") of type MOTOR,
         MECH or HELI where:
-          - the task is IDLE, DEFEND or PATROL;
+          - the task is IDLE, DEFEND or PATROL, and it is not a base's
+            quick-reaction force (record "role" "QRF");
           - not engaged in the last 60 s, and for anything but a transport-only
             crew: its home garrison is not threatened (no threat cluster near
             it, "threat" of its "garrisons" entry is 0), so a town under attack
@@ -134,6 +135,8 @@ if (_fresh) then {
         if !((_rec getOrDefault ["task", "IDLE"]) in ["IDLE", "DEFEND", "PATROL"]) then { continue };
         if (_grp getVariable ["AIC_exclude", false]) then { continue };
         if ((_rec getOrDefault ["antiAir", false]) isEqualTo true) then { continue };
+        // a base's quick-reaction force (AIC_fnc_garrisonCycle) is no taxi
+        if ((_rec getOrDefault ["role", ""]) isEqualTo "QRF") then { continue };
         // a threatened garrison keeps its vehicles (trucks and other
         // transport-only crews defend nothing, they stay available)
         private _home = _rec getOrDefault ["home", ""];
