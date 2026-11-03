@@ -160,7 +160,11 @@ private _objectives = (_cmd getOrDefault ["objectives", []]) select {
     && { (_x getOrDefault ["id", ""]) isEqualType "" } && { (_x getOrDefault ["id", ""]) != "" }
     && { (_x getOrDefault ["pos", []]) isEqualType [] } && { count (_x getOrDefault ["pos", []]) >= 2 }
 };
-private _sortable = _objectives apply { [[_x getOrDefault ["score", 0], 0] call _fnc_num, _forEachIndex] };
+// _forEachIndex only exists inside forEach, not apply
+private _sortable = [];
+{
+    _sortable pushBack [[_x getOrDefault ["score", 0], 0] call _fnc_num, _forEachIndex];
+} forEach _objectives;
 _sortable sort false;
 private _ownObjs = _objectives select { (_x getOrDefault ["owner", sideUnknown]) isEqualTo _side };
 
