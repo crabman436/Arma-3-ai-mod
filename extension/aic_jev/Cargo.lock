@@ -13,7 +13,7 @@ dependencies = [
 
 [[package]]
 name = "aic_jev"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "arma-rs",
  "serde_json",

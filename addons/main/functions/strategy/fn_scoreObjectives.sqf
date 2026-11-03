@@ -19,6 +19,8 @@
  *                    power: min(25 * rel, 30) * (1.2 - aggression)
  *   Threat power considered = sum of "power" of threat clusters whose centre
  *   is within (radius + 700 m) of the objective.
+ *   Jev advice (commander "advice" "main_effort", AIC_fnc_jevAdvisor): the
+ *   objective the staff officer names scores x(1 + jevWeight x confidence).
  *
  * Parameters:
  *   0: HASHMAP - commander
@@ -60,6 +62,21 @@ private _distScale = switch (_stance) do {
     case "DEFENSIVE": {1.5};
     case "OFFENSIVE": {0.75};
     default {1};
+};
+
+// Jev advice (AIC_fnc_jevAdvisor): the main effort scores x(1 + weight x confidence)
+private _advice = _cmd getOrDefault ["advice", createHashMap];
+if !(_advice isEqualType createHashMap) then {_advice = createHashMap};
+private _mainEffort = "";
+private _mainBonus = 1;
+private _mainRec = _advice getOrDefault ["main_effort", createHashMap];
+if (_mainRec isEqualType createHashMap && {count _mainRec > 0}) then {
+    _mainEffort = _mainRec getOrDefault ["value", ""];
+    if !(_mainEffort isEqualType "") then {_mainEffort = ""};
+    private _conf = _mainRec getOrDefault ["confidence", 0];
+    if !(_conf isEqualType 0) then {_conf = 0};
+    private _weight = (([_cmd, "jevWeight"] call AIC_fnc_getSetting) max 0) min 1;
+    _mainBonus = 1 + _weight * ((_conf max 0) min 1);
 };
 
 {
@@ -110,6 +127,9 @@ private _distScale = switch (_stance) do {
                     // held by a friendly third side
                     _base * 0.2 - _distPenalty * 0.5
                 };
+            };
+            if (_mainEffort != "" && {(_obj getOrDefault ["id", ""]) isEqualTo _mainEffort}) then {
+                _score = (_score max 0) * _mainBonus;
             };
 
             _obj set ["score", (round ((_score max 0) * 100)) / 100];

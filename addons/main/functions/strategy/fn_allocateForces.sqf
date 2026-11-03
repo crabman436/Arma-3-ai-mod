@@ -76,6 +76,21 @@
  *       - damaged groups still RETREAT; once at HQ they DEFEND it with
  *         objective "BASE_HQ", so the garrison system adopts them.
  *
+ *   Jev advice (commander "advice", AIC_fnc_jevAdvisor; "jevWeight" 0 = off):
+ *   - commit_reserve p > 0.5: the reserve ratio is multiplied by
+ *     1 - w (p - 0.5) 2 x 0.75 (never below 0.05); with garrisons on, the
+ *     bases' desired garrison in "garrisons" shrinks by the same share for
+ *     this step, so AIC_fnc_canLeaveGarrison lets the guard go. "advice"
+ *     "commit" is set.
+ *   - attack_now p < AIC_ADVICE_NO, intel_stale p > AIC_ADVICE_YES, or risk
+ *     >= AIC_ADVICE_RISKY with confidence >= AIC_ADVICE_SURE: no NEW attack
+ *     target (objective or counter-attack) is staffed this cycle; targets
+ *     already being fought for continue. When an attack was held back,
+ *     "advice" "hold_reason" / "hold_target" are set for AIC_fnc_report.
+ *   - an objective whose assault AIC_fnc_assaultCycle called off on advice
+ *     (commander "adviceAbort" [time, id]) gets no new attack for
+ *     AIC_ADVICE_ABORT_COOLDOWN s.
+ *
  *   The plan is stored in the commander under "plan" and returned.
  *
  * Parameters:
@@ -149,6 +164,67 @@ private _hqObjId = if (_manageGarrisons && {AIC_BASE_ID in _garrisons}) then {AI
 
 private _now = time;
 private _stableWindow = 300;
+
+// ---------------------------------------------------------------------------
+// Jev advice (AIC_fnc_jevAdvisor), weight 0 = ignore
+// ---------------------------------------------------------------------------
+private _advice = _cmd getOrDefault ["advice", createHashMap];
+if !(_advice isEqualType createHashMap) then {_advice = createHashMap};
+private _jevWeight = (([_cmd, "jevWeight"] call AIC_fnc_getSetting) max 0) min 1;
+private _fnc_adviceValue = {
+    params ["_qid", "_default"];
+    private _rec = _advice getOrDefault [_qid, createHashMap];
+    if !(_rec isEqualType createHashMap) exitWith {_default};
+    private _v = _rec getOrDefault ["value", _default];
+    if !(_v isEqualType _default) exitWith {_default};
+    _v
+};
+private _holdReason = "";
+private _heldTarget = "";
+if (_jevWeight > 0 && {count _advice > 0}) then {
+    // commit the reserve: a smaller share stays back (never below 5 %); with
+    // garrisons on, the reserve is the guard of the bases, so their desired
+    // garrison shrinks by the same share for this planner step (the garrison
+    // cycle recomputes it afterwards)
+    private _pCommit = ["commit_reserve", 0.5] call _fnc_adviceValue;
+    if (_pCommit > 0.5) then {
+        private _cut = (_jevWeight * (_pCommit - 0.5) * 2 * 0.75) min 0.95;
+        _reserveRatio = (_reserveRatio * (1 - _cut)) max 0.05;
+        {
+            private _entry = _y;
+            if !(_entry isEqualType createHashMap) then {continue};
+            private _objRec = [_cmd, _x] call AIC_fnc_getObjective;
+            if (_x == AIC_BASE_ID || {(_objRec getOrDefault ["isBase", false]) isEqualTo true}) then {
+                private _desired = _entry getOrDefault ["desired", 0];
+                if !(_desired isEqualType 0) then {_desired = 0};
+                private _surplus = _entry getOrDefault ["surplus", 0];
+                if !(_surplus isEqualType 0) then {_surplus = 0};
+                _entry set ["desired", _desired * (1 - _cut)];
+                _entry set ["surplus", _surplus + _desired * _cut];
+            };
+        } forEach _garrisons;
+        _advice set ["commit", true];
+    };
+
+    // no new attack this cycle on bad advice; attacks already running go on
+    private _riskRec = _advice getOrDefault ["risk", createHashMap];
+    if !(_riskRec isEqualType createHashMap) then {_riskRec = createHashMap};
+    private _riskConf = _riskRec getOrDefault ["confidence", 0];
+    if !(_riskConf isEqualType 0) then {_riskConf = 0};
+    _holdReason = switch (true) do {
+        case ((["attack_now", 1] call _fnc_adviceValue) < AIC_ADVICE_NO): {"the staff advises against attacking now"};
+        case ((["intel_stale", 0] call _fnc_adviceValue) > AIC_ADVICE_YES): {"intel too old"};
+        case ((["risk", 0] call _fnc_adviceValue) >= AIC_ADVICE_RISKY && {_riskConf >= AIC_ADVICE_SURE}): {"the plan is too risky"};
+        default {""};
+    };
+};
+// an assault the staff called off (AIC_fnc_assaultCycle) is not restarted within the cooldown
+private _abortedId = "";
+private _abort = _cmd getOrDefault ["adviceAbort", []];
+if (_abort isEqualType [] && {count _abort >= 2} && {(_abort select 0) isEqualType 0}
+    && {(_now - (_abort select 0)) < AIC_ADVICE_ABORT_COOLDOWN} && {(_abort select 1) isEqualType ""}) then {
+    _abortedId = _abort select 1;
+};
 
 private _plan = [];
 private _handled = createHashMap; // hashValue group -> true
@@ -655,6 +731,16 @@ private _staffedAttackTargets = [];
         (_cands findIf {[_x get "task", _task] call _fnc_taskFits && {[_x, _target] call _fnc_onTarget}}) >= 0
     };
 
+    // Jev advice: no new attack while the staff says hold, and none on an
+    // objective it just called off; attacks already being fought for go on
+    if (_task == "ATTACK" && {!_holding}) then {
+        if (_holdReason != "") then {
+            if (_heldTarget == "") then {_heldTarget = _target get "name"};
+            continue;
+        };
+        if (_isObjAttack && {_abortedId != ""} && {(_target get "id") == _abortedId}) then {continue};
+    };
+
     // attack cap (targets that are already being fought for keep their slot)
     if (_isObjAttack && {_attacksStaffed >= _attackCap} && {!_holding}) then {continue};
     private _availEff = 0;
@@ -728,6 +814,15 @@ private _staffedAttackTargets = [];
         if (_task == "ATTACK") then {_staffedAttackTargets pushBack _target};
     };
 } forEach _targets;
+
+// an attack was actually held back on advice: AIC_fnc_report tells the players
+if (_heldTarget != "") then {
+    _advice set ["hold_reason", _holdReason];
+    _advice set ["hold_target", _heldTarget];
+    if (!isNil "AIC_ns" && { AIC_ns getOrDefault ["debug", false] isEqualTo true }) then {
+        ["%1 plan: new attack on %2 held back, %3", [_side, _heldTarget, _holdReason]] call AIC_fnc_log;
+    };
+};
 
 // emit target assignments
 {

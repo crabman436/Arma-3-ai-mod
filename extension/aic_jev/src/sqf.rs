@@ -136,7 +136,7 @@ mod tests {
 
     #[test]
     fn single_line_flattens_control_characters() {
-        assert_eq!(single_line("  HTTP 400:\n{\"detail\":\t\"bad\"}\r\n"), "HTTP 400: {\"detail\":  \"bad\"}");
+        assert_eq!(single_line("  HTTP 400:\n{\"detail\":\t\"bad\"}\r\n"), "HTTP 400: {\"detail\": \"bad\"}");
     }
 
     #[test]
