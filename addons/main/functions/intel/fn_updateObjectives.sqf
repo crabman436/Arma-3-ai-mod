@@ -12,12 +12,32 @@
             together -> that side owns it;
           - nobody present -> previous owner is kept;
           - otherwise (contested) -> sideUnknown.
+        No omniscience: a change of owner is only taken when the commander
+        can see it: an own group leader within the radius plus
+        AIC_OBSERVE_RANGE, the new owner is the own side, or the previous
+        owner was (losing one's own town is noticed). Otherwise the last
+        known owner stays. "ownerTime" is the time the owner was last
+        confirmed, "prevOwner" the owner before the last change (sideUnknown
+        until one), so a contested town whose "prevOwner" is the own side is
+        a town of ours under attack.
         Bases ("isBase" true, including "BASE_HQ") are sticky: they keep
         their owner while nobody / a mixed force / a friendly side is there,
         and only change hands when an enemy of the current owner actually
         holds them (2:1 rule). A base without an owner (sideUnknown) that
         has source "BASE" (BASE_HQ, own "aic_base_<side>" markers) falls
         back to the commander's side unless an enemy holds it.
+        Enemy estimate ("estPower", "estTime"): the enemy power believed to
+        be at the objective, from the contacts seen within AIC_EST_FRESH s
+        inside the radius plus AIC_OBJ_THREAT_RANGE. With an own leader
+        inside the objective or the objective ours, it is what is seen now;
+        a fresh sighting elsewhere raises it to at least what was seen; with
+        nothing seen it halves every AIC_EST_HALF_LIFE s. The planner sizes
+        attacks on it, so a garrison seen once is not forgotten when the
+        contacts expire.
+        The HQ follows the bases: while "BASE_HQ" is held by an enemy, the
+        commander's "hq" (rally / retreat point) is the nearest owned base
+        to it, else the nearest owned objective; once it is held again the
+        "hq" moves back.
         Also picks up "aic_obj*" and own "aic_base_<side>*" markers created
         after the commander started, and a missing "BASE_HQ" (re-runs
         AIC_fnc_collectObjectives if one is found).
@@ -81,6 +101,13 @@ if (count ([civilian] call AIC_fnc_getCommander) > 0) then {
 };
 
 private _entityTypes = ["CAManBase", "LandVehicle", "Ship", "Air"];
+private _now = time;
+
+// what the commander can see: its leaders, and the contacts they reported
+private _observers = ((_cmd getOrDefault ["groups", []]) select { !isNull _x && { alive leader _x } }) apply { getPosATL leader _x };
+private _contacts = (_cmd getOrDefault ["knownEnemies", []]) select {
+    _x isEqualType createHashMap && { count (_x getOrDefault ["pos", []]) >= 2 }
+};
 
 {
     private _obj = _x;
@@ -118,6 +145,7 @@ private _entityTypes = ["CAManBase", "LandVehicle", "Ship", "Air"];
         } forEach _counts;
 
         private _prevOwner = _obj getOrDefault ["owner", sideUnknown];
+        if !(_prevOwner isEqualType sideUnknown) then { _prevOwner = sideUnknown; };
         private _owner = call {
             if (_total == 0) exitWith { _prevOwner };
             if (_topCount > 2 * (_total - _topCount)) exitWith { _topSide };
@@ -140,15 +168,96 @@ private _entityTypes = ["CAManBase", "LandVehicle", "Ship", "Air"];
             };
         };
 
+        // no omniscience: a change is only seen with own eyes on the place,
+        // or when it concerns the own side (we hold it, or we held it)
+        private _eyesOn = (_observers findIf { (_x distance2D _pos) <= _radius }) >= 0;
+        private _observed = _eyesOn
+            || { _owner isEqualTo _cmdSide }
+            || { _prevOwner isEqualTo _cmdSide }
+            || { (_observers findIf { (_x distance2D _pos) <= (_radius + AIC_OBSERVE_RANGE) }) >= 0 };
+        if (_observed) then {
+            _obj set ["ownerTime", _now];
+        } else {
+            _owner = _prevOwner;
+        };
+        if !("prevOwner" in _obj) then { _obj set ["prevOwner", sideUnknown]; };
+
         if (_owner isNotEqualTo _prevOwner) then {
+            _obj set ["prevOwner", _prevOwner];
             _obj set ["owner", _owner];
             if (!isNil "AIC_ns" && { AIC_ns getOrDefault ["debug", false] isEqualTo true }) then {
                 ["updateObjectives: %1 '%2' owner %3 -> %4 (%5)", [
-                    _cmd getOrDefault ["side", sideUnknown], _obj getOrDefault ["name", ""], _prevOwner, _owner, _counts toArray false
+                    _cmdSide, _obj getOrDefault ["name", ""], _prevOwner, _owner, _counts toArray false
                 ]] call AIC_fnc_log;
             };
         };
+
+        // enemy estimate: contacts seen lately around the objective, decaying
+        // slowly while nothing is seen, reset to what is seen with eyes on it
+        private _estRange = _radius + AIC_OBJ_THREAT_RANGE;
+        private _seen = 0;
+        {
+            if (((_x get "pos") distance2D _pos) <= _estRange && { (_now - (_x getOrDefault ["lastSeen", -1e6])) <= AIC_EST_FRESH }) then {
+                private _p = _x getOrDefault ["power", 0];
+                if (_p isEqualType 0) then { _seen = _seen + _p; };
+            };
+        } forEach _contacts;
+        private _est = _obj getOrDefault ["estPower", 0];
+        if !(_est isEqualType 0) then { _est = 0; };
+        private _estTime = _obj getOrDefault ["estTime", _now];
+        if !(_estTime isEqualType 0) then { _estTime = _now; };
+        private _decayed = _est * (0.5 ^ (((_now - _estTime) max 0) / AIC_EST_HALF_LIFE));
+        if (_decayed < 0.5) then { _decayed = 0; };
+        private _newEst = call {
+            if (_eyesOn || { _owner isEqualTo _cmdSide }) exitWith { _seen };
+            if (_seen > 0) exitWith { _seen max _decayed };
+            _decayed
+        };
+        _obj set ["estPower", _newEst];
+        _obj set ["estTime", _now];
     };
 } forEach _objectives;
+
+// ------------------------------------------------------------ the HQ follows the bases
+// a lost "BASE_HQ" is no rally point: retreats, RTBs and the reserve go to
+// the nearest owned base instead (the nearest owned objective without one),
+// and come back once it is retaken
+private _hqObj = [_cmd, AIC_BASE_ID] call AIC_fnc_getObjective;
+if (count _hqObj > 0) then {
+    private _hqPos = _hqObj getOrDefault ["pos", []];
+    private _rally = [];
+    if ((_hqObj getOrDefault ["owner", sideUnknown]) isEqualTo _cmdSide) then {
+        _rally = _hqPos;
+    } else {
+        if (_hqPos isEqualType [] && { count _hqPos >= 2 }) then {
+            private _fnc_nearestOwned = {
+                params ["_basesOnly"];
+                private _best = [];
+                private _bestD = 1e12;
+                {
+                    private _p = _x getOrDefault ["pos", []];
+                    if (
+                        (_x getOrDefault ["owner", sideUnknown]) isEqualTo _cmdSide
+                        && { !_basesOnly || { (_x getOrDefault ["isBase", false]) isEqualTo true } }
+                        && { _p isEqualType [] } && { count _p >= 2 }
+                        && { (_p distance2D _hqPos) < _bestD }
+                    ) then { _bestD = _p distance2D _hqPos; _best = _p; };
+                } forEach _objectives;
+                _best
+            };
+            _rally = [true] call _fnc_nearestOwned;
+            if (_rally isEqualTo []) then { _rally = [false] call _fnc_nearestOwned; };
+        };
+    };
+    private _cur = _cmd getOrDefault ["hq", []];
+    if (_rally isEqualType [] && { count _rally >= 2 }
+        && { !(_cur isEqualType []) || { count _cur < 2 } || { (_cur distance2D _rally) > 1 } }) then {
+        _cmd set ["hq", [_rally select 0, _rally select 1, 0]];
+        ["updateObjectives: %1 HQ %2, the rally point moves to %3", [
+            _cmdSide, ["is held by the enemy", "is ours again"] select ((_hqObj getOrDefault ["owner", sideUnknown]) isEqualTo _cmdSide),
+            _rally apply { round _x }
+        ]] call AIC_fnc_log;
+    };
+};
 
 _objectives

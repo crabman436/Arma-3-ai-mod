@@ -40,6 +40,17 @@ Keys of `AIC_ns`:
 | `"debug"` | bool, default false | `AIC_fnc_log` also echoes to `systemChat`; extra debug logging in subsystems |
 | `"version"` | string, `"1.0.0"` | mod version |
 | `"defaultSettings"` | HashMap, `AIC_fnc_defaultSettings` built once by `AIC_fnc_preInit` | read only by `AIC_fnc_getSetting` (never modified) |
+| `"jev"` | HashMap, the Jev client state (see the Jev extension section) | created by `AIC_fnc_preInit`, owned by the `jev` functions |
+| `"vehicleTypeClasses"` | HashMap: vehicle class -> type string | `AIC_fnc_vehicleType` cache, never cleared |
+| `"turretWeaponsClasses"` | HashMap: vehicle class -> `[[turretPath, [weapons]], ...]` | `AIC_fnc_vehicleWeapons` cache, never cleared |
+| `"armamentClasses"` | HashMap: vehicle class -> 0 / 1 / 2 | `AIC_fnc_vehicleArmament` cache, never cleared |
+| `"antiAirClasses"` | HashMap: vehicle class -> bool | `AIC_fnc_isAntiAir` cache, never cleared |
+| `"supplyRolesClasses"` | HashMap: vehicle class -> array of `"repair"` / `"fuel"` / `"ammo"` | `AIC_fnc_supplyRoles` cache, never cleared (callers get a copy) |
+| `"aaLauncherClasses"` | HashMap: launcher weapon class -> bool (fires `airLock` 2 ammunition) | `AIC_fnc_airDefence` cache, never cleared |
+| `"airfields"`, `"airfieldsRead"` | array `[[id, [x,y,0]], ...]` from the world config, bool (read once, also when the world has none) | `AIC_fnc_airfields` cache, never cleared |
+
+The per-class caches are created lazily by the function that owns them
+(`getOrDefault` + `set`), so they exist only once that function ran.
 
 - Lazy-init guard in entry points: `if (isNil "AIC_ns") then { call AIC_fnc_preInit; };`
   (`AIC_fnc_preInit` is idempotent: it keeps existing keys and adds missing ones).
@@ -127,6 +138,14 @@ Created by `AIC_fnc_createCommander`. Keys (all strings):
 | `"lastAirTime"` | number | support |
 | `"markers"` | array of marker names created for debug | ui |
 | `"loopHandle"` | script handle | core |
+| `"teamCounter"` | number — last `"teamId"` handed out by `AIC_fnc_splitGroup` (ids start at 1) | groups |
+| `"transportPool"` | HashMap `{"cargo" (hashValue of the cargo group), "dest", "time", "entries"}` — the candidate vehicles of the last transport search, reused by the probes of the same order (same cargo and destination, a few seconds old); see `AIC_fnc_findTransport` | logistics |
+
+Further commander keys are documented with their subsystems below:
+`"garrisons"` (logistics, `AIC_fnc_garrisonStatus`), `"assaults"` (strategy,
+`AIC_fnc_assaultFor`), `"prepTarget"` (support), `"lastReport"` (ui),
+`"objectiveIndex"` / `"deadQueue"` (performance extension) and the Jev keys
+(`"advice"`, `"adviceTime"`, ...).
 
 ### Settings HashMap (`"settings"`) and defaults
 
@@ -175,6 +194,16 @@ HashMap with keys:
 - `"standTo"`, `"standToTime"` (logistics): set by `AIC_fnc_garrisonCycle`. `"standTo"`: a patrol called in by an approaching threat, sent back on patrol once it has gone. `"standToTime"`: last time a garrison vehicle was moved to the threatened side.
 - `"teamId"`, `"teamTime"`, `"lastSplit"` (groups): set by `AIC_fnc_splitGroup`. `"teamId"`: shared by the teams of one split squad, 0 = not a team. `"teamTime"`: split, or end of the last ride. `"lastSplit"`: `time` of the last split, kept after merging.
 - `"removed"` (groups): set to true by the `"Empty"` handler; the record is dropped by the next `AIC_fnc_registerGroups` sweep.
+- `"ownVehicles"` (groups): array of the vehicles the group drove last, written by `AIC_fnc_updateGroups`; a crew that bailed out keeps its trucks while they stand within 300 m (`"transportOnly"` test).
+- `"parkPad"` (logistics): the invisible helipad of the group's place in a base's helicopter park (`AIC_fnc_parkSlot`), objNull if none; `AIC_fnc_monitorOrders` lands a returning helicopter on it.
+- `"standToFrom"` (logistics): `"PATROL"` or `"DEFEND"`, what a stood-to group (`"standTo"`) goes back to once the threat is gone, written by `AIC_fnc_garrisonCycle`.
+- `"assaultId"`, `"assaultLane"`, `"assaultAxis"`, `"assaultRow"` (orders): the group's place in a staged assault (`AIC_fnc_orderAssault`): the assault key, its lane across the front, its approach axis (0 straight in, 1 / 2 the sides) and its row behind the first wave. `"staged"` / `"stagePos"` (at the assembly area) and `"overwatch"` are reset to false by every `issueOrder` dispatch.
+- Transport bookkeeping (logistics, owned by `AIC_fnc_orderTransport` and `AIC_fnc_transportCycle`, valid only while the task is `TRANSPORT` / `TRANSPORTED`): `"transportVeh"`, `"pickupPos"`, `"dropPos"`, `"wpLoad"`, `"wpUnload"`, `"wpGetIn"`, `"cargoOutTime"`, `"transportPhase"` (`"PICKUP"`, `"RIDE"`, `"RALLY"`, `""`), `"phaseTime"`, `"rideLimit"`, `"getInFallback"`, `"getInFallbackTime"`, `"nearPickupTime"`, `"nearDropTime"`, `"hoverTime"`, `"landOrderTime"`, `"approachTime"`, `"pickupLzMoved"`, `"dropLzMoved"`, `"hotLzMoved"`, `"statusTime"`; each is described in the header of `fn_orderTransport.sqf` (set up) and `fn_transportCycle.sqf` (phases).
+
+Unit / vehicle / group variables of the orders and logistics code not listed elsewhere (all server-local):
+- group `"AIC_transportVehicle"`: the vehicle `AIC_fnc_findTransport` chose for a transport group (also set by `issueOrder` for a carrier a squad already sits in), consumed and cleared by `AIC_fnc_orderTransport`.
+- vehicle `"AIC_landOrderTime"`: `time` `AIC_fnc_dismountCarrier` last told a flying helicopter to land (repeated at most every 45 s).
+- unit `"AIC_garrisonStance"`: `"UP"` (building) or `"MIDDLE"` (perimeter, sentry post), set by `AIC_fnc_garrisonBuildings`, applied by `AIC_fnc_monitorGarrison`, cleared by `AIC_fnc_clearWaypoints`.
 
 Orders notes: the order functions (`orderAttack/Defend/Patrol` take an optional 4th param, `orderRetreat/Reinforce` an optional 3rd param) accept the group type string; `""` means classify on the fly. No order function spawns a script. `AIC_fnc_clearWaypoints` increments group variable `"AIC_orderToken"` (local, not broadcast), which only invalidates the record's garrison state (`"garrisonToken"`), clears the unit variables `"AIC_garrisonPos"` and the group variable `"AIC_airLoiterWp"`, and calls `doFollow` on all units. `AIC_fnc_issueOrder` updates the record even for STATIC/ARTY groups (they fight in place without waypoints), creates a minimal record if the group is not registered yet, and returns true when the record was updated. Task `"SUPPORT"` for HELI/PLANE = SAD over pos + LOITER at HQ (it does not call `AIC_fnc_tasksAir`, so `tasksAir` may freely call `issueOrder`); like `tasksAir` it stores the LOITER waypoint index in the group variable `"AIC_airLoiterWp"`, which `supportCycle` uses to see when the aircraft is free again.
 
@@ -216,18 +245,20 @@ HashMap: `"group"`, `"task"`, `"pos"`, `"objective"` (id or `""`).
 - `AIC_fnc_getSetting` — `[commander, key] call` → value (falls back to the default when the key is missing or the value has the wrong type; an empty commander reads the defaults).
 - `AIC_fnc_defaultSettings` — `[] call` → new HashMap of default settings.
 - `AIC_fnc_commanderLoop` — `[commander] spawn`. While `"enabled"`: call `AIC_fnc_commanderCycle`, `sleep loopInterval`.
-- `AIC_fnc_commanderCycle` — `[commander] call`. One full think step, in order:
+- `AIC_fnc_commanderCycle` — `[commander] call`. One full think step, in order (the numbers are the comments in `fn_commanderCycle.sqf`):
   1. `AIC_fnc_registerGroups` (pick up new groups, drop dead)
   2. `AIC_fnc_updateGroups` (strength/power refresh)
   3. `AIC_fnc_gatherIntel`
   4. `AIC_fnc_clusterThreats`
   5. `AIC_fnc_updateObjectives`
-  6. `AIC_fnc_determineStance`
+  6. `AIC_fnc_jevAdvisor` (last cycle's answers become `"advice"`, the next batch is asked), then `AIC_fnc_determineStance`
   7. `AIC_fnc_scoreObjectives`
-  8. `AIC_fnc_garrisonCycle` with homes only (when `manageGarrisons`: assign homes, recompute `garrisonStatus`, no orders), then `AIC_fnc_allocateForces` → plan; then for each assignment `AIC_fnc_issueOrder`
-  9. `AIC_fnc_monitorOrders`
-  10. `AIC_fnc_supportCycle`
-  11. `AIC_fnc_updateDebugMarkers` (if `debugMarkers`) and `AIC_fnc_report`
+  8. `AIC_fnc_garrisonCycle` with homes only (when `manageGarrisons`: assign homes, recompute `garrisonStatus`, no orders), then `AIC_fnc_allocateForces` → plan; then for each assignment `AIC_fnc_issueOrder`, infantry entries first (vehicles are staffed first by the planner, so in plan order an APC would be gone before the squad next to it asks for a ride)
+  9. `AIC_fnc_garrisonCycle`, `AIC_fnc_transportCycle`, `AIC_fnc_supplyCycle`
+  10. `AIC_fnc_monitorOrders`, `AIC_fnc_assaultCycle`; 10a. `AIC_fnc_teamCycle`, `AIC_fnc_spreadCycle`; 10b. `AIC_fnc_cleanupCycle`
+  11. `AIC_fnc_dynSimCycle`
+  12. `AIC_fnc_supportCycle`; 12a. `AIC_fnc_rearmCycle`
+  13. `AIC_fnc_updateDebugMarkers` (if `debugMarkers`, else the old markers are deleted) and `AIC_fnc_report`
   Wraps nothing in try; each step must be robust to empty data. The cycle
   runs **scheduled** (it is called from the spawned loop), so the engine may
   suspend it between statements and event handlers may run in between:
@@ -242,7 +273,7 @@ HashMap: `"group"`, `"task"`, `"pos"`, `"objective"` (id or `""`).
 - `AIC_fnc_registerGroups` — `[commander] call`. Adds all groups of the side with alive units, `!isPlayer` leaders (always; `excludePlayerGroups` additionally excludes groups that contain any player), not `group getVariable ["AIC_exclude", false]`, and **local to the server** (groups owned by a headless client are not commanded: AIC's argument-local commands such as `doMove`, `doStop`, `land`, `orderGetIn`, `doArtilleryFire` and the unit `Hit` / `FiredNear` handlers only work where the group is local; a group that moves to a headless client is released by the sweep). Removes empty/dead groups. Creates group records.
 - `AIC_fnc_classifyGroup` — `[group] call` → type string.
 - `AIC_fnc_newGroupRecord` — `[group] call` → a complete group record (type, power, `initialSize`, task `"IDLE"`, and every logistics key). The one record constructor, used by `registerGroups`, `updateGroups` and `issueOrder`.
-- `AIC_fnc_splitPassengers` — `[commander] call` → array of new groups. Runs only if `splitPassengers`. For every commandable group of the side whose members crew a transport-class vehicle (any air vehicle, or a ground vehicle without real weapons) and that has at least two other alive members (cargo / FFV seats or on foot), those members `joinSilent` a new group of the side. Groups crewing an armed ground vehicle, player groups, `AIC_exclude` and `AIC_noSplit` groups are left alone. Called by `registerGroups` before its sweep.
+- `AIC_fnc_splitPassengers` — `[commander, groups(optional, default all groups of the side)] call` → array of new groups. Runs only if `splitPassengers`. For every commandable group of the side whose members crew a transport-class vehicle (any air vehicle, or a ground vehicle without real weapons) and that has at least two other alive members (cargo / FFV seats or on foot), those members `joinSilent` a new group of the side. Groups crewing an armed ground vehicle, player groups, `AIC_exclude` and `AIC_noSplit` groups are left alone. Called by `registerGroups` before its sweep.
 - `AIC_fnc_vehicleType` — `[vehicle] call` → type string of a crewed vehicle (PLANE, HELI, NAVAL, ARTY, STATIC, MECH, ARMOR, MOTOR). The one decision tree used by `classifyGroup` and `groupPower`.
 - `AIC_fnc_vehicleWeapons` — `[vehicle, mannedOnly(optional, false)] call` → array of real weapon classes (driver turret and non-FFV turrets; horns, smoke launchers, flares, searchlights, laser designators and fake weapons ignored). The one "is it armed?" rule used by `groupPower`, `findTransport` and `supportCycle`.
 - `AIC_fnc_vehicleArmament` — `[vehicle] call` → 0 (unarmed), 1 (machine guns only) or 2 (cannon, rockets, missiles, or any tracked vehicle), from `vehicleWeapons`. Used by `findTransport` (take light vehicles first), `updateGroups` (`"transportOnly"`) and `supportCycle` (machine-gun helicopters are transports, not CAS, while `useTransport` is on).
@@ -265,23 +296,23 @@ HashMap: `"group"`, `"task"`, `"pos"`, `"objective"` (id or `""`).
 ### orders (`functions/orders`)
 - `AIC_fnc_issueOrder` — `[commander, group, task, pos, objectiveId] call`. Skip if identical task+objective already active (unless forced 6th param true). "Identical" for `objectiveId == ""`: same task and current `taskPos` within **400 m** for ATTACK/REINFORCE (same tolerance as allocateForces' on-target test), within 50 m for every other task. Dispatches to the task function, updates group record (`task`, `taskPos`, `taskTime`, `objective`).
 - `AIC_fnc_clearWaypoints` — `[group] call`.
-- `AIC_fnc_orderAttack` — `[group, pos, radius] call`. Combat-ish behaviour, `SAD` at the target with a MOVE approach waypoint; vehicles get speed/formations sensible to type.
-- `AIC_fnc_orderDefend` — `[group, pos, radius, type(optional), threatPos(optional), rear(optional)] call`. MOVE then `HOLD`; statics stay. Infantry take positions once they have arrived, driven by the commander cycle (`monitorOrders` → `monitorGarrison` → `garrisonBuildings`), never by a spawned script. Vehicles hold the threatened side (`threatPos`, else the nearest enemy the leader knows), or the side away from it with `rear` (transport-only crews); the threatened bearing stays in the group variable `"AIC_holdDir"` (-1 if none).
+- `AIC_fnc_orderAttack` — `[group, pos, radius, type(optional), via(optional)] call`. Combat-ish behaviour, `SAD` at the target with a MOVE approach waypoint; vehicles get speed/formations sensible to type. `via` (`[]` = direct) is a point the group approaches through: the flanking point of a team split by `splitForAttack` (group variable `"AIC_attackVia"`, passed on by `issueOrder`).
+- `AIC_fnc_orderDefend` — `[group, pos, radius, type(optional), threatPos(optional), rear(optional), park(optional), sector(optional)] call`. MOVE then `HOLD`; statics stay. `park` (`[x,y,0]` from `AIC_fnc_parkSlot`, `[]` = none): a vehicle drives to its place in the base's motor pool, holds there relaxed and stops its engine. `sector` (bearing from the centre, -1 = any): the slice of the place an infantry group's garrison covers (record `"defendSector"`). Infantry take positions once they have arrived, driven by the commander cycle (`monitorOrders` → `monitorGarrison` → `garrisonBuildings`), never by a spawned script. Vehicles hold the threatened side (`threatPos`, else the nearest enemy the leader knows), or the side away from it with `rear` (transport-only crews); the threatened bearing stays in the group variable `"AIC_holdDir"` (-1 if none).
 - `AIC_fnc_bestPlace` — `[center, radius, expression, flatSize(optional, 0)] call` → `[x,y,0]` or `[]`. The engine's terrain scoring (`selectBestPlaces`) behind every position search: landing zones, assembly areas, flanking points and motor pools.
 - `AIC_fnc_setMarch` — `[group, on] call` → bool. Group variable `"AIC_marching"`: no automatic combat mode, vehicles on roads in column (`AIC_CONVOY_SEPARATION`), a convoy's lead vehicle limited to `AIC_CONVOY_SPEED`. `issueOrder` starts a march for moves over `AIC_MARCH_RANGE`, `monitorOrders` ends it within `AIC_MARCH_END` of the target, at the assembly area, or on contact; `orderTransport` puts ground transports on the march.
-- `AIC_fnc_orderAssault` — `[group, pos, radius, type, via, assault, record] call`. One ground group in a staged assault: its lane (`"assaultId"`, `"assaultLane"`), the assembly area (`"staged"`, `"stagePos"`) or the assault itself, vehicles on overwatch outside a built-up objective (`"overwatch"`).
+- `AIC_fnc_orderAssault` — `[group, pos, radius, type, via, assault, record] call`. One ground group in a staged assault: its place in the front (`"assaultId"`, `"assaultLane"`, `"assaultAxis"`, `"assaultRow"`), the assembly area (`"staged"`, `"stagePos"`) or the assault itself, vehicles on overwatch outside a built-up objective (`"overwatch"`).
 - `AIC_fnc_assaultFor` (strategy) — `[commander, group, pos, objectiveId] call` → the assault record, created on first use in commander key `"assaults"`, empty without an objective or with `stagedAssaults` off.
 - `AIC_fnc_assaultCycle` (strategy) — `[commander] call` → assaults started. Runs after `monitorOrders`, see the function header for the start rules.
 - `AIC_fnc_isAntiAir` (groups) — `[vehicle] call` → bool, per class cached in `AIC_ns`. Editor subcategory containing `_aa`, or a weapon with `airLock` 2 ammunition. `updateGroups` sets record `"antiAir"`: such groups are never available for attacks, rides, patrols or transfers, are never parked and hold the middle of their home.
 - `AIC_fnc_spreadCycle` (groups) — `[commander] call` → groups moved. Runs after `teamCycle`, record `"lastSpread"`, see the function header.
 - `AIC_fnc_sentryWatch` — `[commander, group, record] call` → bool. Sentries (unit variable `"AIC_sentry"`) query `nearTargets` within `AIC_SENTRY_RANGE`; a recognised hostile sets objective keys `"alarmTime"` / `"alarmPos"`, wakes and `reveal`s to every group of the place, once per `AIC_ALARM_REPEAT`. Called by `monitorOrders` for INF DEFEND groups whose garrison is in place.
 - `AIC_fnc_alarmPos` — `[commander, objectiveId] call` → `[x,y,0]` while the alarm is younger than `AIC_ALARM_TIME`, else `[]`. The side defenders face when no threat cluster is known (`issueOrder`, `monitorOrders`, `garrisonCycle` stand-to).
-- `AIC_fnc_garrisonBuildings` — `[group, center, radius, threatPos(optional), manStatics(optional)] call` → number of units given a position. Unscheduled one-shot, for every unit on foot except players, the leader last, each target stored in the unit variable `"AIC_garrisonPos"`: (1) empty armed static weapons in the radius, no mortars, by at most half of the group (`assignAsGunner`; unit variable `"AIC_gunnerOf"`, gun variable `"AIC_gunner"`; `classifyGroup` keeps such a gunner infantry); (2) buildings nearest the threatened side filled with up to 4 units each, high positions and positions near the threat first, claimed through the building variable `"AIC_claims"` and the unit variable `"AIC_buildingPos"` so groups do not share a spot; (3) the rest on a ring around the centre (an arc towards the threat if known), next to cover when some is within 8 m. Radius clamped to 30..200.
+- `AIC_fnc_garrisonBuildings` — `[group, center, radius, threatPos(optional), manStatics(optional), sector(optional, -1)] call` → number of units given a position. Unscheduled one-shot, for every unit on foot except players, the leader last, each target stored in the unit variable `"AIC_garrisonPos"` (stance in `"AIC_garrisonStance"`): (1) empty armed static weapons in the radius (`nearEntities`, nearest first), no mortars, by at most half of the group (`assignAsGunner`; unit variable `"AIC_gunnerOf"`, gun variable `"AIC_gunner"`; `classifyGroup` keeps such a gunner infantry); (2) sentries: one for a group of 4 or more, two for 7 or more, at the edge of the place (0.6–1.15 × radius out) on the group's sector bearing (the threat's side first when known), in the highest free position of an edge building near the post, else a terrain post on high ground with trees (`bestPlace`); unit variable `"AIC_sentry"`, watched by `sentryWatch`; (3) buildings nearest the sector's anchor (the sector's middle, else the threatened edge, else the centre), `AIC_GARRISON_PER_BUILDING` (2) units each, high positions and positions near the threat first; buildings within 20 m of one already used are skipped while others remain, so a squad covers a street; positions are claimed through the building variable `"AIC_claims"` and the unit variable `"AIC_buildingPos"` so groups do not share a spot; (4) the rest on a ring around the centre (an arc towards the threat or the sector if known), next to cover when some is within 8 m. Radius clamped to 30..200.
 - `AIC_fnc_nearestThreat` (intel) — `[commander, pos, range(optional, AIC_THREAT_RADIUS)] call` → `[x,y,0]` of the closest threat cluster or known contact, `[]` if none.
-- `AIC_fnc_monitorGarrison` — `[group, record, center, radius] call` → bool (done). Called by `monitorOrders` for every awake INF DEFEND group. Not garrisoned for the current order token: once the leader is within `(radius * 0.5) max 50` of the centre, calls `garrisonBuildings` and sets `"garrisonToken"`, `"garrisonTime"`, `"garrisonDone"` (true if nobody was sent). Garrisoned: units that reached their position (`unitReady` or < 2.5 m) get `doStop` + `setUnitPos "UP"`; after 120 s the rest get `doStop` where they are; `"garrisonDone"` once nobody is left to place.
+- `AIC_fnc_monitorGarrison` — `[group, record, center, radius, threatPos(optional), manStatics(optional), sector(optional, -1)] call` → bool (done). Called by `monitorOrders` for every awake INF DEFEND group. Not garrisoned for the current order token: once the leader is within `(radius * 0.5) max 50` of the centre, calls `garrisonBuildings` (passing threat, statics and sector on) and sets `"garrisonToken"`, `"garrisonTime"`, `"garrisonDone"` (true if nobody was sent). Garrisoned: units that reached their position (`unitReady` or < 2.5 m) get `doStop` + `setUnitPos "UP"`; after 120 s the rest get `doStop` where they are; `"garrisonDone"` once nobody is left to place.
 - `AIC_fnc_roadPos` — `[pos, radius(optional, 150)] call` → `[x,y,0]` of the nearest road within the radius, else of pos.
 - `AIC_fnc_waterPos` — `[pos, from(pos or object), maxDist(optional, 1000)] call` → `[x,y,0]`: pos if it is water, else the first water point on the line towards `from` in 50 m steps; `[]` if none.
-- `AIC_fnc_orderPatrol` — `[group, pos, radius] call`. 4–5 random MOVE waypoints within radius + CYCLE, SAFE/AWARE.
+- `AIC_fnc_orderPatrol` — `[group, pos, radius, type(optional), link(optional)] call`. 4–5 random MOVE waypoints within radius + CYCLE, SAFE/AWARE. `link` (`[]` = none): a next objective ground vehicles drive to on their round (`issueOrder` passes an owned objective within `AIC_PATROL_LINK_RANGE` for armed cars).
 - `AIC_fnc_orderRetreat` — `[group, pos] call`. Clear, MOVE fast to pos, CARELESS->AWARE on arrival, `allowFleeing 0` reset.
 - `AIC_fnc_orderReinforce` — `[group, pos] call`. Fast move then SAD.
 - `AIC_fnc_monitorOrders` — `[commander] call`. Groups whose task is done → set `"IDLE"`; stuck groups (no movement in 180s far from target, not in contact: no enemy within 400 m, not engaged in the last 120 s, leader not in COMBAT) → re-issue with force. Awake INF groups on DEFEND are passed to `AIC_fnc_monitorGarrison`. Completion rules: ATTACK on a known objective only when that objective's `"owner"` equals the commander's side (otherwise the task is kept; if all its waypoints are done, the leader is within the arrival radius and the task is older than 600 s, it is re-issued with force as a re-sweep); ATTACK without objective / REINFORCE when near taskPos and (waypoints done or no known contact nearby), or waypoints done and > 20 min; RETREAT ground within 220 m and (waypoints done or stopped), HELI within 300 m after 30 s, PLANE within 1500 m after 60 s; SUPPORT after 600 s; PATROL/DEFEND never.
@@ -391,7 +422,7 @@ Group record:
 - `AIC_fnc_availableGroups` excludes tasks `RETREAT`, `TRANSPORT`, `TRANSPORTED`, `RTB`.
 
 Objective record:
-- `"isBase"`: bool — a base or staging area. Its desired garrison is only `garrisonPerPriority` (a small guard). Everything above that is reserve that can be sent anywhere.
+- `"isBase"`: bool — a base or staging area. Its desired garrison is only `2 × garrisonPerPriority` (a small guard of two squads, whatever its priority). Everything above that is reserve that can be sent anywhere.
 - `"garrison"`: number — desired garrison power override (0 = auto).
 
 New objective sources:
@@ -414,14 +445,14 @@ New objective sources:
     - INF with task DEFEND: its building occupation is done (`"garrisonDone"` with a valid `"garrisonToken"`, see `AIC_fnc_monitorGarrison`), or the task is older than 1100 s, so units never freeze halfway to their building positions.
     - no wake condition applies, and no hostile unit is within `dynSimWakeRange` (the same hostile list), so a group is never parked only to be woken by the same enemy next cycle.
 - `AIC_fnc_garrisonStatus` — `[commander] call` → HashMap: objective id → HashMap `{"desired","present","surplus","groups","threat","incoming","released"}`, for objectives owned by own side plus `BASE_HQ`.
-  - `desired` = `garrison` if > 0, otherwise `priority * garrisonPerPriority` (`garrisonPerPriority` alone for bases). Add 50 % of the power of threat clusters within 1500 m.
+  - `desired` = `garrison` if > 0, otherwise `priority * garrisonPerPriority` (`2 * garrisonPerPriority` for bases, whatever their priority). Add 50 % of the power of threat clusters within 1500 m.
   - `present` = summed power of groups whose `"home"` == id, task in DEFEND/PATROL/IDLE, and leader within `radius * 1.5`.
   - `surplus` = `present - desired`.
   - `"threat"`: summed power of threat clusters within 1500 m.
   - `"incoming"`: power of home groups still on their way (DEFEND/PATROL/IDLE outside `radius * 1.5`), of TRANSPORT/RTB vehicle groups away on a ride, of TRANSPORTED cargo whose `final.objective` is this id, and of groups sent to reinforce it (task REINFORCE, or TRANSPORTED with a final REINFORCE, record `"objective"` = this id, home elsewhere). The garrison system's deficit is `desired - present - incoming`.
   - `"released"`: HashMap `hashValue group` → power, filled by `canLeaveGarrison` (empty after every `garrisonStatus`).
   - Also stores the result in the commander under `"garrisons"`.
-- `AIC_fnc_canLeaveGarrison` — `[commander, group] call` → bool. True if the group has no home, its home is not owned any more, or `surplus` of its home (minus the power already released this cycle) ≥ the group's power. Uses `"garrisons"`. **Not a pure test:** when it returns true for a homed group it records the group's power in its home entry's `"released"` map until the next `garrisonStatus`, so a second call for another group sees less surplus. Call it only when the group will actually be moved (`allocateForces` uses its own side-effect-free estimate for candidate lists; `garrisonCycle` removes the reservation again if `issueOrder` fails).
+- `AIC_fnc_canLeaveGarrison` — `[commander, group] call` → bool. True if the group has no home, its home is not owned any more, or `surplus` of its home (minus the power already released this cycle) ≥ the group's power. Uses `"garrisons"`. **Not a pure test:** when it returns true for a homed group it records the group's power in its home entry's `"released"` map until the next `garrisonStatus`, so a second call for another group sees less surplus. Call it only when the group will actually be moved (`allocateForces` and `findTransport` use their own side-effect-free estimate for candidate lists; `garrisonCycle` removes the reservation again if `issueOrder` fails; `orderTransport` reserves the transport group's power only once the ride is set up, so a failed ride reserves nothing).
 - `AIC_fnc_garrisonCycle` — `[commander] call`. Runs only if `manageGarrisons`.
   1. Every group with `home == ""` and task IDLE/DEFEND/PATROL gets home = the nearest owned objective or base within 1000 m, else `BASE_HQ`. A group DEFENDing an owned objective adopts it as home; an IDLE group away from home joins an owned objective within 1000 m. Every IDLE INF/MOTOR/MECH/ARMOR group that is then not at its home (leader outside `radius * 1.5`) gets `DEFEND` there through `issueOrder`.
   2. Recompute `AIC_fnc_garrisonStatus`.
@@ -440,10 +471,11 @@ New objective sources:
 - `AIC_fnc_teamCycle` (groups) — `[commander] call` → merges. Commander cycle step 10a. Merges teams of one squad and remnants of at most `AIC_REMNANT_SIZE` men, see the function header.
 - `AIC_fnc_isLanded` — `[vehicle] call` → bool. Helicopter: touching the ground, or below 3.5 m and slower than 15 km/h (`land "GET IN"` / `"GET OUT"` only hover low). Other vehicles: stopped. Used by `transportCycle`, `dismountCarrier` and `issueOrder`.
 - `AIC_fnc_flightPath` — `[commander, from, to] call` → detour position or `[]`. The first threat cluster, contact or enemy-held objective within `AIC_AIR_AVOID_RADIUS` of the line, ignoring the ends, is passed on the side with more room. `orderTransport` puts it as a MOVE waypoint between LOAD and TR UNLOAD.
-- `AIC_fnc_findTransport` — `[commander, cargoGroup, destPos] call` → group or grpNull.
+- `AIC_fnc_findTransport` — `[commander, cargoGroup, destPos, seats(optional), exclude(optional)] call` → group or grpNull. With `seats` it is a probe for a team of the group (`splitForRide`): it only answers, logs nothing and remembers no vehicle; `exclude` lists transport groups already taken.
+  - The candidate vehicles of one order are found once and kept in the commander key `"transportPool"` (`{"cargo", "dest", "time", "entries"}`, entries `[cost, group, vehicle, seats, leaderVehicle, transportOnly]` sorted by cost); the probes of `splitForRide` and the caller's second call for the group that is left (same cargo group and destination, within 5 s) pick from that list, skipping vehicles taken meanwhile.
   - Candidates are own groups of type MOTOR, MECH or HELI where:
     - the task is IDLE, DEFEND or PATROL
-    - its home's `"garrisons"` entry has no `"threat"` (a threatened garrison never lends its vehicles)
+    - its home's `"garrisons"` entry has no `"threat"` (a threatened garrison never lends its vehicles), and, unless the crew is transport-only, its surplus minus what was already `"released"` this cycle covers the group's power (a check only; `orderTransport` reserves it through `canLeaveGarrison` when the ride is set up)
     - the vehicle is alive and `canMove`
     - free passenger seats (empty cargo seats plus empty FFV turret seats, each counted once from one `fullCrew [veh, "", true]` enumeration) ≥ the number of alive cargo units
     - the transport is within `transportSearchRadius` of the cargo leader
@@ -486,7 +518,7 @@ New objective sources:
 - `AIC_fnc_removeCommander`: wakes every commanded group with `group enableDynamicSimulation false` and deletes the `"lz"` / `"pickupLz"` helipads of every record.
 - `AIC_fnc_registerGroups`: before dropping the record of a group that left command, wakes it (`setGroupSim false`) if it is parked and deletes its `"lz"` / `"pickupLz"` helipads.
 - `AIC_fnc_deleteHelipads` (logistics) — `[record] call` → number. Deletes the `"lz"` / `"pickupLz"` objects of a record and sets both keys to objNull. Every helipad cleanup (issueOrder, transportCycle, orderTransport, registerGroups, removeCommander, the `"Empty"` handler) goes through it.
-- `AIC_fnc_commanderCycle` order: … `garrisonCycle` (homes only) → allocateForces + issue plan → `garrisonCycle` → `transportCycle` → `monitorOrders` → `cleanupCycle` → `dynSimCycle` → `supportCycle` → UI.
+- `AIC_fnc_commanderCycle` order: … `jevAdvisor` → `determineStance` → `scoreObjectives` → `garrisonCycle` (homes only) → allocateForces + issue plan (infantry first) → `garrisonCycle` → `transportCycle` → `supplyCycle` → `monitorOrders` → `assaultCycle` → `teamCycle` → `spreadCycle` → `cleanupCycle` → `dynSimCycle` → `supportCycle` → `rearmCycle` → UI (the full list is in the core section).
 - UI:
   - Debug markers show parked groups (alpha 0.4 or a "Z" suffix), transports (a line from cargo to drop) and garrison deficits (objective text `G present/desired`).
   - `report` announces transport dispatches ("Sending reinforcements to X by helicopter") and garrison moves, throttled as before.
@@ -573,7 +605,7 @@ read into the settings of the same name in lower camel case.
 ## Changes to existing functions
 
 - `AIC_fnc_registerGroups`: calls `AIC_fnc_attachGroupEHs` for every eligible group without `"AIC_ehAttached"`. Its drop sweep (over a `keys` snapshot) removes every stale record, including the records of dead groups the `"Empty"` handler marked `"removed"`.
-- `AIC_fnc_commanderCycle`: `cleanupCycle` right after `monitorOrders`.
+- `AIC_fnc_commanderCycle`: `cleanupCycle` after the follow-up steps (`monitorOrders`, `assaultCycle`, `teamCycle`, `spreadCycle`), before `dynSimCycle`.
 - `AIC_fnc_createCommander`: initial keys `"objectiveIndex"` (empty HashMap) and `"deadQueue"` (`[]`); clamps the cleanup settings to ≥ 0.
 - `AIC_fnc_dynSimCycle`: recent `"lastEngaged"` (< 120 s) is a wake condition. The hostile-unit proximity check for parked groups stays: a group frozen by dynamic simulation is blind and fires no `EnemyDetected`.
 - Objective lookups by id in `issueOrder`, `monitorOrders`, `allocateForces`, `transportCycle`, `dynSimCycle`, `updateObjectives`, `collectObjectives` and `createCommander` go through `AIC_fnc_getObjective`.

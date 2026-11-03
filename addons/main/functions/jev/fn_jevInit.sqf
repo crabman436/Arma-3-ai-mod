@@ -6,15 +6,19 @@
         result in AIC_ns "jev": "available" (bool), "reason" (string) and
         "probeTime". The extension is present when
         "aic_jev" callExtension "version" returns a non-empty string; it is
-        usable when its "status" command does not answer "nokey". Installs
-        the "ExtensionCallback" mission event handler once (its id is kept
+        usable when its "status" command answers exactly "ok" with both
+        codes of the array form ([result, extension return code, engine
+        error code]) at 0: "nokey", any other text or a non-zero code makes
+        it unavailable, with the codes in "reason". Installs the
+        "ExtensionCallback" mission event handler once (its id is kept
         in "ehId"; the handler only forwards "aic_jev" events to
         AIC_fnc_jevCallback). Idempotent: every call re-probes, so a key set
         at runtime ("setKey") or a late-loaded extension is picked up; the
         availability is logged only when it changes.
         Called by AIC_fnc_createCommander when "jevEnabled" is on and
-        lazily by AIC_fnc_jevAsk (at most every AIC_JEV_REPROBE s while
-        unavailable). Everything keeps working without the extension.
+        lazily by AIC_fnc_jevAsk and AIC_fnc_jevAdvisor (at most every
+        AIC_JEV_REPROBE s while unavailable). Everything keeps working
+        without the extension.
 
     Parameters:
         None
@@ -50,24 +54,34 @@ if (_version isEqualTo "") then {
     _reason = "extension not loaded (aic_jev_x64.dll / .so missing next to mod.cpp)";
 } else {
     // --- key: the extension looks for setKey / TYPESAFE_API_KEY / aic_jev.key itself
+    // the array form returns [result, extension return code, engine error code]
     private _status = "";
-    private _statusCode = 0;
+    private _retCode = -1;
+    private _errCode = -1;
     private _result = AIC_JEV_EXT callExtension ["status", []];
     if (_result isEqualType []) then {
-        _result params [["_text", "", [""]], ["_code", 0, [0]]];
+        _result params [["_text", "", [""]], ["_ret", 0, [0]], ["_err", 0, [0]]];
         _status = _text;
-        _statusCode = _code;
+        _retCode = _ret;
+        _errCode = _err;
     };
-    if (_statusCode != 0) then {
-        _reason = format ["extension %1 loaded but 'status' failed (callExtension error %2)", _version, _statusCode];
+    if (_errCode != 0 || { _retCode != 0 }) then {
+        _reason = format ["extension %1 loaded but 'status' failed (callExtension error %2, extension return code %3)", _version, _errCode, _retCode];
     } else {
-        if (_status isEqualTo "nokey") then {
-            _reason = format ["extension %1 loaded but no API key (set TYPESAFE_API_KEY, aic_jev.key or call setKey)", _version];
-        } else {
-            _available = true;
-            _reason = format ["extension %1, status %2", _version, _status];
+        switch (_status) do {
+            case "ok": {
+                _available = true;
+                _reason = format ["extension %1, status %2", _version, _status];
+            };
+            case "nokey": {
+                _reason = format ["extension %1 loaded but no API key (set TYPESAFE_API_KEY, aic_jev.key or call setKey)", _version];
+            };
+            default {
+                _reason = format ["extension %1 loaded but 'status' answered '%2'", _version, _status];
+            };
         };
     };
+
 };
 
 _jev set ["available", _available];

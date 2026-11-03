@@ -212,3 +212,55 @@
 // entries the handlers keep (attachGroupEHs, jevState)
 #define AIC_LOSS_WINDOW 600
 #define AIC_LOSS_LOG_MAX 400
+
+// ---------------------------------------------------------------- enemy estimate per objective
+// objective keys "estPower" / "estTime" (updateObjectives): the estimate of
+// enemy power at an objective halves every AIC_EST_HALF_LIFE s without a
+// sighting; a contact seen within AIC_EST_FRESH s is a current observation.
+// Contacts and threat clusters within the objective radius plus
+// AIC_OBJ_THREAT_RANGE m belong to the objective (updateObjectives,
+// scoreObjectives, allocateForces)
+#define AIC_EST_HALF_LIFE 900
+#define AIC_EST_FRESH 120
+#define AIC_OBJ_THREAT_RANGE 700
+// ownership of an objective is only observed with an own group leader within
+// its radius plus this (m) (updateObjectives)
+#define AIC_OBSERVE_RANGE 500
+// score bonus of an own base the enemy has taken (scoreObjectives)
+#define AIC_LOST_BASE_BONUS 25
+
+// ---------------------------------------------------------------- assault outcome
+// an assault never waits longer than this (s) from its creation, whatever the
+// rides still under way
+#define AIC_ASSAULT_MAX_TOTAL 1800
+// GO for this long without a capture: the attack is escalated (more force
+// asked for, preparatory fire again); for this long: called off, and the
+// objective is left alone for the cooldown (objective key "failedUntil")
+#define AIC_ASSAULT_STALL 900
+#define AIC_ASSAULT_ABORT 1800
+#define AIC_ASSAULT_FAIL_COOLDOWN 900
+
+// ---------------------------------------------------------------- garrisons / dynamic simulation
+// a garrison stays stood to this long (s) after the last alert (objective key "alertTime")
+#define AIC_STANDTO_HOLD 300
+// the wake radius covers an enemy moving this fast (m/s) for one loop interval (dynSimCycle)
+#define AIC_WAKE_SPEED 25
+// a group below "retreatThreshold" that has held a base this long (s) without
+// contact for AIC_REORG_CALM s is reorganised: its initialSize becomes its size (updateGroups)
+#define AIC_REORG_TIME 600
+#define AIC_REORG_CALM 300
+
+// ---------------------------------------------------------------- aircraft
+// a plane counts as down at its airfield within this (m) of it (rearmCycle)
+#define AIC_AIRFIELD_TURNAROUND_RANGE 300
+// an idle helicopter that failed to land at its pad this often lands where it is (monitorOrders)
+#define AIC_HELI_LAND_ATTEMPTS 2
+
+// ---------------------------------------------------------------- jev robustness (review fixes)
+// consecutive failed requests (callback errors, unanswered or unsent
+// requests) after which Jev is marked unavailable until the next re-probe,
+// so a dead API or bad key costs one request per AIC_JEV_REPROBE s instead
+// of one per commander cycle (jevAsk, jevCallback); reset by a success
+#define AIC_JEV_FAIL_STREAK 5
+// s before the same "attack postponed" hold text is announced again (report)
+#define AIC_REPORT_HOLD_REPEAT 300

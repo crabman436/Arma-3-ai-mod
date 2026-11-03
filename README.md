@@ -813,17 +813,21 @@ spawns `AIC_fnc_commanderLoop`. The loop calls `AIC_fnc_commanderCycle` every
 | 3 | Gather intel | `gatherIntel` | Enemy contacts from what friendly leaders know, plus `enemyPower` |
 | 4 | Cluster | `clusterThreats` | Threat clusters within 500 m, sorted by power |
 | 5 | Objectives | `updateObjectives` | Owner of each objective from units in its radius |
-| 6 | Stance | `determineStance` | Power ratio × aggression gives OFFENSIVE, BALANCED or DEFENSIVE |
-| 7 | Score | `scoreObjectives` | Priority, enemy ownership, distance and local threat |
-| 7a | Advice | `jevAdvisor` (`jevState`, `jevAsk`, `jevAnswers`) | Last cycle's Jev answers become `advice`, the next batch of questions goes out (if `jevEnabled` and the extension is available) |
-| 8 | Plan + orders | `garrisonCycle` (homes only), `allocateForces` then `issueOrder` | Assignments (ATTACK, DEFEND, PATROL, RETREAT, ...) turned into waypoints by the `order*` functions |
-| 9 | Garrisons | `garrisonCycle` (`garrisonStatus`, `canLeaveGarrison`) | Homes for groups and garrison refills from bases and surplus towns (if `manageGarrisons`) |
-| 10 | Transport | `transportCycle` (`findTransport`, `orderTransport`) | Dismounted cargo gets its final order, and empty transports return home |
-| 11 | Follow-up | `monitorOrders` | Finished tasks go back to IDLE, and stuck groups get their orders again |
-| 11b | Cleanup | `cleanupCycle` | Old bodies and wrecks of the side, queued by the Killed handlers, are deleted (if `manageCleanup`) |
-| 12 | Parking | `dynSimCycle` (`setGroupSim`) | Settled groups are parked with dynamic simulation, and needed or threatened ones are woken (if `manageDynSim`) |
-| 13 | Support | `supportCycle` (`fireMission`, `tasksAir`) | Artillery on the strongest in-range threat and CAS from an idle armed aircraft, each with a cooldown |
-| 14 | Present | `updateDebugMarkers`, `report` | Debug map markers and throttled side-chat reports |
+| 6 | Advice | `jevAdvisor` (`jevState`, `jevAsk`, `jevAnswers`) | Last cycle's Jev answers become `advice` and the next batch of questions goes out (if `jevEnabled` and the extension is available), so the stance, the scores and the plan all act on the same batch |
+| 7 | Stance | `determineStance` | Power ratio × aggression gives OFFENSIVE, BALANCED or DEFENSIVE |
+| 8 | Score | `scoreObjectives` | Priority, enemy ownership, distance and local threat |
+| 9 | Plan + orders | `garrisonCycle` (homes only), `allocateForces` then `issueOrder` | Assignments (ATTACK, DEFEND, PATROL, RETREAT, ...) turned into waypoints by the `order*` functions; infantry entries are issued before vehicle entries so squads can still claim the vehicles next to them as rides |
+| 10 | Garrisons | `garrisonCycle` (`garrisonStatus`, `canLeaveGarrison`) | Homes for groups and garrison refills from bases and surplus towns (if `manageGarrisons`) |
+| 11 | Transport | `transportCycle` (`findTransport`, `orderTransport`) | Rides are followed through pickup, flight and drop; dismounted cargo gets its final order, and empty transports return home |
+| 12 | Supply | `supplyCycle` (`supplyRoles`) | Repair, fuel and ammo trucks are sent to vehicles that need them (if `useSupplyTrucks`) |
+| 13 | Follow-up | `monitorOrders` | Finished tasks go back to IDLE, stuck groups get their orders again, garrisons move into buildings |
+| 14 | Assaults | `assaultCycle` | Staged assaults start once enough of the force has gathered, push their overwatch in or are called off |
+| 15 | Squads | `teamCycle`, `spreadCycle` | Teams of one squad and remnants merge again, bunched-up infantry is spread out (if `dynamicSquads` / `spreadGroups`) |
+| 16 | Cleanup | `cleanupCycle` | Old bodies and wrecks of the side, queued by the Killed handlers, are deleted (if `manageCleanup`) |
+| 17 | Parking | `dynSimCycle` (`setGroupSim`) | Settled groups are parked with dynamic simulation, and needed or threatened ones are woken (if `manageDynSim`) |
+| 18 | Support | `supportCycle` (`fireMission`, `tasksAir`) | Artillery on the strongest in-range threat and CAS from an idle armed aircraft, each with a cooldown |
+| 19 | Rearm | `rearmCycle` (`heldAirfield`) | Planes out of ammunition or fuel land at a held airfield, are restocked and go back to IDLE |
+| 20 | Present | `updateDebugMarkers`, `report` | Debug map markers and throttled side-chat reports |
 
 Subsystems are split by folder, and each one owns the commander keys listed in
 `CONTRACT.md`:

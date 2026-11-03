@@ -4,8 +4,8 @@
     Description:
         The nearest airfield the commander holds: one within an owned
         objective's radius plus AIC_AIRFIELD_HOLD_RANGE (bases and towns
-        alike, "BASE_HQ" included). Planes land there to rearm
-        (AIC_fnc_rearmCycle).
+        alike; "BASE_HQ" only while the side still holds it). Planes land
+        there to rearm (AIC_fnc_rearmCycle).
 
     Parameters:
         0: HASHMAP - commander
@@ -30,7 +30,7 @@ private _side = _cmd getOrDefault ["side", sideUnknown];
 private _owned = (_cmd getOrDefault ["objectives", []]) select {
     _x isEqualType createHashMap
     && { count (_x getOrDefault ["pos", []]) >= 2 }
-    && { (_x getOrDefault ["id", ""]) isEqualTo AIC_BASE_ID || { (_x getOrDefault ["owner", sideUnknown]) isEqualTo _side } }
+    && { (_x getOrDefault ["owner", sideUnknown]) isEqualTo _side }
 };
 if (_owned isEqualTo []) exitWith { [] };
 
