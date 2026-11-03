@@ -96,6 +96,7 @@ class CfgFunctions
         {
             file = "\z\aic\addons\main\functions\support";
             class supportCycle {};
+            class flyingWeather {};
             class fireMission {};
             class tasksAir {};
             class airDefence {};

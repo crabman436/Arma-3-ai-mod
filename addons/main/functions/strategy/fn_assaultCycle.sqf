@@ -18,7 +18,10 @@
  *   the power is at the assembly area (assault "prepTime"), and the GO
  *   waits until AIC_PREP_FIRE_DELAY s after that fire (called then if it
  *   was not yet, or is older than AIC_PREP_FIRE_TIME + AIC_PREP_FIRE_DELAY),
- *   unless a group is under fire or the staff says attack_now.
+ *   unless a group is under fire or the staff says attack_now. While the
+ *   stage waits, assault "stagingReason" says why ("night", "prep fire",
+ *   "riding", "approaching", "forming"; "" once it goes) for
+ *   AIC_fnc_jevState.
  *   Every member is then ordered in through AIC_fnc_issueOrder with force.
  *   "GO": the vehicles on overwatch go in when the infantry has swept the
  *   place without taking it (AIC_ASSAULT_PUSH s after GO with every
@@ -554,10 +557,22 @@ private _started = 0;
             || {_early}
         };
         // the guns get their time first (not under fire, not on the staff's go)
+        private _prepWait = false;
         if (_goNow && {_artyReady} && {!_underFire} && {!_early}) then {
             if (!_prepFresh) then {call _fnc_prepFire};
-            if ((time - _prepTime) < AIC_PREP_FIRE_DELAY) then {_goNow = false};
+            if ((time - _prepTime) < AIC_PREP_FIRE_DELAY) then {_goNow = false; _prepWait = true};
         };
+        // why the stage still waits (AIC_fnc_jevState reports it): "night",
+        // "prep fire", "riding" (members riding or orders queued),
+        // "approaching" (nobody at the assembly area yet), "forming"
+        _assault set ["stagingReason", switch (true) do {
+            case (_goNow): {""};
+            case (_nightWait): {"night"};
+            case (_prepWait): {"prep fire"};
+            case (_riding isNotEqualTo [] || {_pending isNotEqualTo []}): {"riding"};
+            case (_ready <= 0): {"approaching"};
+            default {"forming"};
+        }];
         if (_goNow) then {
             _assault set ["state", "GO"];
             _assault set ["hasInf", _hasInf];

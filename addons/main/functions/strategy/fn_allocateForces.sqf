@@ -7,10 +7,19 @@
  *   1. Damaged groups (strength <= retreatThreshold, or already RETREATing)
  *      get RETREAT to their rally point (AIC_fnc_rallyPoint: the nearest
  *      held, uncontested place behind them, else HQ; sticky while the
- *      group retreats, record "rallyObj"); aircraft RETREAT to HQ. Once
- *      near the rally objective or HQ (250 m ground, 400 m heli, 1500 m
- *      plane; aircraft also near any owned base) - or already DEFENDing
- *      it - they DEFEND it instead. "HQ" is the commander's "hq", which
+ *      group retreats, record "rallyObj" / "rallyHq"); aircraft RETREAT to
+ *      HQ. A ground group DEFENDs its rally objective instead once near it
+ *      (or already DEFENDing it) - "rallyObj" is only read while the task
+ *      is RETREAT - and a damaged group that is not retreating DEFENDs the
+ *      held place it stands in (within its radius, not the HQ's place);
+ *      either only while that place is ours and no threat cluster is within
+ *      its radius + AIC_OBJ_THREAT_RANGE (AIC_fnc_rallyPoint's test). Near
+ *      the HQ (250 m ground, 400 m heli, 1500 m plane; aircraft also near
+ *      any owned base) - or already DEFENDing it - they DEFEND the HQ, but
+ *      a RETREAT counts as "at the HQ" only when the HQ is where it goes
+ *      (record "rallyHq", or its task position near the HQ): a group that
+ *      broke next to the HQ and was sent to a rally point elsewhere
+ *      (AIC_fnc_updateGroups) is not turned round into the HQ garrison. "HQ" is the commander's "hq", which
  *      AIC_fnc_updateObjectives moves to the nearest owned base while
  *      "BASE_HQ" is held by the enemy; its objective id is then that base.
  *      Air (HELI/PLANE) is never tasked here except for retreating
@@ -39,20 +48,34 @@
  *      decaying enemy estimate "estPower" (AIC_fnc_updateObjectives); an
  *      enemy-held objective nobody has looked at for AIC_EST_HALF_LIFE s
  *      ("ownerTime") is assumed to hold at least AIC_EST_PRIOR_SHARE x
- *      priority x "garrisonPerPriority". So an attack is not sized down, or
- *      released and re-staffed, just because contacts expired.
+ *      priority x "garrisonPerPriority" ("looked at": max("ownerTime",
+ *      "reconTime"); after a look the estimate stands alone, so a recon
+ *      that saw nothing lowers the attack's size). So an attack is not
+ *      sized down, or released and re-staffed, just because contacts
+ *      expired.
  *      Required power: ATTACK AIC_ATTACK_RATIO x local threat (floor
  *      AIC_ATTACK_MIN_FORCE + 2*priority for enemy-held,
  *      AIC_ATTACK_MIN_FORCE otherwise), times the objective's "attackBoost"
- *      (set by AIC_fnc_assaultCycle when an assault stalls); DEFEND 1.2x
- *      local threat (floor 3). An objective whose assault failed
- *      (objective "failedUntil" in the future) gets no new attack.
- *      Number of ATTACK objectives staffed at once is capped:
- *      BALANCED max(1, floor(pool/3)), OFFENSIVE max(1, ceil(pool/2)).
+ *      (set by AIC_fnc_assaultCycle when an assault stalls; it only raises
+ *      what new staffing aims at, target key "requiredBase" is the
+ *      unboosted need the hysteresis below uses); DEFEND 1.2x local threat
+ *      (floor 3). An objective whose assault failed or was called off
+ *      (objective "failedUntil" in the future) gets no new attack. An
+ *      objective with an assault under way (commander "assaults") stays an
+ *      ATTACK target in every stance.
+ *      Number of ATTACK objectives staffed at once is capped by stance:
+ *      AIC_ATTACKS_OFFENSIVE, AIC_ATTACKS_BALANCED, 1 in DEFENSIVE (lost
+ *      bases, assaults under way); a target with groups riding there or a
+ *      queued wave counts toward the cap and keeps its slot.
  *   4. Stable assignments: a pool group whose record task/objective matches
  *      a current target and was issued < 300 s ago keeps it (its power counts
- *      toward the target). Groups already on a target are also strongly
- *      preferred when re-staffing it, so orders do not thrash.
+ *      toward the target); so does a group on ATTACK of an objective with
+ *      an assault under way, whatever the age of its order, and a group
+ *      whose ATTACK / REINFORCE / DEFEND order for the target still waits
+ *      in the order queue (AIC_fnc_queuedGroups; it is planned on the same
+ *      order again, which keeps its due time). Groups already on a target
+ *      (or ordered there) are also strongly preferred when re-staffing it,
+ *      so orders do not thrash.
  *   5. Reserve: reserveRatio of pool power (x0.75 OFFENSIVE, x1.5 DEFENSIVE,
  *      max 0.6) DEFENDs HQ or the most threatened own objective. Formed when
  *      the pool has >= 3 groups (>= 1 in DEFENSIVE). Infantry/motorised and
@@ -65,12 +88,19 @@
  *      faster). A target is only staffed if the whole remaining pool could
  *      reach its required power - lone weak groups are never thrown at
  *      strong clusters. An attack that is already being fought for (stable
- *      members, or any candidate on the target whatever the age of its
- *      order) keeps its slot and only needs 75% of required reachable;
- *      below that it is released. At most AIC_ATTACKS_OFFENSIVE /
- *      AIC_ATTACKS_BALANCED objective attacks run at once, each sized at
+ *      members, any candidate on the target whatever the age of its order,
+ *      groups riding there, a queued wave, or an assault under way) keeps
+ *      its slot and only needs 75% of the unboosted requirement reachable;
+ *      below that it is released - except an attack with an assault under
+ *      way, which AIC_fnc_assaultCycle alone ends (escalation, abort with
+ *      "failedUntil" and a report). Each attack is sized at
  *      AIC_ATTACK_RATIO times the known threat and at least
  *      AIC_ATTACK_MIN_FORCE power.
+ *      A new attack (nobody on it or riding there) passes, in this order:
+ *      the failure / advice-abort cooldowns, the cap, the recon step (see
+ *      below), the Jev hold, the feasibility test. A queued wave of a
+ *      target stopped by a cooldown or the hold is released (no plan
+ *      entry: AIC_fnc_drainOrders drops its orders).
  *      Members of objective-less targets that are already on the job
  *      (same task, taskPos within 400 m) are emitted with their current
  *      taskPos so drifting cluster centres do not cause re-issues.
@@ -80,18 +110,28 @@
  *      nearest own objective (sticky), or HQ.
  *
  *   Reconnaissance (setting "useRecon"): before a NEW attack (no member, no
- *   group riding there) on an objective of priority >= AIC_RECON_MIN_PRIORITY
- *   that nobody has looked at (objective "ownerTime", AIC_fnc_updateObjectives)
- *   and nobody has scouted ("reconTime", AIC_fnc_monitorOrders) for
- *   AIC_RECON_MAX_AGE s, a RECON assignment is emitted instead of the attack:
- *   the cheapest suitable group (MOTOR before INF, then lowest power, then
- *   nearest) on IDLE / PATROL / DEFEND, not shaky, that may leave its post
+ *   group riding there, no queued wave) on an objective of priority >=
+ *   AIC_RECON_MIN_PRIORITY (any priority under the Jev hold "intel too
+ *   old") that nobody has looked at for AIC_RECON_MAX_AGE s - the latest of
+ *   "ownerTime" (AIC_fnc_updateObjectives), "reconTime"
+ *   (AIC_fnc_monitorOrders), "reconSeen" (AIC_fnc_gatherIntel) and the
+ *   "lastSeen" of a known contact within its radius + AIC_OBJ_THREAT_RANGE -
+ *   a RECON assignment is emitted instead of the attack. This runs before
+ *   the Jev hold and the feasibility test: a held or (by its assumed
+ *   garrison) infeasible target is still scouted. The scout is the
+ *   cheapest suitable group (within AIC_RECON_SCOUT_RANGE first, then MOTOR
+ *   before INF, then lowest power, then nearest) on IDLE / PATROL / DEFEND,
+ *   not shaky, that may leave its post
  *   (AIC_fnc_canLeaveGarrison for a garrison), at most AIC_RECON_MAX_JOBS
  *   new jobs per cycle; the objective's "reconGroup" holds its hashValue.
  *   While a scout is on the job (record task RECON, or a RECON order queued)
  *   the attack waits; the attack is planned on a later cycle once the
  *   objective has been looked at. Without any suitable group the attack goes
- *   ahead unscouted.
+ *   ahead unscouted. A scout that is gone ("reconGroup" names a group with
+ *   no living record: killed on the job) marks the objective scouted
+ *   ("reconTime" now, "reconContacts" -1), so the next scout is not sent
+ *   into the same fire at once; a scout taken off the job (no RECON task
+ *   or queued RECON) just clears "reconGroup".
  *
  *   Morale (setting "useMorale"): a group whose record "morale" is below
  *   AIC_MORALE_SHAKY joins no attack it is not already on.
@@ -139,11 +179,15 @@
  *     1 - w (p - 0.5) 2 x 0.75 (never below 0.05); with garrisons on, the
  *     bases' desired garrison in "garrisons" shrinks by the same share for
  *     this step, so AIC_fnc_canLeaveGarrison lets the guard go. "advice"
- *     "commit" is set.
+ *     "commit" is NOT set here (AIC_fnc_assaultCycle sets it when an
+ *     assault reserve actually went in).
  *   - attack_now p < AIC_ADVICE_NO, intel_stale p > AIC_ADVICE_YES, or risk
  *     >= AIC_ADVICE_RISKY with confidence >= AIC_ADVICE_SURE: no NEW attack
  *     target (objective or counter-attack) is staffed this cycle; targets
- *     already being fought for continue. When an attack was held back,
+ *     already being fought for continue, scouts still go out (the recon
+ *     step runs first), and under "intel too old" an objective looked at
+ *     within AIC_RECON_MAX_AGE is not held (the scout's report is the
+ *     fresh intel). When an attack was held back,
  *     "advice" "hold_reason" / "hold_target" are set for AIC_fnc_report.
  *   - an objective whose assault AIC_fnc_assaultCycle called off on advice
  *     (commander "adviceAbort" [time, id]) gets no new attack for
@@ -880,13 +924,19 @@ if (_hqThreat > 0) then {
         private _isHostile = !_isUnknown && {(_side getFriend _owner) < AIC_HOSTILE_FRIEND};
         // an own base the enemy took (BASE_HQ, own base markers) is retaken in every stance
         private _lostBase = _isHostile && {(_obj getOrDefault ["source", ""]) isEqualTo "BASE"};
-        // objectives held by a friendly third side are left alone
-        if ((_isUnknown || _isHostile) && {_stance != "DEFENSIVE" || {_lostBase}}) then {
+        // objectives held by a friendly third side are left alone; an assault
+        // under way is ended by AIC_fnc_assaultCycle, not by a stance change
+        if ((_isUnknown || _isHostile) && {_stance != "DEFENSIVE" || {_lostBase} || {_id in _liveAssaults}}) then {
             private _floor = AIC_ATTACK_MIN_FORCE + (if (_isHostile) then {2 * (_priority min 3)} else {0});
             private _known = _threat max _est;
-            // nobody has looked at an enemy-held place for a while: assume a garrison
+            // nobody has looked at an enemy-held place for a while (an own
+            // leader close by, "ownerTime", or a recon, "reconTime"):
+            // assume a garrison. After a look the estimate stands alone, so
+            // a recon that saw nothing lowers what the attack is sized for
             private _seenAt = _obj getOrDefault ["ownerTime", -1e6];
             if !(_seenAt isEqualType 0) then {_seenAt = -1e6};
+            private _reconAt = _obj getOrDefault ["reconTime", -1e6];
+            if (_reconAt isEqualType 0) then {_seenAt = _seenAt max _reconAt};
             if (_isHostile && {(_now - _seenAt) > AIC_EST_HALF_LIFE}) then {
                 _known = _known max (_priority * _perPriority * AIC_EST_PRIOR_SHARE);
             };
@@ -903,6 +953,9 @@ if (_hqThreat > 0) then {
                 _id, _name, _opos, _radius, "ATTACK", ((_known * AIC_ATTACK_RATIO) max _floor) * (_boost max 1),
                 _score, "OBJ", _known, _urban
             ] call _fnc_newTarget;
+            // the boost asks for more new force; whether an attack under way
+            // can go on is judged without it
+            _t set ["requiredBase", (_known * AIC_ATTACK_RATIO) max _floor];
             // a failed assault leaves the objective alone for a while
             private _failedUntil = _obj getOrDefault ["failedUntil", -1];
             if !(_failedUntil isEqualType 0) then {_failedUntil = -1};
@@ -971,6 +1024,7 @@ _targets = _sortable apply {_targets select (_x select 1)};
         if !(_power isEqualType 0) then {_power = 0};
         private _eff = (_power max 0.5) * ([_rec getOrDefault ["type", "INF"], _target get "task", _target get "urban"] call _fnc_suit);
         _target set ["committed", (_target get "committed") + _eff];
+        _target set ["riders", (_target getOrDefault ["riders", 0]) + 1];
     };
 } forEach _groupData;
 
@@ -1035,19 +1089,26 @@ if (_formReserve) then {
 {
     private _info = _x;
     if ((_info get "hv") in _handled) then {continue};
-    private _recTask = _info get "task";
+    // an order still on its way counts as the group's job (it is fresh)
+    private _queued = (_info get "qTask") != "";
+    private _recTask = [_info get "task", _info get "qTask"] select _queued;
     if !(_recTask in ["ATTACK", "DEFEND", "REINFORCE"]) then {continue};
-    if ((_now - (_info get "taskTime")) >= _stableWindow) then {continue};
+    // members of an assault under way stay with it, whatever the age of
+    // their order (they may wait at the assembly area for a long time)
+    private _inAssault = !_queued && {_recTask == "ATTACK"} && {(_info get "objective") in _liveAssaults};
+    if (!_queued && {!_inAssault} && {(_now - (_info get "taskTime")) >= _stableWindow}) then {continue};
 
     private _ti = _targets findIf {
-        [_recTask, _x get "task"] call _fnc_taskFits && {[_info, _x] call _fnc_onTarget}
+        [_recTask, _x get "task"] call _fnc_taskFits
+        && {[[_info, _x] call _fnc_onTarget, [_info, _x] call _fnc_onTargetQ] select _queued}
     };
     if (_ti < 0) then {continue};
     private _target = _targets select _ti;
 
     private _eff = (_info get "power") * ([_info get "type", _target get "task", _target get "urban"] call _fnc_suit);
     _target set ["committed", (_target get "committed") + _eff];
-    (_target get "members") pushBack [_info, _recTask];
+    // [info, task, queued, effective power]
+    (_target get "members") pushBack [_info, _recTask, _queued, _eff];
     _handled set [_info get "hv", true];
 } forEach _pool;
 
@@ -1101,40 +1162,99 @@ private _attackCap = switch (_stance) do {
 private _attacksStaffed = 0;
 private _staffedAttackTargets = [];
 
+// drops members of a target (all, or only those whose order is still
+// queued): they become leftovers, and AIC_fnc_drainOrders drops a queued
+// order that has no plan entry any more
+private _fnc_release = {
+    params ["_target", "_onlyQueued"];
+    private _keep = [];
+    {
+        if (_onlyQueued && {!(_x param [2, false])}) then {
+            _keep pushBack _x;
+        } else {
+            _handled deleteAt ((_x select 0) get "hv");
+            _target set ["committed", (_target get "committed") - (_x param [3, 0])];
+        };
+    } forEach (_target get "members");
+    _target set ["members", _keep];
+};
+
 {
     private _target = _x;
     private _task = _target get "task";
     private _required = _target get "required";
-    private _committed = _target get "committed";
     private _members = _target get "members";
     private _isObjAttack = _task == "ATTACK" && {(_target get "kind") == "OBJ"};
+    private _liveAssault = _isObjAttack && {(_target get "id") in _liveAssaults};
 
     private _cands = (call _fnc_remaining) select {[_x, _target] call _fnc_mayLeave};
     // a shaken group joins no attack it is not already on
     if (_task == "ATTACK") then {
-        _cands = _cands select {!(_x get "shaky") || {[_x, _target] call _fnc_onTarget}};
+        _cands = _cands select {!(_x get "shaky") || {[_x, _target] call _fnc_onTarget} || {[_x, _target] call _fnc_onTargetQ}};
     };
-    // groups already fighting for this target, whatever the age of their order:
-    // the attack keeps its slot and its hysteresis for the whole fight
-    private _holding = _members isNotEqualTo [] || {
-        (_cands findIf {[_x get "task", _task] call _fnc_taskFits && {[_x, _target] call _fnc_onTarget}}) >= 0
-    };
+    // already being fought for: members by their record, groups on it
+    // whatever the age of their order, groups riding there, or an assault
+    // under way; the attack keeps its slot and its hysteresis for the fight
+    private _holdingReal = (_members findIf {!(_x param [2, false])}) >= 0
+        || {(_target getOrDefault ["riders", 0]) > 0}
+        || {_liveAssault}
+        || {(_cands findIf {[_x get "task", _task] call _fnc_taskFits && {[_x, _target] call _fnc_onTarget}}) >= 0};
+    // ordered there, the orders still on their way (a wave in the queue)
+    private _queuedOn = (_members findIf {_x param [2, false]}) >= 0;
+    private _holding = _holdingReal || {_queuedOn};
 
-    // Jev advice: no new attack while the staff says hold, and none on an
-    // objective it just called off; attacks already being fought for go on
-    if (_task == "ATTACK" && {!_holding}) then {
-        if (_holdReason != "") then {
-            // the first objective held back names the report; counter-attacks are held quietly
-            if (_isObjAttack && {_heldTarget == ""}) then {_heldTarget = _target get "name"};
+    // gates for a NEW attack (none of ours on it or riding there yet; a
+    // wave still in the queue is not yet an attack and is checked again)
+    if (_task == "ATTACK" && {!_holdingReal}) then {
+        // the last assault on it failed or was called off
+        if (_isObjAttack && {
+            (_abortedId != "" && {(_target get "id") == _abortedId})
+            || {(_target getOrDefault ["cooldown", false]) isEqualTo true}
+        }) then {
+            [_target, true] call _fnc_release;
             continue;
         };
-        if (_isObjAttack && {_abortedId != ""} && {(_target get "id") == _abortedId}) then {continue};
-        // the last assault on it failed (AIC_fnc_assaultCycle "failedUntil")
-        if (_isObjAttack && {(_target getOrDefault ["cooldown", false]) isEqualTo true}) then {continue};
+        // attack cap (a wave in the queue keeps its slot)
+        if (_isObjAttack && {_attacksStaffed >= _attackCap} && {!_queuedOn}) then {continue};
+        // reconnaissance first: a new attack on an important objective nobody
+        // has looked at lately waits for a scout (none to spare: it goes
+        // ahead). Before the Jev hold and the feasibility test: scouting is
+        // how the staff gets fresh intel and learns that a feared garrison
+        // is smaller than assumed
+        if (_isObjAttack && {!_queuedOn} && {[_target] call _fnc_needsRecon}) then {
+            private _reconStep = call {
+                if ((_target get "id") in _reconBusy) exitWith {"wait"};
+                if (_reconNew >= AIC_RECON_MAX_JOBS) exitWith {"wait"};
+                private _scout = [_target] call _fnc_reconScout;
+                if (_scout isEqualType objNull) exitWith {""};
+                [_scout get "group", "RECON", _target get "pos", _target get "id"] call _fnc_assign;
+                ([_cmd, _target get "id"] call AIC_fnc_getObjective) set ["reconGroup", _scout get "hv"];
+                _reconBusy set [_target get "id", true];
+                _reconNew = _reconNew + 1;
+                "sent"
+            };
+            if (_reconStep != "") then {
+                if (!isNil "AIC_ns" && { AIC_ns getOrDefault ["debug", false] isEqualTo true }) then {
+                    ["%1 plan: attack on %2 waits for a recon (%3)", [_side, _target get "name", _reconStep]] call AIC_fnc_log;
+                };
+                continue;
+            };
+        };
+        // Jev advice: no new attack while the staff says hold. "Intel too
+        // old" means "scout first": an objective looked at within
+        // AIC_RECON_MAX_AGE (ownerTime, a recon, a sighting) is not held
+        if (_holdReason != "" && {
+            !(_holdReason == _intelHoldText && {_isObjAttack}
+                && {(_now - ([[_cmd, _target get "id"] call AIC_fnc_getObjective] call _fnc_lookedAt)) <= AIC_RECON_MAX_AGE})
+        }) then {
+            // the first objective held back names the report; counter-attacks are held quietly
+            if (_isObjAttack && {_heldTarget == ""}) then {_heldTarget = _target get "name"};
+            [_target, true] call _fnc_release;
+            continue;
+        };
     };
 
-    // attack cap (targets that are already being fought for keep their slot)
-    if (_isObjAttack && {_attacksStaffed >= _attackCap} && {!_holding}) then {continue};
+    private _committed = _target get "committed";
     private _availEff = 0;
     {
         _availEff = _availEff + (_x get "power") * ([_x get "type", _task, _target get "urban"] call _fnc_suit);
@@ -1145,8 +1265,9 @@ private _staffedAttackTargets = [];
     if (_committed < _required) then {
         if (_task == "ATTACK") then {
             if (_holding) then {
-                // hysteresis for groups already attacking
-                _feasible = (_committed + _availEff) >= (_required * 0.75);
+                // hysteresis for groups already attacking (without the
+                // stall boost, which only asks for more new force)
+                _feasible = (_committed + _availEff) >= ((_target getOrDefault ["requiredBase", _required]) * 0.75);
             } else {
                 _feasible = (_committed + _availEff) >= _required;
             };
@@ -1157,38 +1278,15 @@ private _staffedAttackTargets = [];
             };
         };
     };
+    // an assault under way is never dropped here: AIC_fnc_assaultCycle ends
+    // it (escalation, "failedUntil", the report)
+    if (_liveAssault) then {_feasible = true};
 
     if (!_feasible) then {
-        // release stable members of an attack that cannot be supported
-        if (_task == "ATTACK") then {
-            {_handled deleteAt ((_x select 0) get "hv")} forEach _members;
-            _target set ["members", []];
-            _target set ["committed", 0];
-        };
+        // release the members of an attack that cannot be supported
+        if (_task == "ATTACK") then {[_target, false] call _fnc_release};
         // stable defenders stay on an unholdable defend (they are there already)
         continue;
-    };
-
-    // reconnaissance first: a new attack on an important objective nobody
-    // has looked at lately waits for a scout (none to spare: it goes ahead)
-    if (_isObjAttack && {!_holding} && {_committed <= 0} && {[_target] call _fnc_needsRecon}) then {
-        private _reconStep = call {
-            if ((_target get "id") in _reconBusy) exitWith {"wait"};
-            if (_reconNew >= AIC_RECON_MAX_JOBS) exitWith {"wait"};
-            private _scout = [_target] call _fnc_reconScout;
-            if (_scout isEqualType objNull) exitWith {""};
-            [_scout get "group", "RECON", _target get "pos", _target get "id"] call _fnc_assign;
-            ([_cmd, _target get "id"] call AIC_fnc_getObjective) set ["reconGroup", _scout get "hv"];
-            _reconBusy set [_target get "id", true];
-            _reconNew = _reconNew + 1;
-            "sent"
-        };
-        if (_reconStep != "") then {
-            if (!isNil "AIC_ns" && { AIC_ns getOrDefault ["debug", false] isEqualTo true }) then {
-                ["%1 plan: attack on %2 waits for a recon (%3)", [_side, _target get "name", _reconStep]] call AIC_fnc_log;
-            };
-            continue;
-        };
     };
 
     // greedy fill: the candidates are sorted by cost once per target. The
@@ -1228,7 +1326,7 @@ private _staffedAttackTargets = [];
         if ((_best get "qrfBase") != "" && {!([_best, _target] call _fnc_isHome)}) then {_gTask = "REINFORCE"};
         private _eff = (_best get "power") * ([_best get "type", _task, _target get "urban"] call _fnc_suit);
         _target set ["committed", (_target get "committed") + _eff];
-        (_target get "members") pushBack [_best, _gTask];
+        (_target get "members") pushBack [_best, _gTask, false, _eff];
         _handled set [_best get "hv", true];
         if (_urbanWait && {(_best get "type") == "INF"}) then {
             _urbanWait = false;
@@ -1237,9 +1335,10 @@ private _staffedAttackTargets = [];
         };
     };
 
-    if ((_target get "members") isNotEqualTo []) then {
+    // a wave riding there or still in the queue counts toward the cap too
+    if ((_target get "members") isNotEqualTo [] || {(_target getOrDefault ["riders", 0]) > 0}) then {
         if (_isObjAttack) then {_attacksStaffed = _attacksStaffed + 1};
-        if (_task == "ATTACK") then {_staffedAttackTargets pushBack _target};
+        if (_task == "ATTACK" && {(_target get "members") isNotEqualTo []}) then {_staffedAttackTargets pushBack _target};
     };
 } forEach _targets;
 
@@ -1264,6 +1363,10 @@ if (_heldTarget != "") then {
         private _emitPos = _target get "pos";
         if ((_target get "id") == "" && {(_info get "task") == _gTask} && {[_info, _target] call _fnc_onTarget}) then {
             _emitPos = _info get "taskPos";
+        };
+        // (an order still queued: the same order again, so it keeps its due time)
+        if ((_target get "id") == "" && {(_info get "qTask") == _gTask} && {[_info, _target] call _fnc_onTargetQ}) then {
+            _emitPos = _info get "qPos";
         };
         [_info get "group", _gTask, _emitPos, _target get "id"] call _fnc_assign;
     } forEach (_target get "members");

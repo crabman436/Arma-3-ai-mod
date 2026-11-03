@@ -18,6 +18,11 @@
  *     "nightHold"   - the assault waits at the assembly area for the night
  *                     (setting "nightAssaults", urban objectives only;
  *                     AIC_fnc_assaultCycle sets it)
+ *   AIC_fnc_assaultCycle adds "goTime", "escalated", "roles", "goPower",
+ *   "reserveCommitted", "reserveAdvice" (the reserve went in on Jev
+ *   advice), "prepTime" (preparatory fire called during STAGE),
+ *   "contactTime" (first group going in near the objective: the GO clocks
+ *   start) and "stagingReason" (why STAGE still waits).
  *   The assembly area is objective radius / 2 + 600 m out, on the first
  *   group's side (the HQ's side if that group is already close), or up to 90
  *   degrees around if that spot is wet or has an enemy known within 300 m,

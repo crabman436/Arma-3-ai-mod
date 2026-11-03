@@ -143,7 +143,7 @@ if (_manStatics) then {
 private _sentries = 0;
 private _wanted = switch (true) do {
     case (count _free >= 7): {2};
-    case (count _free >= 4): {1};
+    case (count _free >= AIC_SENTRY_MIN_GROUP): {1};
     default {0};
 };
 // the dark: twice the eyes on the edge, never more than half the group
