@@ -21,22 +21,30 @@
  *     Tank                                   -> ARMOR
  *     Car / other land vehicles              -> MOTOR
  *
+ *   With a list of known objects (an enemy contact, AIC_fnc_gatherIntel)
+ *   only known members decide the type (see AIC_fnc_groupPower).
+ *
  * Parameters:
  *   0: GROUP - group to classify
+ *   1: ARRAY - (optional) known objects (units / vehicles); [] = everything
  *
  * Returns:
  *   STRING - one of "INF","MOTOR","MECH","ARMOR","HELI","PLANE","ARTY","STATIC","NAVAL"
- *            ("INF" for null / empty groups)
+ *            ("INF" for null / empty groups, or no known member)
  *
  * Example:
  *   private _type = [group player] call AIC_fnc_classifyGroup; // "INF"
  */
 
-params [["_group", grpNull, [grpNull]]];
+params [["_group", grpNull, [grpNull]], ["_known", [], [[]]]];
 
 if (isNull _group) exitWith {"INF"};
 
+private _filter = _known isNotEqualTo [];
 private _units = (units _group) select {alive _x};
+if (_filter) then {
+    _units = _units select {_x in _known || {!isNull objectParent _x && {(objectParent _x) in _known}}};
+};
 if (_units isEqualTo []) exitWith {"INF"};
 
 // Weight a single crewed vehicle contributes towards its type
@@ -75,10 +83,10 @@ private _vehicles = [];
     // Is any alive member of this group a real crew member (not cargo, not FFV)?
     private _crewIdx = (fullCrew [_veh, "", false]) findIf {
         _x params ["_crewUnit", "_role", "", "", ["_isPersonTurret", false]];
-        alive _crewUnit
-        && {group _crewUnit isEqualTo _group}
-        && {_role != "cargo"}
+        _role != "cargo"
         && {!_isPersonTurret}
+        // a member that counts (alive; known, with a known-objects list)
+        && {_crewUnit in _units}
     };
 
     if (_crewIdx >= 0) then {
@@ -87,7 +95,7 @@ private _vehicles = [];
     } else {
         // Only passengers of this group in the vehicle: they count as infantry
         private _passengers = {
-            alive _x && {objectParent _x isEqualTo _veh}
+            alive _x && {objectParent _x isEqualTo _veh} && {!_filter || {_x in _known}}
         } count _units;
         _scores set ["INF", (_scores get "INF") + _passengers];
     };

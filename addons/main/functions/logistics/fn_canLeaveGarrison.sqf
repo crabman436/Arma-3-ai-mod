@@ -3,7 +3,9 @@
 
     Description:
         Tells whether a group may be taken away from its garrison (for an
-        attack, a reinforcement or another garrison). True if:
+        attack, a reinforcement or another garrison). Never for a broken
+        group (setting "useMorale", record "brokenUntil" later than now: it
+        stays where it rallied). Otherwise true if:
           - the group has no home (record "home" is ""), or
           - its home is not garrisoned any more (not owned by the side, so it
             is missing from the commander's "garrisons"), or
@@ -42,6 +44,11 @@ if !(_groupData isEqualType createHashMap) exitWith { true };
 private _key = hashValue _group;
 private _rec = _groupData getOrDefault [_key, createHashMap];
 if (count _rec == 0) exitWith { true };
+
+// a broken group (AIC_fnc_updateGroups) is in no state to go anywhere
+private _brokenUntil = _rec getOrDefault ["brokenUntil", -1];
+if (_brokenUntil isEqualType 0 && {_brokenUntil > time}
+    && {([_cmd, "useMorale"] call AIC_fnc_getSetting) isEqualTo true}) exitWith { false };
 
 private _home = _rec getOrDefault ["home", ""];
 if (!(_home isEqualType "") || { _home isEqualTo "" }) exitWith { true };

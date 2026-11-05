@@ -9,17 +9,23 @@
  *   (AIC_fnc_clearWaypoints increments the token, AIC_fnc_issueOrder resets
  *   the keys, so every new order starts over):
  *     - not garrisoned yet: once the leader is within (radius * 0.5) max 50
- *       of the centre, AIC_fnc_garrisonBuildings hands out positions (static
+ *       plus 30 m of the centre (the MOVE of AIC_fnc_orderDefend ends up to
+ *       0.4 radius out with a 25 m completion radius, so the leader may halt
+ *       a little past the half-way mark), AIC_fnc_garrisonBuildings hands out positions (static
  *       weapons, buildings, perimeter); "garrisonToken", "garrisonTime"
  *       (time) and "garrisonDone" (true when nobody was sent) are set.
- *     - garrisoned: every unit that reached its position (unitReady or
- *       closer than 2.5 m) is stopped there (doStop, the leader keeps his
- *       HOLD waypoint instead), takes its stance (setUnitPos: "UP" in a
- *       building, "MIDDLE" on the perimeter) and watches the threat, or
- *       outwards without one (doWatch). 120 s after "garrisonTime" the
- *       remaining units are stopped where they are, gunners that have not
- *       reached their gun are left alone. When no unit is left to place,
- *       "garrisonDone" = true.
+ *     - garrisoned: every unit that reached its position (closer than 3 m)
+ *       is stopped there (doStop, the leader keeps his HOLD waypoint
+ *       instead), takes its stance (setUnitPos: "UP" in a building,
+ *       "MIDDLE" on the perimeter) and watches the threat, or outwards
+ *       without one (doWatch). A unit whose move ended short of its spot
+ *       (unitReady away from it: a door the engine gave up on, a blocked
+ *       path) is sent once more (unit variable "AIC_garrisonRetry"); the
+ *       second time, or 120 s after "garrisonTime", it is stopped where it
+ *       is, crouched ("MIDDLE": nobody stands in the street), watching like
+ *       the others. Gunners that have not reached their gun are left alone
+ *       until the timeout. When no unit is left to place, "garrisonDone" =
+ *       true.
  *     - done: when the threat moves more than 45 degrees away from the
  *       direction the garrison watches ("garrisonWatchDir"), everybody on
  *       foot turns to it.
@@ -78,7 +84,7 @@ if (_valid && {(_rec getOrDefault ["garrisonDone", false]) isEqualTo true}) exit
 if (!_valid) exitWith {
     _radius = (_radius min 200) max 30;
     private _done = false;
-    if ((_leader distance2D _center) < ((_radius * 0.5) max 50)) then {
+    if ((_leader distance2D _center) < (((_radius * 0.5) max 50) + 30)) then {
         private _sent = [_group, _center, _radius, _threatPos, _manStatics, _sector] call AIC_fnc_garrisonBuildings;
         _done = _sent == 0;
         _rec set ["garrisonToken", _token];
@@ -97,15 +103,21 @@ private _timedOut = (time - (_rec getOrDefault ["garrisonTime", time])) > 120;
             // gunner: done once seated; a slow one keeps walking to his gun
             if (_timedOut || {!isNull objectParent _x}) then {_x setVariable ["AIC_garrisonPos", nil]};
         } else {
-            if (unitReady _x || {((getPosATL _x) distance _bp) < 2.5}) then {
-                if (_x != _leader) then {doStop _x};
-                _x setUnitPos (_x getVariable ["AIC_garrisonStance", "UP"]);
-                _x doWatch (if (_hasThreat && {!(_x getVariable ["AIC_sentry", false])}) then {_threatPos} else {_bp getPos [200, _center getDir _bp]});
-                _x setVariable ["AIC_garrisonPos", nil];
+            private _there = ((getPosATL _x) distance _bp) < 3;
+            if (unitReady _x && {!_there} && {!_timedOut} && {!(_x getVariable ["AIC_garrisonRetry", false])}) then {
+                // the move ended short of the spot (a door the engine gave up
+                // on, a blocked path): once more before it settles for the open
+                _x setVariable ["AIC_garrisonRetry", true];
+                _x doMove _bp;
             } else {
-                if (_timedOut) then {
+                if (_there || {unitReady _x} || {_timedOut}) then {
                     if (_x != _leader) then {doStop _x};
+                    // at its spot: the stance it was given (UP in a window);
+                    // short of it, in the open: crouched, not standing in the street
+                    _x setUnitPos (if (_there) then {_x getVariable ["AIC_garrisonStance", "UP"]} else {"MIDDLE"});
+                    _x doWatch (if (_hasThreat && {!(_x getVariable ["AIC_sentry", false])}) then {_threatPos} else {_bp getPos [200, _center getDir _bp]});
                     _x setVariable ["AIC_garrisonPos", nil];
+                    _x setVariable ["AIC_garrisonRetry", nil];
                 };
             };
         };

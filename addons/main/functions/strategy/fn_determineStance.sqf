@@ -9,6 +9,9 @@
  *   the general does not flip-flop every cycle when the value sits on a
  *   threshold (OFFENSIVE is kept while value > 1.4, DEFENSIVE while < 0.9).
  *   With no own power at all the stance is always "DEFENSIVE".
+ *   Jev advice (commander "advice" "posture", AIC_fnc_jevAdvisor) shifts
+ *   the value first, by jevWeight x confidence: offensive x(1 + 0.5 w c),
+ *   defensive x(1 - 0.5 w c), balanced pulled toward 1.15.
  *   The result is stored in the commander under "stance".
  *
  * Parameters:
@@ -38,6 +41,25 @@ if !(_previous isEqualType "") then {_previous = "BALANCED"};
 
 private _ratio = _ownPower / (_enemyPower max 1);
 private _value = _ratio * (0.5 + _aggression);
+
+// Jev advice (AIC_fnc_jevAdvisor): the staff officer's posture shifts the
+// value by weight x confidence; the thresholds and hysteresis stay as they are
+private _advice = _cmd getOrDefault ["advice", createHashMap];
+if !(_advice isEqualType createHashMap) then {_advice = createHashMap};
+private _posture = _advice getOrDefault ["posture", createHashMap];
+if (_posture isEqualType createHashMap && {count _posture > 0}) then {
+    private _weight = (([_cmd, "jevWeight"] call AIC_fnc_getSetting) max 0) min 1;
+    private _conf = _posture getOrDefault ["confidence", 0];
+    if !(_conf isEqualType 0) then {_conf = 0};
+    private _pull = _weight * ((_conf max 0) min 1);
+    private _advised = _posture getOrDefault ["value", ""];
+    if !(_advised isEqualType "") then {_advised = ""};
+    switch (toLowerANSI _advised) do {
+        case "offensive": {_value = _value * (1 + 0.5 * _pull)};
+        case "defensive": {_value = _value * (1 - 0.5 * _pull)};
+        case "balanced": {_value = _value + (1.15 - _value) * _pull};
+    };
+};
 
 private _stance = "BALANCED";
 if (_ownPower <= 0) then {

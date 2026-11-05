@@ -15,6 +15,7 @@ class CfgFunctions
             class defaultSettings {};
             class commanderLoop {};
             class commanderCycle {};
+            class requestReplan {};
             class log {};
             class moduleCommander {};
             class moduleObjective {};
@@ -85,12 +86,18 @@ class CfgFunctions
             class bestPlace {};
             class setMarch {};
             class splitForAttack {};
+            class orderRecon {};
+            class rallyPoint {};
+            class queueOrder {};
+            class drainOrders {};
+            class queuedGroups {};
         };
 
         class support
         {
             file = "\z\aic\addons\main\functions\support";
             class supportCycle {};
+            class flyingWeather {};
             class fireMission {};
             class tasksAir {};
             class airDefence {};
@@ -98,6 +105,7 @@ class CfgFunctions
             class heldAirfield {};
             class rearmCycle {};
             class artilleryMagScore {};
+            class timeToNight {};
         };
 
         class logistics
@@ -123,6 +131,18 @@ class CfgFunctions
             class cleanupCycle {};
             class deleteHelipads {};
             class deleteGroup {};
+        };
+
+        class jev
+        {
+            file = "\z\aic\addons\main\functions\jev";
+            class jevInit {};
+            class jevToJSON {};
+            class jevAsk {};
+            class jevCallback {};
+            class jevAnswers {};
+            class jevState {};
+            class jevAdvisor {};
         };
 
         class ui

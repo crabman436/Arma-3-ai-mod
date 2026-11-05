@@ -1,0 +1,9 @@
+schema_version: "1.1"
+name: swarm-doc-sync
+expected_outcome: |
+  The lead classifies this as mechanical work, partitions it by folder or by
+  file so no two concurrent workers edit the same file, and briefs each Haiku
+  worker with the exact header format quoted from CODE_BEST_PRACTICES.md and an
+  instruction to change comments only. Reviewers confirm via git diff that no
+  executable SQF line changed. The lead updates the I03 tracker row itself and
+  reports which files were synced and which, if any, were left for follow-up.

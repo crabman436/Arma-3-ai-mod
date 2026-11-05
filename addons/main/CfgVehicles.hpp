@@ -67,6 +67,14 @@ class CfgVehicles
                 typeName = "NUMBER";
                 defaultValue = "30";
             };
+            class ReplanOnContact: Checkbox
+            {
+                property = "AIC_ModuleCommander_ReplanOnContact";
+                displayName = "Replan on contact";
+                tooltip = "When a group meets the enemy, or is shot down to its retreat threshold, the general thinks again within seconds instead of waiting for the next think interval (by default never sooner than 10 s after its last cycle ended; setting replanMinInterval, at least 5).";
+                typeName = "BOOL";
+                defaultValue = "true";
+            };
             class UseArtillery: Checkbox
             {
                 property = "AIC_ModuleCommander_UseArtillery";
@@ -192,6 +200,46 @@ class CfgVehicles
                 property = "AIC_ModuleCommander_GarrisonManStatics";
                 displayName = "Garrisons man static weapons";
                 tooltip = "Up to half of an infantry garrison mans empty static weapons in its area (mortars excluded).";
+                typeName = "BOOL";
+                defaultValue = "true";
+            };
+            class UseJev: Checkbox
+            {
+                property = "AIC_ModuleCommander_UseJev";
+                displayName = "Use Jev decision model";
+                tooltip = "Ask the Jev decision model for judgment calls (needs the aic_jev extension and a TypeSafe API key). Without them the general uses its scripted heuristics alone.";
+                typeName = "BOOL";
+                defaultValue = "true";
+            };
+            class JevWeight: Edit
+            {
+                property = "AIC_ModuleCommander_JevWeight";
+                displayName = "Jev weight";
+                tooltip = "0..1 - how far the general follows the model's advice: 0 = ignore, 1 = follow fully.";
+                typeName = "NUMBER";
+                defaultValue = "0.6";
+            };
+            class UseMorale: Checkbox
+            {
+                property = "AIC_ModuleCommander_UseMorale";
+                displayName = "Morale";
+                tooltip = "Groups have morale: losses and a fallen leader shake them, rest in a held town restores it. Shaky groups are not sent on new attacks, broken groups fall back to a rally point and stay out of the fight for 10 minutes.";
+                typeName = "BOOL";
+                defaultValue = "true";
+            };
+            class UseRecon: Checkbox
+            {
+                property = "AIC_ModuleCommander_UseRecon";
+                displayName = "Reconnaissance";
+                tooltip = "Before attacking an important objective it has no fresh intel on, the general sends a small group to watch it from a distance first.";
+                typeName = "BOOL";
+                defaultValue = "true";
+            };
+            class UseQRF: Checkbox
+            {
+                property = "AIC_ModuleCommander_UseQRF";
+                displayName = "Quick-reaction forces";
+                tooltip = "Each held base keeps its best motorised or mechanised group ready as a quick-reaction force. It answers attacks on our positions within 5 km and returns to its base once the threat is gone.";
                 typeName = "BOOL";
                 defaultValue = "true";
             };

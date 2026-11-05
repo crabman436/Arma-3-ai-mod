@@ -6,7 +6,9 @@
         and terminates its loop, deletes its debug markers, wakes every
         commanded group (dynamic simulation off, so no group stays frozen
         without a general) and releases its groups (they keep their current
-        waypoints and AI behaviour).
+        waypoints and AI behaviour). Transport helipads of the records and
+        the motor pools of the bases (AIC_fnc_parkSlot: "heliPads" deleted,
+        "parkSlots" / "heliSlots" and their "...Claims" keys removed) go too.
 
     Parameters:
         0: SIDE - side whose commander is removed
@@ -56,8 +58,12 @@ private _toWake = (_cmd getOrDefault ["groups", []]) select { _x isEqualType grp
     if (_x isEqualType createHashMap) then {
         { deleteVehicle _x; } forEach (_x getOrDefault ["heliPads", []]);
         _x set ["heliPads", []];
-        _x set ["heliSlots", nil];
-        _x set ["parkSlots", nil];
+        // the park layouts and their claims go with the commander (set with
+        // nil would keep the keys and break parkSlot's "laid out" test)
+        _x deleteAt "heliSlots";
+        _x deleteAt "parkSlots";
+        _x deleteAt "heliSlotsClaims";
+        _x deleteAt "parkSlotsClaims";
     };
 } forEach (_cmd getOrDefault ["objectives", []]);
 

@@ -14,7 +14,12 @@
           - threat clusters: red ellipse (size from contact spread) plus
             an icon "THREAT <power> (<count>)"
           - own groups: NATO icon in the side's colour with "<task>" text and
-            a thin line (rectangle) from leader to the task position.
+            a thin line (rectangle) from leader to the task position (RECON
+            in purple). The text adds the group's role: "QRF" (record
+            "role"), "SBF" / "RES" (assault role, record "assaultRole";
+            ASSAULT is not marked), and its morale while below 100 %
+            ("M<percent>", record "morale") or "BROKEN" (record
+            "brokenUntil" still running).
             Parked groups (dynamic simulation on: record "parked" or
             dynamicSimulationEnabled) are drawn at alpha 0.4 with a " Z"
             suffix.
@@ -152,7 +157,7 @@ private _taskColors = createHashMapFromArray [
     ["ATTACK", "ColorRed"], ["DEFEND", "ColorBlue"], ["PATROL", "ColorGreen"],
     ["RETREAT", "ColorOrange"], ["REINFORCE", "ColorYellow"], ["SUPPORT", "ColorPink"],
     ["IDLE", "ColorGrey"], ["TRANSPORT", "ColorWhite"], ["TRANSPORTED", "ColorKhaki"],
-    ["RTB", "ColorBrown"], ["SUPPLY", "ColorGUER"]
+    ["RTB", "ColorBrown"], ["SUPPLY", "ColorGUER"], ["RECON", "ColorCIV"]
 ];
 private _typeIcons = createHashMapFromArray [
     ["INF", "inf"], ["MOTOR", "motor_inf"], ["MECH", "mech_inf"], ["ARMOR", "armor"],
@@ -185,8 +190,24 @@ private _typeIcons = createHashMapFromArray [
         _extra = format [" > %1", _final getOrDefault ["task", "?"]];
     };
 
+    // role and morale (realism B / F)
+    private _role = switch (true) do {
+        case ((_rec getOrDefault ["role", ""]) isEqualTo "QRF"): { " QRF" };
+        case ((_rec getOrDefault ["assaultRole", ""]) isEqualTo "SBF"): { " SBF" };
+        case ((_rec getOrDefault ["assaultRole", ""]) isEqualTo "RESERVE"): { " RES" };
+        default { "" };
+    };
+    private _brokenUntil = _rec getOrDefault ["brokenUntil", -1];
+    private _morale = _rec getOrDefault ["morale", 1];
+    if !(_morale isEqualType 0) then { _morale = 1; };
+    private _spirit = call {
+        if (_brokenUntil isEqualType 0 && { _brokenUntil > time }) exitWith { " BROKEN" };
+        if (_morale < 1) exitWith { format [" M%1", round (_morale * 100)] };
+        ""
+    };
+
     [_leaderPos, "ICON", _iconPrefix + (_typeIcons getOrDefault [_type, "unknown"]), _sideColor,
-        format ["%1 %2 %3%4%5%6", groupId _grp, _task, round (_strength * 100), "%", _extra, ["", " Z"] select _parked],
+        format ["%1 %2 %3%4%5%6%7%8", groupId _grp, _task, round (_strength * 100), "%", _role, _spirit, _extra, ["", " Z"] select _parked],
         [0.7, 0.7], 0, "Solid", [1, 0.4] select _parked] call _fnc_marker;
 
     if (_task == "TRANSPORTED") then {

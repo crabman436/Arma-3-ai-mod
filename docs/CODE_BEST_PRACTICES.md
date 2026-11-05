@@ -178,6 +178,11 @@ of groups.
 - Send results to clients, not state: for example one `systemChat` line, not
   the commander HashMap.
 - Keep network variable names short but readable.
+- Anything that crosses into an extension is **asynchronous**: `callExtension`
+  returns at once ("queued") and the result comes back through the
+  `ExtensionCallback` event. Never wait for it (`waitUntil`, polling in a
+  loop); ask in one cycle and consume the answer on the next one, the way
+  `AIC_fnc_jevAdvisor` reads `AIC_fnc_jevAnswers` from the previous cycle.
 
 ## 8. Garbage and lifetime
 

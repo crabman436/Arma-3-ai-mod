@@ -11,8 +11,13 @@
             there (landAt). Task "RTB", taskPos the airfield, record
             "airfield" its id, "turnaround" -1. Without one the plane stays
             up as it is.
-          - on the way (record "airfield" set): once it sits still on the
-            ground the turnaround starts; AIC_TURNAROUND_TIME seconds later
+          - on the way (record "airfield" set): every cycle the airfield is
+            checked to be still held (AIC_fnc_heldAirfield); a plane whose
+            airfield was lost is diverted to the nearest one still held, or,
+            with none, the trip is called off. Once it sits still on the
+            ground within AIC_AIRFIELD_TURNAROUND_RANGE of the airfield
+            (record "taskPos") the turnaround starts (a plane down anywhere
+            else is not serviced); AIC_TURNAROUND_TIME seconds later
             it is rearmed, refuelled and repaired, "airfield" is cleared and
             the task becomes IDLE, so AIC_fnc_supportCycle can send it up
             again. Not down after AIC_REARM_TIMEOUT seconds -> given up,
@@ -59,7 +64,35 @@ private _changes = 0;
 
     // ------------------------------------------------------------ on the way or down
     if (_field >= 0) then {
-        private _down = isTouchingGround _plane && { (abs (speed _plane)) < 2 };
+        private _fieldPos = _rec getOrDefault ["taskPos", []];
+        if (!(_fieldPos isEqualType []) || { count _fieldPos < 2 }) then { _fieldPos = getPosATL _plane; };
+        // still ours? The nearest held airfield to it is itself while it is
+        private _held = [_cmd, _fieldPos] call AIC_fnc_heldAirfield;
+        if ((_held param [0, -1]) isNotEqualTo _field && { (_rec getOrDefault ["turnaround", -1]) < 0 }) then {
+            private _alt = [_cmd, getPosATL _plane] call AIC_fnc_heldAirfield;
+            if (_alt isEqualTo []) then {
+                _rec set ["airfield", -1];
+                _rec set ["task", "IDLE"];
+                _rec set ["taskPos", []];
+                _rec set ["taskTime", time];
+                [_grp] call AIC_fnc_clearWaypoints;
+                _grp setBehaviour "AWARE";
+                _grp setCombatMode "YELLOW";
+                ["%1: %2 (%3) airfield %4 is lost and none is held, carries on as it is", [_side, groupId _grp, typeOf _plane, _field]] call AIC_fnc_log;
+            } else {
+                _alt params ["_altId", "_altPos"];
+                _plane assignToAirport _altId;
+                _plane landAt _altId;
+                _rec set ["airfield", _altId];
+                _rec set ["taskPos", +_altPos];
+                _rec set ["taskTime", time];
+                ["%1: %2 (%3) airfield %4 is lost, diverts to airfield %5", [_side, groupId _grp, typeOf _plane, _field, _altId]] call AIC_fnc_log;
+            };
+            _changes = _changes + 1;
+            continue;
+        };
+        private _down = isTouchingGround _plane && { (abs (speed _plane)) < 2 }
+            && { (_plane distance2D _fieldPos) < AIC_AIRFIELD_TURNAROUND_RANGE };
         if (_down) then {
             private _since = _rec getOrDefault ["turnaround", -1];
             if (_since < 0) then {

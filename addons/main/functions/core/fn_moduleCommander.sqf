@@ -3,10 +3,12 @@
 
     Description:
         Eden module function of AIC_ModuleCommander (server only).
-        Reads the module attributes (including the logistics checkboxes
+        Reads the module attributes (including the ReplanOnContact checkbox
+        and the logistics checkboxes
         ManageDynSim, ManageGarrisons, UseTransport, ManageCleanup, SplitPassengers,
         DynamicSquads, StagedAssaults, SpreadGroups, UseVehicleParks, UseSupplyTrucks
-        and GarrisonManStatics), builds a settings
+        and GarrisonManStatics, the Jev attributes UseJev and JevWeight, and the
+        realism checkboxes UseMorale, UseRecon and UseQRF), builds a settings
         HashMap and creates the commander via AIC_fnc_createCommander. Objective modules
         synchronised to this module are registered and added to the
         commander. When the module is deactivated (synced trigger
@@ -47,6 +49,7 @@ if (!_activated) exitWith {
 private _settings = createHashMapFromArray [
     ["aggression", (([_logic, "Aggression", 0.5] call AIC_fnc_moduleAttr) max 0) min 1],
     ["loopInterval", ([_logic, "LoopInterval", 30] call AIC_fnc_moduleAttr) max 5],
+    ["replanOnContact", [_logic, "ReplanOnContact", true] call AIC_fnc_moduleAttr],
     ["useArtillery", [_logic, "UseArtillery", true] call AIC_fnc_moduleAttr],
     ["useAir", [_logic, "UseAir", true] call AIC_fnc_moduleAttr],
     ["autoObjectives", [_logic, "AutoObjectives", true] call AIC_fnc_moduleAttr],
@@ -62,7 +65,12 @@ private _settings = createHashMapFromArray [
     ["useVehicleParks", [_logic, "UseVehicleParks", true] call AIC_fnc_moduleAttr],
     ["useSupplyTrucks", [_logic, "UseSupplyTrucks", true] call AIC_fnc_moduleAttr],
     ["garrisonManStatics", [_logic, "GarrisonManStatics", true] call AIC_fnc_moduleAttr],
-    ["manageCleanup", [_logic, "ManageCleanup", true] call AIC_fnc_moduleAttr]
+    ["manageCleanup", [_logic, "ManageCleanup", true] call AIC_fnc_moduleAttr],
+    ["jevEnabled", [_logic, "UseJev", true] call AIC_fnc_moduleAttr],
+    ["jevWeight", (([_logic, "JevWeight", 0.6] call AIC_fnc_moduleAttr) max 0) min 1],
+    ["useMorale", [_logic, "UseMorale", true] call AIC_fnc_moduleAttr],
+    ["useRecon", [_logic, "UseRecon", true] call AIC_fnc_moduleAttr],
+    ["useQRF", [_logic, "UseQRF", true] call AIC_fnc_moduleAttr]
 ];
 
 // --- synced objective modules: make sure they are known before objectives are collected

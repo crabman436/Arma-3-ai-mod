@@ -27,3 +27,7 @@ Builders own separate files; coordinate overlaps with the integrator before edit
 ## Remaining roadmap
 
 After this batch, revalidate remaining tracker findings against PR #4, especially F03/F04 force budgets and F08/R02 observation boundaries. Treat new tactical features as later work after reliability checks. Keep Jev optional and preserve heuristic fallback; this batch makes no external AI API calls or purchases.
+
+## Status — 2026-11-05
+
+No implementation of packages A–C had been pushed when the claims neared expiry. On the repository owner's instruction Claude (Opus 5.5) implemented them on `claude/conform-branches` (which also merges PR #4/#6 into the default branch line), together with F03 (residual), F04, F07 and F08. All of them are IN_REVIEW; see the tracker histories and the 2026-11-05 handoff in [MODEL_HANDOFF.md](../MODEL_HANDOFF.md). Regression coverage against the real production functions: `tests/missions/aic_regression.VR`, run by `tests/run-arma-tests.sh`.

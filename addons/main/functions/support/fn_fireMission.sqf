@@ -12,10 +12,12 @@
 
         Danger close: the mission is refused if any alive unit of a side
         friendly to the commander (getFriend >= 0.6, includes the own side)
-        is within 150 m (2D) of the target. Aircraft flying higher than 50 m
-        are ignored for this check, and so are civilians (every side is
-        friendly to civilian by default, which would otherwise block every
-        mission on a populated town) unless the commander itself is civilian.
+        is within 150 m of the target: men on foot and the crews of the
+        vehicles there, from one nearEntities query (no scan of allUnits).
+        Aircraft flying higher than 50 m are ignored for this check, and so
+        are civilians (every side is friendly to civilian by default, which
+        would otherwise block every mission on a populated town) unless the
+        commander itself is civilian.
 
         On success "lastArtyTime" is set on the commander, the artillery
         group's record gets task "SUPPORT" and players of the side get a
@@ -52,17 +54,27 @@ private _target = [_pos select 0, _pos select 1, 0];
 _rounds = ((round _rounds) max 1) min 12;
 
 // ---------------------------------------------------------------- danger close
+// the engine's spatial query instead of a scan of allUnits: men on foot and
+// the crews of vehicles within the radius (aircraft above 50 m are ignored)
 private _dangerRadius = 150;
-private _friendlyIdx = allUnits findIf {
-    alive _x
-    && { (_x distance2D _target) < _dangerRadius }
-    && { (_side getFriend (side group _x)) >= AIC_HOSTILE_FRIEND }
-    && { (side group _x) != civilian || { _side == civilian } }
-    && { !((vehicle _x) isKindOf "Air" && { ((getPosATL _x) select 2) > 50 }) }
+private _fnc_friendly = {
+    params ["_unit"];
+    alive _unit
+    && { (_side getFriend (side group _unit)) >= AIC_HOSTILE_FRIEND }
+    && { (side group _unit) != civilian || { _side == civilian } }
+};
+private _near = _target nearEntities [["CAManBase", "LandVehicle", "Ship", "Air"], _dangerRadius];
+private _friendlyIdx = _near findIf {
+    if (_x isKindOf "CAManBase") then {
+        [_x] call _fnc_friendly
+    } else {
+        !(_x isKindOf "Air" && { ((getPosATL _x) select 2) > 50 })
+        && { ((crew _x) findIf { [_x] call _fnc_friendly }) >= 0 }
+    }
 };
 if (_friendlyIdx >= 0) exitWith {
     ["fireMission (%1): danger close - friendly %2 within %3 m of %4, mission refused", [
-        _side, allUnits select _friendlyIdx, _dangerRadius, mapGridPosition _target
+        _side, _near select _friendlyIdx, _dangerRadius, mapGridPosition _target
     ]] call AIC_fnc_log;
     false
 };

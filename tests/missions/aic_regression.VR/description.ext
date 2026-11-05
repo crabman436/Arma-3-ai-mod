@@ -1,0 +1,5 @@
+// AIC regression mission: run on a dedicated server with -autoInit (see tests/run-arma-tests.sh)
+onLoadName = "AIC regression";
+respawn = 0;
+disabledAI = 1;
+enableDebugConsole = 0;

@@ -5,10 +5,13 @@
         Creates the AI general for a side (server only). Merges the given
         settings with the defaults, stores the commander in AIC_ns "commanders",
         registers the side's groups, sets the HQ, collects objectives, adds the implicit base objective
-        "BASE_HQ" at the HQ (isBase = true, owner = own side) and starts
+        "BASE_HQ" at the HQ (isBase = true, owner = own side; a base marker
+        the HQ stands on becomes BASE_HQ, no second base there) and starts
         the commander loop. If "manageDynSim" is on, the engine's dynamic
         simulation system is enabled (and the group activation distance is
-        set from "dynSimDistance" when > 0).
+        set from "dynSimDistance" when > 0). If "jevEnabled" is on, the
+        Jev decision-model extension is probed (AIC_fnc_jevInit) and its
+        availability logged.
         If the side already has a commander, that commander is returned
         unchanged.
         HQ: the base marker of the side (aic_base_<side>*, case-insensitive)
@@ -74,6 +77,7 @@ _settings set ["aggression", ((_settings get "aggression") max 0) min 1];
 _settings set ["retreatThreshold", ((_settings get "retreatThreshold") max 0) min 1];
 _settings set ["reserveRatio", ((_settings get "reserveRatio") max 0) min 1];
 _settings set ["loopInterval", (_settings get "loopInterval") max 5];
+_settings set ["replanMinInterval", (_settings get "replanMinInterval") max 5];
 _settings set ["objectiveRadius", (_settings get "objectiveRadius") max 25];
 _settings set ["maxAutoObjectives", (round (_settings get "maxAutoObjectives")) max 0];
 _settings set ["artyCooldown", (_settings get "artyCooldown") max 0];
@@ -88,6 +92,10 @@ _settings set ["transportSearchRadius", (_settings get "transportSearchRadius") 
 _settings set ["cleanupDelay", (_settings get "cleanupDelay") max 0];
 _settings set ["cleanupPlayerDistance", (_settings get "cleanupPlayerDistance") max 0];
 _settings set ["cleanupMaxPerCycle", (round (_settings get "cleanupMaxPerCycle")) max 0];
+_settings set ["jevWeight", ((_settings get "jevWeight") max 0) min 1];
+_settings set ["jevMinConfidence", ((_settings get "jevMinConfidence") max 0) min 1];
+_settings set ["jevInterval", (_settings get "jevInterval") max 0];
+_settings set ["jevMaxPerMinute", (round (_settings get "jevMaxPerMinute")) max 1];
 
 // --- commander state
 private _cmd = createHashMapFromArray [
@@ -111,6 +119,8 @@ private _cmd = createHashMapFromArray [
     ["markers", []],
     ["garrisons", createHashMap],
     ["deadQueue", []],
+    ["replanRequested", false],
+    ["replanReason", ""],
     ["loopHandle", scriptNull]
 ];
 
@@ -177,6 +187,8 @@ _cmd set ["hq", _hq];
 // --- implicit base objective at the HQ (garrison system home of last
 // resort). AIC_fnc_collectObjectives has already added BASE_HQ at this very
 // "hq", so addObjective returns that record (it dedupes by id and place).
+// When the HQ was taken from an "aic_base_<side>" marker, that marker IS
+// BASE_HQ (collectObjectives adds no second "BASE_<marker>" base there).
 private _baseRadius = ([_cmd, "objectiveRadius"] call AIC_fnc_getSetting) min 300;
 private _base = [_cmd, _hq, "HQ", _baseRadius, 1, "BASE", true, 0] call AIC_fnc_addObjective;
 if (count _base == 0) then {
@@ -195,6 +207,18 @@ if (([_cmd, "manageDynSim"] call AIC_fnc_getSetting) isEqualTo true) then {
         "Group" setDynamicSimulationDistance _dsDist;
     };
     ["createCommander: dynamic simulation managed for %1 (group distance %2)", [_side, dynamicSimulationDistance "Group"]] call AIC_fnc_log;
+};
+
+// --- Jev decision model: probe the extension once (idempotent); the advisor
+// falls back to the scripted heuristics while it is unavailable
+if (([_cmd, "jevEnabled"] call AIC_fnc_getSetting) isEqualTo true) then {
+    private _jevOk = [] call AIC_fnc_jevInit;
+    private _jevReason = (AIC_ns getOrDefault ["jev", createHashMap]) getOrDefault ["reason", ""];
+    ["createCommander: Jev advisor for %1 %2 (%3)", [
+        _side,
+        ["unavailable, scripted heuristics only", "available"] select _jevOk,
+        _jevReason
+    ]] call AIC_fnc_log;
 };
 
 // --- start thinking

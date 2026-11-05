@@ -20,6 +20,9 @@
  *   1: ARRAY  - target position [x,y] or [x,y,z]
  *   2: NUMBER - (optional) target area radius, default 150
  *   3: STRING - (optional) group type from AIC_fnc_classifyGroup; "" = classify now
+ *   4: ARRAY  - (optional) point to approach through (a flanking team,
+ *               AIC_fnc_splitForAttack via AIC_fnc_issueOrder), default []
+ *               = straight in
  *
  * Returns:
  *   BOOL - true if waypoints were created

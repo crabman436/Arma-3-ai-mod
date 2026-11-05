@@ -18,7 +18,13 @@
              "aic_base_<side>" (case-insensitive, <side> = west, east, guer
              or civ). They become base objectives (source "BASE",
              isBase true, owned by the commander's side), priority 1 or the
-             "_p<number>" suffix, radius as for "aic_obj" markers.
+             "_p<number>" suffix, radius as for "aic_obj" markers. One base
+             per place: the marker the commander's "hq" was taken from
+             (the HQ within its radius) becomes "BASE_HQ" itself (name =
+             marker text, its radius and priority) instead of a second base
+             "BASE_<marker>" at the same spot, and a marker inside an
+             existing base of source "BASE" adds nothing (it only raises
+             that base's priority).
           3. If setting "autoObjectives": map locations of type
              NameCityCapital (priority 3), NameCity (2), Airport (2.5) and
              NameVillage (1), nearest to the commander HQ, until the commander
@@ -29,6 +35,9 @@
              (isBase, priority 1, radius min(objectiveRadius, 300), owner =
              own side), if it does not exist yet.
         Safe to call repeatedly: AIC_fnc_addObjective dedupes by id.
+        Every "aic_obj" / own "aic_base_<side>" marker name seen is kept in
+        the commander key "collectedMarkers" (HashMap name -> its position), which
+        AIC_fnc_updateObjectives uses to spot markers created later.
 
     Parameters:
         0: HASHMAP - commander
@@ -101,6 +110,14 @@ private _fnc_markerRadius = {
     _radius
 };
 
+// AIC_fnc_updateObjectives finds late markers by name and place ("collectedMarkers",
+// name -> position, recorded below where each marker is collected), not by
+// coverage: a distinct marker inside another objective's radius is collected
+// too, a marker that merged into an existing objective asks no new collection,
+// and one moved or recreated elsewhere is collected again
+private _collected = _cmd getOrDefault ["collectedMarkers", createHashMap];
+_cmd set ["collectedMarkers", _collected];
+
 // ---------------------------------------------------------------- 2. markers
 {
     private _marker = _x;
@@ -113,6 +130,7 @@ private _fnc_markerRadius = {
         private _priority = [_lower, 1.5] call _fnc_markerPriority;
 
         [_cmd, getMarkerPos _marker, _name, _radius, _priority, "MARKER"] call AIC_fnc_addObjective;
+        _collected set [_marker, getMarkerPos _marker];
     };
 } forEach allMapMarkers;
 
@@ -130,7 +148,30 @@ if (_side in [west, east, independent, civilian]) then {
             if (_name isEqualTo "" || { format ["BASE_%1", _name] == AIC_BASE_ID }) then { _name = _marker; };
             private _radius = [_marker] call _fnc_markerRadius;
             private _priority = [_lower, 1] call _fnc_markerPriority;
-            [_cmd, getMarkerPos _marker, _name, _radius, _priority, "BASE", true, 0] call AIC_fnc_addObjective;
+            private _mPos = getMarkerPos _marker;
+            _collected set [_marker, _mPos];
+            private _hqPos = _cmd getOrDefault ["hq", []];
+            // one base per place: two base records at one spot would each
+            // want a garrison and lay out two motor pools on one centre
+            private _sameBase = (_cmd getOrDefault ["objectives", []]) select {
+                (_x getOrDefault ["source", ""]) isEqualTo "BASE"
+                && { ((_x getOrDefault ["pos", [0, 0, 0]]) distance2D _mPos) <= (((_x getOrDefault ["radius", 0]) max _radius) max 1) }
+            };
+            if (_sameBase isNotEqualTo []) then {
+                private _b = _sameBase select 0;
+                if (_priority > (_b getOrDefault ["priority", 0])) then { _b set ["priority", _priority]; };
+            } else {
+                if (_hqPos isEqualType [] && { count _hqPos >= 2 } && { (_mPos distance2D _hqPos) <= (_radius max 1) }) then {
+                    // the HQ stands on this marker: it is BASE_HQ
+                    private _hqObj = [_cmd, _hqPos, "HQ", _radius, _priority, "BASE", true, 0] call AIC_fnc_addObjective;
+                    if (count _hqObj > 0) then {
+                        _hqObj set ["owner", _side];
+                        _hqObj set ["name", _name];
+                    };
+                } else {
+                    [_cmd, _mPos, _name, _radius, _priority, "BASE", true, 0] call AIC_fnc_addObjective;
+                };
+            };
         };
     } forEach allMapMarkers;
 };

@@ -3,18 +3,26 @@
  * Description:
  *   Returns the commander's groups that can be given a manoeuvre task:
  *     - group not null and has alive units
- *     - record task is not "RETREAT", "TRANSPORT", "TRANSPORTED" or "RTB"
- *       (retreating groups and groups owned by the transport system)
+ *     - record task is not "RETREAT", "TRANSPORT", "TRANSPORTED", "RTB" or
+ *       "RECON" (retreating groups, groups owned by the transport system,
+ *       groups watching an objective)
+ *     - not broken: with setting "useMorale", record "brokenUntil" is not
+ *       later than now (a group whose morale broke stays out of the fight)
  *     - record strength is above setting "retreatThreshold"
  *     - record "transportOnly" is not true (unarmed vehicle crews are left
  *       to the transport system)
  *     - type filter: if a non-empty types array is given, only groups whose
  *       record type is in it; otherwise every type except "STATIC" and "ARTY".
+ *     - not a base's quick-reaction force (record "role" "QRF", set by
+ *       AIC_fnc_garrisonCycle while settings "useQRF" and "manageGarrisons"
+ *       are on), unless param 2 is true: AIC_fnc_allocateForces takes the
+ *       QRF only for DEFEND targets near its base and filters it itself.
  *   Groups without a record are ignored.
  *
  * Parameters:
  *   0: HASHMAP - commander
  *   1: ARRAY   - (optional) allowed type strings, e.g. ["HELI","PLANE"]. Default: []
+ *   2: BOOL    - (optional) include quick-reaction forces. Default: false
  *
  * Returns:
  *   ARRAY - groups, sorted by descending power
@@ -26,7 +34,8 @@
 
 params [
     ["_commander", createHashMap, [createHashMap]],
-    ["_types", [], [[]]]
+    ["_types", [], [[]]],
+    ["_includeQRF", false, [false]]
 ];
 
 if (count _commander == 0) exitWith {[]};
@@ -37,7 +46,12 @@ if (_groups isEqualTo [] || {!(_groupData isEqualType createHashMap)}) exitWith 
 
 private _threshold = [_commander, "retreatThreshold"] call AIC_fnc_getSetting;
 
-private _excludedTasks = ["RETREAT", "TRANSPORT", "TRANSPORTED", "RTB"];
+private _excludedTasks = ["RETREAT", "TRANSPORT", "TRANSPORTED", "RTB", "RECON"];
+private _useMorale = ([_commander, "useMorale"] call AIC_fnc_getSetting) isEqualTo true;
+// a base's quick-reaction force is kept for the base (AIC_fnc_garrisonCycle)
+private _skipQRF = !_includeQRF
+    && {([_commander, "useQRF"] call AIC_fnc_getSetting) isEqualTo true}
+    && {([_commander, "manageGarrisons"] call AIC_fnc_getSetting) isEqualTo true};
 
 private _upperTypes = _types apply {toUpperANSI _x};
 private _useFilter = _upperTypes isNotEqualTo [];
@@ -62,7 +76,13 @@ private _result = [];
             private _transportOnly = (_record getOrDefault ["transportOnly", false]) isEqualTo true;
             // neither do anti-air vehicles
             private _antiAir = (_record getOrDefault ["antiAir", false]) isEqualTo true;
-            if (_typeOk && {!_transportOnly} && {!_antiAir} && {!(_task in _excludedTasks)} && {_strength > _threshold}) then {
+            // a broken group (AIC_fnc_updateGroups) is out of the fight for a while
+            private _broken = _useMorale && {
+                private _until = _record getOrDefault ["brokenUntil", -1];
+                _until isEqualType 0 && {_until > time}
+            };
+            private _qrf = _skipQRF && {(_record getOrDefault ["role", ""]) isEqualTo "QRF"};
+            if (_typeOk && {!_qrf} && {!_transportOnly} && {!_antiAir} && {!_broken} && {!(_task in _excludedTasks)} && {_strength > _threshold}) then {
                 _result pushBack [_record getOrDefault ["power", 0], _forEachIndex];
             };
         };
