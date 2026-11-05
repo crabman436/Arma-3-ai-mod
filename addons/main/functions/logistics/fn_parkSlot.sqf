@@ -7,10 +7,11 @@
  *   vehicles ("parkSlots") and up to 6 for helicopters ("heliSlots"), each
  *   helicopter place with an invisible helipad so the pilot lands there
  *   (base key "heliPads", deleted by AIC_fnc_removeCommander).
- *   A group keeps its place while its record "home" or "parkBase" (set
- *   here: the base it was last given a place at; helicopters have no home)
- *   is this base, also while it is away on a ride or an attack; a group
- *   that parks at another base gives it up.
+ *   A group keeps its place while its record "home" is this base, also
+ *   while it is away on a ride or an attack; a group that moves home gives
+ *   it up. A group without a home (helicopters) keeps it while its
+ *   "parkBase" (set here: the base it was last given a place at) is this
+ *   base, and gives it up when it parks at another base.
  *
  * Parameters:
  *   0: HASHMAP - commander
@@ -95,10 +96,12 @@ private _own = -1;
         if (
             isNull _holder
             || {({alive _x} count (units _holder)) == 0}
-            // the holder still parks here: its home, or the base it was
-            // given this place at (helicopters have no home, F02)
-            || {(_hRec getOrDefault ["home", ""]) isNotEqualTo _id
-                && {(_hRec getOrDefault ["parkBase", ""]) isNotEqualTo _id}}
+            // the holder still parks here: its home, or for a group without a
+            // home (helicopters, F02) the base it was given this place at
+            || {
+                private _hHome = _hRec getOrDefault ["home", ""];
+                _hHome isNotEqualTo _id && {_hHome isNotEqualTo "" || {(_hRec getOrDefault ["parkBase", ""]) isNotEqualTo _id}}
+            }
         ) then {_free = _forEachIndex};
     };
 } forEach _slots;

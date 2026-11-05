@@ -167,7 +167,7 @@ Created by `AIC_fnc_createCommander`. Keys (all strings):
 | `"objectiveIndex"` | HashMap: objective id -> the same record as in `"objectives"`. Maintained by `AIC_fnc_addObjective`; read with `AIC_fnc_getObjective`. | intel |
 | `"deadQueue"` | array of dead units / destroyed vehicles of the side in kill order, appended by the event handlers of `AIC_fnc_attachGroupEHs`, consumed by `AIC_fnc_cleanupCycle` | groups / logistics |
 | `"knownEnemies"` | array of enemy contact records | intel |
-| `"collectedMarkers"` | HashMap marker name -> true: every `aic_obj` / own `aic_base_<side>` marker `AIC_fnc_collectObjectives` has seen; `AIC_fnc_updateObjectives` re-collects only for a name not in it (F13) | intel |
+| `"collectedMarkers"` | HashMap marker name -> position: every `aic_obj` / own `aic_base_<side>` marker `AIC_fnc_collectObjectives` has seen; `AIC_fnc_updateObjectives` re-collects only for a name not in it or a marker that moved (F13) | intel |
 | `"threats"` | array of threat cluster records | intel |
 | `"stance"` | `"OFFENSIVE"` / `"BALANCED"` / `"DEFENSIVE"` | strategy |
 | `"plan"` | array of assignment records (last plan) | strategy |

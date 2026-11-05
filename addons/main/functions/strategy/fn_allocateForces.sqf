@@ -1297,24 +1297,28 @@ private _fnc_release = {
     // estimate with one shared surplus budget per garrison: groups of one
     // home compete for its surplus, and only as many as it can spare count
     // (F04; AIC_fnc_canLeaveGarrison applies the same rule at commit time)
+    // (most effective first, so a home's budget goes to what helps most)
     private _availEff = 0;
     private _budget = createHashMap; // home id -> surplus still to spare
+    // ([eff, index]: sort compares later elements on ties, never a HashMap)
+    private _byEff = [];
+    {_byEff pushBack [(_x get "power") * ([_x get "type", _task, _target get "urban"] call _fnc_suit), _forEachIndex]} forEach _cands;
+    _byEff sort false;
     {
-        private _home = [_x, _target] call _fnc_surplusHome;
-        private _counts = true;
-        if (_home != "") then {
+        _x params ["_eff", "_ci"];
+        private _info = _cands select _ci;
+        private _home = [_info, _target] call _fnc_surplusHome;
+        if (_home == "") then {
+            _availEff = _availEff + _eff;
+        } else {
             if !(_home in _budget) then {_budget set [_home, [_home] call _fnc_homeSpare]};
             private _left = _budget get _home;
-            if (_left >= (_x get "rawPower")) then {
-                _budget set [_home, _left - (_x get "rawPower")];
-            } else {
-                _counts = false;
+            if (_left >= (_info get "rawPower")) then {
+                _budget set [_home, _left - (_info get "rawPower")];
+                _availEff = _availEff + _eff;
             };
         };
-        if (_counts) then {
-            _availEff = _availEff + (_x get "power") * ([_x get "type", _task, _target get "urban"] call _fnc_suit);
-        };
-    } forEach _cands;
+    } forEach _byEff;
 
     // feasibility
     private _feasible = true;

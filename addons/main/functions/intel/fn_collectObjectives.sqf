@@ -36,7 +36,7 @@
              own side), if it does not exist yet.
         Safe to call repeatedly: AIC_fnc_addObjective dedupes by id.
         Every "aic_obj" / own "aic_base_<side>" marker name seen is kept in
-        the commander key "collectedMarkers" (HashMap name -> true), which
+        the commander key "collectedMarkers" (HashMap name -> its position), which
         AIC_fnc_updateObjectives uses to spot markers created later.
 
     Parameters:
@@ -167,16 +167,16 @@ if (_side in [west, east, independent, civilian]) then {
 };
 
 // ---------------------------------------------------------------- 2c. markers looked at
-// AIC_fnc_updateObjectives finds late markers by name, not by place: a
-// distinct marker inside another objective's radius is collected too (F13),
-// and a marker that merged into an existing objective triggers no new
-// collection
+// AIC_fnc_updateObjectives finds late markers by name and place, not by
+// coverage: a distinct marker inside another objective's radius is collected
+// too (F13), a marker that merged into an existing objective triggers no new
+// collection, and one moved or recreated elsewhere is collected again
 private _collected = _cmd getOrDefault ["collectedMarkers", createHashMap];
 if !(_collected isEqualType createHashMap) then { _collected = createHashMap; };
 {
     private _lower = toLowerANSI _x;
     if ((_lower find AIC_MARKER_OBJ_PREFIX) == 0 || { (_lower find _basePrefix) == 0 }) then {
-        _collected set [_x, true];
+        _collected set [_x, getMarkerPos _x];
     };
 } forEach allMapMarkers;
 _cmd set ["collectedMarkers", _collected];

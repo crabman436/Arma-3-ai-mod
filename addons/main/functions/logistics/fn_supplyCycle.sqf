@@ -142,7 +142,7 @@ private _taken = [];
         // the same eligibility as when the job was given (F12): a player took
         // the vehicle over, or a helicopter is not on the ground any more
         case (isPlayer (effectiveCommander _target)): {"a player commands the vehicle"};
-        case (_target isKindOf "Air" && {!isTouchingGround _target}): {"the helicopter took off"};
+        case (_target isKindOf "Air" && {!([_target] call AIC_fnc_isLanded)}): {"the helicopter took off"};
         case (([_cmd, getPosATL _target, AIC_SUPPLY_DANGER_RADIUS] call AIC_fnc_nearestThreat) isNotEqualTo []): {"enemies near the vehicle"};
         default {""};
     };
@@ -175,7 +175,7 @@ private _taken = [];
     if ((time - _arrive) < AIC_SUPPLY_WORK_TIME) then {continue};
     // recheck right before the service: the vehicle may have lifted off or
     // been taken over since the checks above in this same pass (F12)
-    if (isPlayer (effectiveCommander _target) || {_target isKindOf "Air" && {!isTouchingGround _target}}) then {
+    if (isPlayer (effectiveCommander _target) || {_target isKindOf "Air" && {!([_target] call AIC_fnc_isLanded)}}) then {
         _rec set ["supplyArrive", -1];
         continue;
     };

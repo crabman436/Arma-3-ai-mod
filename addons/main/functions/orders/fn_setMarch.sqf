@@ -41,7 +41,9 @@ private _vehicles = [];
     if (alive _x && {!isPlayer _x}) then {
         if (_on) then {_x disableAI "AUTOCOMBAT"} else {_x enableAI "AUTOCOMBAT"};
         private _veh = objectParent _x;
-        if (!isNull _veh && {(group (driver _veh)) isEqualTo _group} && {_veh isKindOf "LandVehicle"} && {!(_veh isKindOf "StaticWeapon")}) then {
+        // off the march: also a vehicle whose driver died (its road / speed
+        // limits stay on the vehicle for whoever drives it next)
+        if (!isNull _veh && {!_on || {(group (driver _veh)) isEqualTo _group}} && {_veh isKindOf "LandVehicle"} && {!(_veh isKindOf "StaticWeapon")}) then {
             _vehicles pushBackUnique _veh;
         };
     };

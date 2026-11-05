@@ -223,10 +223,6 @@ if (_fresh) then {
 // group (a transport-only crew has no power in the garrison, nothing to spare)
 private _fnc_mayLeave = {
     params ["_grp", "_rec"];
-    // a broken crew stays where it rallied (same gate as AIC_fnc_canLeaveGarrison,
-    // whose answer AIC_fnc_orderTransport no longer checks, F03)
-    private _brokenUntil = _rec getOrDefault ["brokenUntil", -1];
-    if (_brokenUntil isEqualType 0 && { _brokenUntil > time } && { _useMorale }) exitWith { false };
     private _home = _rec getOrDefault ["home", ""];
     if (!(_home isEqualType "") || { _home isEqualTo "" }) exitWith { true };
     private _entry = _garrisons getOrDefault [_home, createHashMap];
@@ -265,6 +261,10 @@ private _byGroup = createHashMap;
     private _rec = _groupData getOrDefault [hashValue _grp, createHashMap];
     if (count _rec == 0 || { !((_rec getOrDefault ["task", "IDLE"]) in ["IDLE", "DEFEND", "PATROL"]) }) then { continue };
     if (!alive _veh || { !canMove _veh }) then { continue };
+    // a broken crew stays where it rallied, transport-only crews too (the gate
+    // of AIC_fnc_canLeaveGarrison, whose answer AIC_fnc_orderTransport does not check, F03)
+    private _brokenUntil = _rec getOrDefault ["brokenUntil", -1];
+    if (_useMorale && { _brokenUntil isEqualType 0 } && { _brokenUntil > time }) then { continue };
     if (!_transportOnly && { !([_grp, _rec] call _fnc_mayLeave) }) then { continue };
 
     private _hv = hashValue _grp;

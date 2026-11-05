@@ -69,11 +69,12 @@ if !(_objectives isEqualType []) then {
 private _cmdSide = _cmd getOrDefault ["side", sideUnknown];
 private _basePrefix = AIC_MARKER_BASE_PREFIX + toLowerANSI str _cmdSide;
 private _checkBases = _cmdSide in [west, east, independent, civilian];
-// a marker is new when its NAME was never collected ("collectedMarkers",
-// AIC_fnc_collectObjectives), whatever objective already covers its place:
-// startup and late creation give the same objectives, and a collected
-// marker never asks again (F13). Cheap prefix tests first: almost every
-// marker (player drawings, ...) is rejected before the lookup
+// a marker is new when its name was never collected ("collectedMarkers",
+// AIC_fnc_collectObjectives) or it stands somewhere else now (moved or
+// recreated), whatever objective already covers its place: startup and late
+// creation give the same objectives, and a collected marker never asks
+// again (F13). Cheap prefix tests first: almost every marker (player
+// drawings, ...) is rejected before the lookup
 private _collected = _cmd getOrDefault ["collectedMarkers", createHashMap];
 if !(_collected isEqualType createHashMap) then { _collected = createHashMap; };
 private _newMarker = allMapMarkers findIf {
@@ -81,7 +82,10 @@ private _newMarker = allMapMarkers findIf {
     (
         (_lower find AIC_MARKER_OBJ_PREFIX) == 0
         || { _checkBases && { (_lower find _basePrefix) == 0 } }
-    ) && { !(_x in _collected) }
+    ) && {
+        private _was = _collected getOrDefault [_x, []];
+        !(_was isEqualType []) || { count _was < 2 } || { ((getMarkerPos _x) distance2D _was) > 1 }
+    }
 };
 private _hqMissing = count ([_cmd, AIC_BASE_ID] call AIC_fnc_getObjective) == 0;
 if (_newMarker > -1 || _hqMissing) then {

@@ -173,19 +173,16 @@ if (_useMorale) then {
             private _initial = (_record getOrDefault ["initialSize", count _alive]) max 1;
             private _unitRatio = ((count _alive) / _initial) min 1;
 
-            private _vehicles = [];
             // vehicles the group crews as its own: a garrison member manning a
             // town's static gun ("AIC_gunnerOf", AIC_fnc_garrisonBuildings) stays
             // infantry (AIC_fnc_classifyGroup) and is dismounted by
-            // AIC_fnc_clearWaypoints on the next order, so it does not count (F07)
+            // AIC_fnc_clearWaypoints on the next order, so that gun neither makes
+            // the squad an anti-air crew (F07) nor lowers its strength
             private _crewed = [];
             {
                 private _veh = objectParent _x;
-                if (!isNull _veh && {(_veh getCargoIndex _x) < 0}) then {
-                    _vehicles pushBackUnique _veh;
-                    if (isNull (_x getVariable ["AIC_gunnerOf", objNull])) then {
-                        _crewed pushBackUnique _veh;
-                    };
+                if (!isNull _veh && {(_veh getCargoIndex _x) < 0} && {isNull (_x getVariable ["AIC_gunnerOf", objNull])}) then {
+                    _crewed pushBackUnique _veh;
                 };
             } forEach _alive;
 
@@ -245,14 +242,14 @@ if (_useMorale) then {
             };
 
             private _vehHealth = 1;
-            if (_vehicles isNotEqualTo []) then {
+            if (_crewed isNotEqualTo []) then {
                 private _sum = 0;
                 {
                     private _h = 1 - (damage _x);
                     if (!(_x isKindOf "StaticWeapon") && {!canMove _x}) then {_h = _h * 0.5};
                     _sum = _sum + _h;
-                } forEach _vehicles;
-                _vehHealth = _sum / (count _vehicles);
+                } forEach _crewed;
+                _vehHealth = _sum / (count _crewed);
             };
 
             // Average infantry wounds also lower effective strength slightly
