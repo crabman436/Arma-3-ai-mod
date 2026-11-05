@@ -21,8 +21,12 @@
  *     Tank                                   -> ARMOR
  *     Car / other land vehicles              -> MOTOR
  *
+ *   With a list of known objects (an enemy contact, AIC_fnc_gatherIntel)
+ *   only known members decide the type (see AIC_fnc_groupPower, F08).
+ *
  * Parameters:
  *   0: GROUP - group to classify
+ *   1: ARRAY - (optional) known objects (units / vehicles); [] = everything
  *
  * Returns:
  *   STRING - one of "INF","MOTOR","MECH","ARMOR","HELI","PLANE","ARTY","STATIC","NAVAL"
@@ -32,11 +36,15 @@
  *   private _type = [group player] call AIC_fnc_classifyGroup; // "INF"
  */
 
-params [["_group", grpNull, [grpNull]]];
+params [["_group", grpNull, [grpNull]], ["_known", [], [[]]]];
 
 if (isNull _group) exitWith {"INF"};
 
+private _filter = _known isNotEqualTo [];
 private _units = (units _group) select {alive _x};
+if (_filter) then {
+    _units = _units select {_x in _known || {(objectParent _x) in _known}};
+};
 if (_units isEqualTo []) exitWith {"INF"};
 
 // Weight a single crewed vehicle contributes towards its type
@@ -79,6 +87,7 @@ private _vehicles = [];
         && {group _crewUnit isEqualTo _group}
         && {_role != "cargo"}
         && {!_isPersonTurret}
+        && {!_filter || {_veh in _known} || {_crewUnit in _known}}
     };
 
     if (_crewIdx >= 0) then {
@@ -87,7 +96,7 @@ private _vehicles = [];
     } else {
         // Only passengers of this group in the vehicle: they count as infantry
         private _passengers = {
-            alive _x && {objectParent _x isEqualTo _veh}
+            alive _x && {objectParent _x isEqualTo _veh} && {!_filter || {_x in _known}}
         } count _units;
         _scores set ["INF", (_scores get "INF") + _passengers];
     };

@@ -104,6 +104,7 @@ if (!(_groupData isEqualType createHashMap) || { count _groupData == 0 }) exitWi
 
 // garrison state (AIC_fnc_garrisonStatus, fresh from this cycle's planner)
 private _garrisons = _cmd getOrDefault ["garrisons", createHashMap];
+private _useMorale = ([_cmd, "useMorale"] call AIC_fnc_getSetting) isEqualTo true;
 if !(_garrisons isEqualType createHashMap) then { _garrisons = createHashMap; };
 
 private _trip = _cargoPos distance2D _dest;
@@ -222,6 +223,10 @@ if (_fresh) then {
 // group (a transport-only crew has no power in the garrison, nothing to spare)
 private _fnc_mayLeave = {
     params ["_grp", "_rec"];
+    // a broken crew stays where it rallied (same gate as AIC_fnc_canLeaveGarrison,
+    // whose answer AIC_fnc_orderTransport no longer checks, F03)
+    private _brokenUntil = _rec getOrDefault ["brokenUntil", -1];
+    if (_brokenUntil isEqualType 0 && { _brokenUntil > time } && { _useMorale }) exitWith { false };
     private _home = _rec getOrDefault ["home", ""];
     if (!(_home isEqualType "") || { _home isEqualTo "" }) exitWith { true };
     private _entry = _garrisons getOrDefault [_home, createHashMap];

@@ -22,8 +22,14 @@
  *   alive unit and the vehicle can still fire. Vehicle value is scaled by
  *   (1 - damage); immobilised mobile vehicles are scaled by 0.6.
  *
+ *   With a list of known objects (an enemy contact, AIC_fnc_gatherIntel)
+ *   only what is in it counts: a man on foot or a passenger only if he is
+ *   in the list, a crewed vehicle if the vehicle or one of its crew is.
+ *   Unseen members add nothing (F08: no exposure of unobserved members).
+ *
  * Parameters:
  *   0: GROUP - group to evaluate
+ *   1: ARRAY - (optional) known objects (units / vehicles); [] = everything
  *
  * Returns:
  *   NUMBER - combat power (0 for null / dead groups)
@@ -32,11 +38,15 @@
  *   private _power = [_grp] call AIC_fnc_groupPower;
  */
 
-params [["_group", grpNull, [grpNull]]];
+params [["_group", grpNull, [grpNull]], ["_known", [], [[]]]];
 
 if (isNull _group) exitWith {0};
 
+private _filter = _known isNotEqualTo [];
 private _units = (units _group) select {alive _x};
+if (_filter) then {
+    _units = _units select {_x in _known || {(objectParent _x) in _known}};
+};
 if (_units isEqualTo []) exitWith {0};
 
 private _armedValue = createHashMapFromArray [
@@ -57,6 +67,7 @@ private _vehicles = [];
     if (isNull _veh) then {
         _power = _power + (1 - (damage _unit));
     } else {
+        // known: the vehicle (crew value) or the unit itself (a passenger)
         _vehicles pushBackUnique _veh;
     };
 } forEach _units;
@@ -72,8 +83,11 @@ private _vehicles = [];
         _x params ["_crewUnit", "_role", "", "", ["_isPersonTurret", false]];
         if (alive _crewUnit && {group _crewUnit isEqualTo _group}) then {
             if (_role == "cargo" || {_isPersonTurret}) then {
+                // troops inside a vehicle nobody saw get out are unknown
+                if (_filter && {!(_crewUnit in _known)}) then {continue};
                 _passengers = _passengers + (1 - (damage _crewUnit));
             } else {
+                if (_filter && {!(_veh in _known)} && {!(_crewUnit in _known)}) then {continue};
                 _ourCrew pushBack _crewUnit;
             };
         };

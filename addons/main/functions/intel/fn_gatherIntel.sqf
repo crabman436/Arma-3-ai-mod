@@ -16,7 +16,9 @@
             error (z forced to 0, ATL), lastSeen = that observer's
             targetKnowledge last-seen time;
           - detected groups get a fresh contact record (type / power via
-            AIC_fnc_classifyGroup / AIC_fnc_groupPower);
+            AIC_fnc_classifyGroup / AIC_fnc_groupPower, counting only the
+            members and vehicles some observer knows: record "known", the
+            objects seen; unseen members of the group are not exposed, F08);
           - previous contacts not detected this cycle are kept with their old
             (stale) data while lastSeen is within 300 s and the enemy group
             still has alive units; otherwise they are forgotten.
@@ -94,6 +96,7 @@ if (_groupData isEqualType createHashMap) then {
 // perceived position, perceived side and position error, in one engine call
 if (_observers isNotEqualTo []) then {
     private _best = createHashMap; // hashValue enemy group -> [error, pos, observer leader, probe, group]
+    private _observed = createHashMap; // hashValue enemy group -> objects of it some observer knows
     {
         _x params ["", "_ownGroup", "_ownLeader"];
         private _job = _reconJobs getOrDefault [hashValue _ownGroup, [createHashMap, createHashMap, -1]];
@@ -121,6 +124,9 @@ if (_observers isNotEqualTo []) then {
                     _reconKeys set [_key, true];
                 };
             };
+            private _objs = _observed getOrDefault [_key, []];
+            _objs pushBackUnique _obj;
+            _observed set [_key, _objs];
             private _cur = _best getOrDefault [_key, []];
             if (_cur isEqualTo [] || { _err < (_cur select 0) }) then {
                 _best set [_key, [_err, [_tPos select 0, _tPos select 1, 0], _ownLeader, _obj, _eg]];
@@ -150,11 +156,15 @@ if (_observers isNotEqualTo []) then {
             _bestPos = [_ePos select 0, _ePos select 1, 0];
         };
 
+        private _known = (_observed getOrDefault [_x, [_probe]]) select { alive _x };
+        if (_known isEqualTo []) then { _known = [_probe]; };
         private _rec = _previous getOrDefault [_x, createHashMap];
         _rec set ["group", _eg];
         _rec set ["pos", _bestPos];
-        _rec set ["type", [_eg] call AIC_fnc_classifyGroup];
-        _rec set ["power", [_eg] call AIC_fnc_groupPower];
+        _rec set ["known", _known];
+        _rec set ["type", [_eg, _known] call AIC_fnc_classifyGroup];
+        // at least one man: a contact is never nothing
+        _rec set ["power", ([_eg, _known] call AIC_fnc_groupPower) max 1];
         _rec set ["lastSeen", _lastSeen max (_rec getOrDefault ["lastSeen", -1])];
         _contacts pushBack _rec;
         _seen set [_x, true];

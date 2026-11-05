@@ -300,7 +300,12 @@ instead.
 ### Enemy contact record
 
 HashMap: `"pos"`, `"group"` (enemy group), `"type"` (same type enum as group
-record, from `AIC_fnc_classifyGroup`), `"power"`, `"lastSeen"` (time).
+record, from `AIC_fnc_classifyGroup`), `"power"`, `"lastSeen"` (time),
+`"known"` (array of the group's units / vehicles some observer knows).
+`"type"` and `"power"` count only the `"known"` objects (`AIC_fnc_classifyGroup`
+/ `AIC_fnc_groupPower` with their optional known-objects parameter; power at
+least 1), and CAS (`AIC_fnc_tasksAir`) is handed only those objects, so
+members nobody saw are never exposed (F08).
 
 ### Threat cluster record
 
@@ -347,13 +352,13 @@ HashMap: `"group"`, `"task"`, `"pos"`, `"objective"` (id or `""`).
 
 ### groups (`functions/groups`)
 - `AIC_fnc_registerGroups` — `[commander] call`. Adds all groups of the side with alive units, `!isPlayer` leaders (always; `excludePlayerGroups` additionally excludes groups that contain any player), not `group getVariable ["AIC_exclude", false]`, and **local to the server** (groups owned by a headless client are not commanded: AIC's argument-local commands such as `doMove`, `doStop`, `land`, `orderGetIn`, `doArtilleryFire` and the unit `Hit` / `FiredNear` handlers only work where the group is local; a group that moves to a headless client is released by the sweep). Removes empty/dead groups. Creates group records.
-- `AIC_fnc_classifyGroup` — `[group] call` → type string.
+- `AIC_fnc_classifyGroup` — `[group, known(optional array)] call` → type string (with known objects: only those count).
 - `AIC_fnc_newGroupRecord` — `[group] call` → a complete group record (type, power, `initialSize`, task `"IDLE"`, and every logistics key). The one record constructor, used by `registerGroups`, `updateGroups` and `issueOrder`.
 - `AIC_fnc_splitPassengers` — `[commander, groups(optional, default all groups of the side)] call` → array of new groups. Runs only if `splitPassengers`. For every commandable group of the side whose members crew a transport-class vehicle (any air vehicle, or a ground vehicle without real weapons) and that has at least two other alive members (cargo / FFV seats or on foot), those members `joinSilent` a new group of the side. Groups crewing an armed ground vehicle, player groups, `AIC_exclude` and `AIC_noSplit` groups are left alone. Called by `registerGroups` before its sweep.
 - `AIC_fnc_vehicleType` — `[vehicle] call` → type string of a crewed vehicle (PLANE, HELI, NAVAL, ARTY, STATIC, MECH, ARMOR, MOTOR). The one decision tree used by `classifyGroup` and `groupPower`.
 - `AIC_fnc_vehicleWeapons` — `[vehicle, mannedOnly(optional, false)] call` → array of real weapon classes (driver turret and non-FFV turrets; horns, smoke launchers, flares, searchlights, laser designators and fake weapons ignored). The one "is it armed?" rule used by `groupPower`, `findTransport` and `supportCycle`.
 - `AIC_fnc_vehicleArmament` — `[vehicle] call` → 0 (unarmed), 1 (machine guns only) or 2 (cannon, rockets, missiles, or any tracked vehicle), from `vehicleWeapons`. Used by `findTransport` (take light vehicles first), `updateGroups` (`"transportOnly"`) and `supportCycle` (machine-gun helicopters are transports, not CAS, while `useTransport` is on).
-- `AIC_fnc_groupPower` — `[group] call` → number. Rough combat value: infantry 1/unit, light vehicle armed 3, APC/IFV 6, tank 10, attack heli 10, plane 12, artillery 4, static 2; scaled by damage.
+- `AIC_fnc_groupPower` — `[group, known(optional array)] call` → number (with known objects: only those count). Rough combat value: infantry 1/unit, light vehicle armed 3, APC/IFV 6, tank 10, attack heli 10, plane 12, artillery 4, static 2; scaled by damage.
 - `AIC_fnc_updateGroups` — `[commander] call`. Refresh `"strength"`, `"power"` and `"transportOnly"` (every alive unit crews an unarmed vehicle: a truck or transport helicopter crew) of each record, set `"ownPower"`.
 - `AIC_fnc_availableGroups` — `[commander, types(optional array), includeQRF(optional, false)] call` → array of groups (by descending power) that are not RETREAT / TRANSPORT / TRANSPORTED / RTB / RECON, not broken (`"useMorale"`, record `"brokenUntil"`), not STATIC, not ARTY (unless types given), not `"transportOnly"`, strength above retreatThreshold, and not a QRF unless `includeQRF` (realism F).
 
