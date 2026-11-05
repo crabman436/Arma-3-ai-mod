@@ -215,7 +215,17 @@ if (_wanted > 0) then {
         } else {
             // no building out there: a terrain post on high ground with trees
             private _p = [_post, 60, "hills + trees - 10*sea"] call AIC_fnc_bestPlace;
-            if (_p isEqualTo []) then {_p = if (surfaceIsWater _post) then {_c} else {[_post select 0, _post select 1, 0]}};
+            if (_p isEqualTo []) then {
+                // the post itself, or the nearest dry point on its bearing towards the centre
+                _p = [];
+                {
+                    private _q = _c getPos [_radius * _x, _bearing];
+                    if (!surfaceIsWater _q) exitWith {_p = [_q select 0, _q select 1, 0]};
+                } forEach [0.85, 0.7, 0.6, 0.45];
+                if (_p isEqualTo []) then {_p = +_c};
+            };
+            // a man leaving a building for the post gives his place there up
+            _unit setVariable ["AIC_buildingPos", nil];
             _unit doMove _p;
             _unit setVariable ["AIC_garrisonPos", _p];
             _unit setVariable ["AIC_garrisonStance", "MIDDLE"];

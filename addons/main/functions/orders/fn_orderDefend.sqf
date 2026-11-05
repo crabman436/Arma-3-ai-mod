@@ -64,6 +64,7 @@ private _center = [_pos select 0, _pos select 1, 0];
 
 // --- Static weapons / artillery: stay where they are ------------------------
 if (_type in ["STATIC", "ARTY"]) exitWith {
+    [_group] call AIC_fnc_clearWaypoints;
     _group setBehaviour "AWARE";
     _group setCombatMode "YELLOW";
     true
@@ -120,7 +121,7 @@ if (_type in ["MOTOR", "MECH", "ARMOR"] && {count _park >= 2}) exitWith {
     _wpH setWaypointBehaviour "SAFE";
     _wpH setWaypointCombatMode "YELLOW";
     _wpH setWaypointCompletionRadius 12;
-    _wpM setWaypointStatements ["true", "if (local this) then { (vehicle this) engineOn false; };"];
+    _wpM setWaypointStatements ["true", "if (local this) then { { if (!isNull objectParent _x) then { (objectParent _x) engineOn false; }; } forEach units group this; };"];
     _group setCurrentWaypoint _wpM;
     true
 };

@@ -43,7 +43,16 @@
           - Ground vehicle: 200-400 m short (400 m if threatened, else
             250 m, same rule as above; never more than 40 % of the trip),
             road-snapped.
-        Ground transports drive AWARE / FULL, helicopters fly CARELESS / FULL.
+          - Transport plane (paradrop): no landing. The drop zone (record
+            "dropPos") is open ground AIC_PARA_DZ_OFFSET m short of destPos
+            when threatened (as above), else AIC_PARA_DZ_OFFSET_SAFE m;
+            the run-in point ("dzRunIn") lies up to AIC_PARA_RUN_IN m
+            before it on the line from the airfield. The squad boards the
+            plane where it stands (pickup = the plane; no LOAD waypoint, the
+            plane gets its flight waypoints once everybody is aboard,
+            AIC_fnc_transportCycle) and jumps over the drop zone
+            (AIC_fnc_paradrop). Both records get "paradrop" true.
+        Ground transports drive AWARE / FULL, helicopters and planes fly CARELESS / FULL.
 
         Garrison: once the ride is set up the transport group's power is
         reserved in its home's garrison entry (AIC_fnc_canLeaveGarrison,
@@ -144,7 +153,8 @@ if (isNull _veh) exitWith {
     ["orderTransport: group %1 has no vehicle with %2 free seats for group %3", [groupId _tGroup, _cargoCount, groupId _cGroup]] call AIC_fnc_log;
     false
 };
-private _isHeli = _veh isKindOf "Air";
+private _isPlane = _veh isKindOf "Plane";
+private _isHeli = (_veh isKindOf "Air") && { !_isPlane };
 
 // Waypoints are followed by the group leader. A leader outside the vehicle
 // (a crew chief on foot, a helicopter grouped with a squad) would walk the
@@ -195,13 +205,17 @@ _cPos = [_cPos select 0, _cPos select 1, 0];
 
 private _pickupPos = _cPos;
 private _pickupLz = objNull;
-if (_isHeli) then {
+if (_isPlane) then {
+    // the squad walks to the plane where it stands
+    private _vp = getPosATL _veh;
+    _pickupPos = [_vp select 0, _vp select 1, 0];
+} else { if (_isHeli) then {
     _pickupPos = [_cPos, 150] call _fnc_lzPos;
     _pickupLz = createVehicle ["Land_HelipadEmpty_F", _pickupPos, [], 0, "CAN_COLLIDE"];
 } else {
     _pickupPos = [_cPos, 80] call AIC_fnc_roadPos;
     if (surfaceIsWater _pickupPos) then { _pickupPos = _cPos; };
-};
+}; };
 
 // ---------------------------------------------------------------- drop point
 private _threatened = (((_cmd getOrDefault ["knownEnemies", []]) + (_cmd getOrDefault ["threats", []])) findIf {
@@ -223,13 +237,26 @@ private _trip = _pickupPos distance2D _dest;
 private _dirBack = _dest getDir _pickupPos;
 private _dropPos = +_dest;
 private _lz = objNull;
-if (_isHeli) then {
+private _runIn = [];
+if (_isPlane) then {
+    // open ground short of the target, never on water
+    private _off = [AIC_PARA_DZ_OFFSET_SAFE, AIC_PARA_DZ_OFFSET] select _threatened;
+    private _center = _dest getPos [_off min (_trip * 0.5), _dirBack];
+    _center = [_center select 0, _center select 1, 0];
+    private _p = [_center, 250, "meadow - 2*forest - 2*trees - 3*houses - 10*sea", 30] call AIC_fnc_bestPlace;
+    _dropPos = [_p, _center] select (_p isEqualTo [] || { surfaceIsWater _p });
+    if (surfaceIsWater _dropPos) then { _dropPos = +_dest; };
+    _runIn = _dropPos getPos [AIC_PARA_RUN_IN min (_trip * 0.5), _dropPos getDir _pickupPos];
+    _runIn = [_runIn select 0, _runIn select 1, 0];
+} else { if (_isHeli) then {
     private _center = if (_threatened) then {
         _dest getPos [(AIC_LZ_OFFSET_HELI min (_trip * 0.5)), _dirBack]
     } else {
         +_dest
     };
     _dropPos = [_center, 150] call _fnc_lzPos;
+    // the wide fallback search may come back close to the target: keep the stand-off
+    if (_threatened && { (_dropPos distance2D _dest) < (AIC_LZ_OFFSET_HELI * 0.6) }) then { _dropPos = [_center select 0, _center select 1, 0]; };
     _lz = createVehicle ["Land_HelipadEmpty_F", _dropPos, [], 0, "CAN_COLLIDE"];
 } else {
     private _short = ((if (_threatened) then { AIC_DROP_OFFSET_GROUND_THREAT } else { AIC_DROP_OFFSET_GROUND }) min (_trip * 0.4)) max 0;
@@ -238,9 +265,14 @@ if (_isHeli) then {
     private _r = [_p, 120] call AIC_fnc_roadPos;
     // keep the road snap from undoing the stand-off
     if (!surfaceIsWater _r && { (_r distance2D _dest) >= (_short * 0.5) }) then { _p = _r; };
-    if (surfaceIsWater _p) then { _p = +_dest; };
+    if (surfaceIsWater _p) then {
+        // the stand-off point is in water: farther back along the way in, dry land
+        private _dry = [];
+        { private _q = _dest getPos [_short * _x, _dirBack]; if (!surfaceIsWater _q) exitWith { _dry = [_q select 0, _q select 1, 0]; }; } forEach [1.25, 1.5, 2, 0.75, 0.5];
+        _p = [_dry, +_dest] select (_dry isEqualTo []);
+    };
     _dropPos = _p;
-};
+}; };
 _dropPos = [_dropPos select 0, _dropPos select 1, 0];
 
 // ---------------------------------------------------------------- orders
@@ -249,11 +281,11 @@ _dropPos = [_dropPos select 0, _dropPos select 1, 0];
 [_tGroup] call AIC_fnc_clearWaypoints;
 [_cGroup] call AIC_fnc_clearWaypoints;
 
-private _tBeh = if (_isHeli) then { "CARELESS" } else { "AWARE" };
+private _tBeh = if (_isHeli || _isPlane) then { "CARELESS" } else { "AWARE" };
 _tGroup setBehaviour _tBeh;
 _tGroup setCombatMode "YELLOW";
 _tGroup setSpeedMode "FULL";
-[_tGroup, !_isHeli] call AIC_fnc_setMarch;
+[_tGroup, !_isHeli && { !_isPlane }] call AIC_fnc_setMarch;
 if (_isHeli) then { _veh land "NONE"; };
 
 // own members on foot climb back in
@@ -265,34 +297,39 @@ if (_isHeli) then { _veh land "NONE"; };
     };
 } forEach (units _tGroup);
 
-private _wpLoad = _tGroup addWaypoint [_pickupPos, 0];
-_wpLoad setWaypointType "LOAD";
-_wpLoad setWaypointBehaviour _tBeh;
-_wpLoad setWaypointCombatMode "YELLOW";
-_wpLoad setWaypointSpeed "FULL";
-_wpLoad setWaypointFormation "COLUMN";
-_wpLoad setWaypointCompletionRadius (if (_isHeli) then { 60 } else { 40 });
+// a plane waits where it stands until everybody is aboard
+private _wpLoad = [_tGroup, -1];
+private _wpUnload = [_tGroup, -1];
+if (!_isPlane) then {
+    _wpLoad = _tGroup addWaypoint [_pickupPos, 0];
+    _wpLoad setWaypointType "LOAD";
+    _wpLoad setWaypointBehaviour _tBeh;
+    _wpLoad setWaypointCombatMode "YELLOW";
+    _wpLoad setWaypointSpeed "FULL";
+    _wpLoad setWaypointFormation "COLUMN";
+    _wpLoad setWaypointCompletionRadius (if (_isHeli) then { 60 } else { 40 });
 
-// around what is known to be hostile on the way
-if (_isHeli) then {
-    private _via = [_cmd, _pickupPos, _dropPos] call AIC_fnc_flightPath;
-    if (_via isNotEqualTo []) then {
-        private _wpVia = _tGroup addWaypoint [_via, 0];
-        _wpVia setWaypointType "MOVE";
-        _wpVia setWaypointBehaviour _tBeh;
-        _wpVia setWaypointCombatMode "YELLOW";
-        _wpVia setWaypointSpeed "FULL";
-        _wpVia setWaypointCompletionRadius 200;
-        ["%1: %2 flies around known enemies via %3", [_side, groupId _tGroup, _via apply { round _x }]] call AIC_fnc_log;
+    // around what is known to be hostile on the way
+    if (_isHeli) then {
+        private _via = [_cmd, _pickupPos, _dropPos] call AIC_fnc_flightPath;
+        if (_via isNotEqualTo []) then {
+            private _wpVia = _tGroup addWaypoint [_via, 0];
+            _wpVia setWaypointType "MOVE";
+            _wpVia setWaypointBehaviour _tBeh;
+            _wpVia setWaypointCombatMode "YELLOW";
+            _wpVia setWaypointSpeed "FULL";
+            _wpVia setWaypointCompletionRadius 200;
+            ["%1: %2 flies around known enemies via %3", [_side, groupId _tGroup, _via apply { round _x }]] call AIC_fnc_log;
+        };
     };
-};
 
-private _wpUnload = _tGroup addWaypoint [_dropPos, 0];
-_wpUnload setWaypointType "TR UNLOAD";
-_wpUnload setWaypointBehaviour _tBeh;
-_wpUnload setWaypointCombatMode "YELLOW";
-_wpUnload setWaypointSpeed "FULL";
-_wpUnload setWaypointCompletionRadius (if (_isHeli) then { 30 } else { 40 });
+    _wpUnload = _tGroup addWaypoint [_dropPos, 0];
+    _wpUnload setWaypointType "TR UNLOAD";
+    _wpUnload setWaypointBehaviour _tBeh;
+    _wpUnload setWaypointCombatMode "YELLOW";
+    _wpUnload setWaypointSpeed "FULL";
+    _wpUnload setWaypointCompletionRadius (if (_isHeli) then { 30 } else { 40 });
+};
 
 _cGroup setBehaviour "AWARE";
 _cGroup setSpeedMode "FULL";
@@ -307,16 +344,17 @@ _wpGetIn setWaypointSpeed "FULL";
 _wpGetIn setWaypointCompletionRadius 10;
 _wpGetIn waypointAttachVehicle _veh;
 
-_wpGetIn synchronizeWaypoint [_wpLoad];
-_wpLoad synchronizeWaypoint [_wpGetIn];
-
-_tGroup setCurrentWaypoint _wpLoad;
+if (!_isPlane) then {
+    _wpGetIn synchronizeWaypoint [_wpLoad];
+    _wpLoad synchronizeWaypoint [_wpGetIn];
+    _tGroup setCurrentWaypoint _wpLoad;
+};
 _cGroup setCurrentWaypoint _wpGetIn;
 
 // ---------------------------------------------------------------- records
 private _tLeader = leader _tGroup;
 private _rideLength = _pickupPos distance2D _dropPos;
-private _rideLimit = AIC_RIDE_TIMEOUT max (round (2 * _rideLength / (if (_isHeli) then { 35 } else { 8 }) + 240));
+private _rideLimit = AIC_RIDE_TIMEOUT max (round (2 * _rideLength / (if (_isHeli || _isPlane) then { 35 } else { 8 }) + 240));
 
 _tRec set ["task", "TRANSPORT"];
 _tRec set ["taskPos", +_dropPos];
@@ -332,6 +370,8 @@ _tRec set ["dropPos", +_dropPos];
 _tRec set ["wpLoad", _wpLoad select 1];
 _tRec set ["wpUnload", _wpUnload select 1];
 _tRec set ["cargoOutTime", -1];
+_tRec set ["paradrop", _isPlane];
+_tRec set ["dzRunIn", +_runIn];
 _tRec set ["lastPos", getPosATL _tLeader];
 _tRec set ["lastMoveTime", time];
 
@@ -352,6 +392,8 @@ _cRec set ["lz", _lz];
 _cRec set ["pickupLz", _pickupLz];
 _cRec set ["wpGetIn", _wpGetIn select 1];
 _cRec set ["transportPhase", "PICKUP"];
+_cRec set ["paradrop", _isPlane];
+_cRec set ["paraStarted", false];
 _cRec set ["phaseTime", time];
 _cRec set ["rideLimit", _rideLimit];
 _cRec set ["getInFallback", false];

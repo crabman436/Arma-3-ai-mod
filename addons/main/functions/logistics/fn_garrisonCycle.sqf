@@ -390,6 +390,7 @@ private _status = [_cmd] call AIC_fnc_garrisonStatus;
 // ------------------------------------------------------------ 2a. quick-reaction forces
 private _baseIds = (_homes select { (_x getOrDefault ["isBase", false]) isEqualTo true }) apply { _x get "id" };
 private _qrfHeld = createHashMap; // base id -> true: it has its QRF
+private _qrfNew = 0;
 private _fnc_broken = {
     params ["_rec"];
     private _until = _rec getOrDefault ["brokenUntil", -1];
@@ -458,12 +459,16 @@ if (_useQRF) then {
             _rec set ["role", "QRF"];
             _rec set ["qrfBase", _baseId];
             _qrfHeld set [_baseId, true];
+            _qrfNew = _qrfNew + 1;
             ["garrisonCycle: %1 group %2 (%3, power %4) is the QRF of '%5'", [
                 _side, groupId _grp, _rec getOrDefault ["type", ""], round _bestPower, _baseId
             ]] call AIC_fnc_log;
         };
     } forEach _baseIds;
 };
+
+// a QRF named just now is no guard any more: surpluses as they are now
+if (_qrfNew > 0) then { _status = [_cmd] call AIC_fnc_garrisonStatus; };
 
 // ------------------------------------------------------------ 3. transfers
 private _moves = 0;
@@ -636,6 +641,13 @@ private _standTo = 0;
     private _task = _rec getOrDefault ["task", "IDLE"];
     private _type = _rec getOrDefault ["type", ""];
     private _stood = (_rec getOrDefault ["standTo", false]) isEqualTo true;
+    // re-tasked away from home since it stood to: that stand-to is over
+    if (_stood && { (_rec getOrDefault ["objective", ""]) isNotEqualTo _home }) then {
+        _rec set ["standTo", false];
+        _rec deleteAt "standToFrom";
+        _rec deleteAt "standToTime";
+        _stood = false;
+    };
     private _entry = _status getOrDefault [_home, createHashMap];
     if (
         count _entry == 0

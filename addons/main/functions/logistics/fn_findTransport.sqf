@@ -32,7 +32,15 @@
             and is no repair, fuel or ammo truck (AIC_fnc_supplyRoles);
           - HELI only if setting "useAir" is true and the weather lets
             helicopters fly (AIC_fnc_flyingWeather: fog, rain, wind; the
-            same rule that grounds CAS); ground vehicles only if
+            same rule that grounds CAS);
+          - PLANE (a transport plane or VTOL with cargo seats: the squad
+            jumps by parachute, AIC_fnc_paradrop) only with settings
+            "useParadrop" and "useAir", flying weather, a trip longer than
+            "paradropDistance", the plane standing on the ground at an
+            airfield the side holds (AIC_fnc_heldAirfield, within
+            AIC_AIRFIELD_TURNAROUND_RANGE), not on its way to or in a
+            turnaround (record "airfield"), and within AIC_PARA_PICKUP_RANGE
+            of the cargo leader (the squad walks to it); ground vehicles only if
             they are not farther from the cargo than the cargo's own trip
             (otherwise walking is faster);
           - the group has no order waiting in the commander's "orderQueue"
@@ -136,6 +144,9 @@ if (_fresh) then {
     // helicopters stay down in the weather that grounds CAS
     private _heliWeather = [true] call AIC_fnc_flyingWeather;
     private _preferHeli = _useAir && { _heliWeather } && { _trip > _heliDist };
+    // transport planes drop the squad by parachute on long trips
+    private _usePara = _useAir && { _heliWeather } && { ([_cmd, "useParadrop"] call AIC_fnc_getSetting) isEqualTo true }
+        && { _trip > ([_cmd, "paradropDistance"] call AIC_fnc_getSetting) };
     _queued = [_cmd] call AIC_fnc_queuedGroups;
     if !(_queued isEqualType createHashMap) then { _queued = createHashMap; };
 
@@ -146,8 +157,9 @@ if (_fresh) then {
         if (!(_grp isEqualType grpNull) || { isNull _grp } || { _grp isEqualTo _cargo }) then { continue };
 
         private _type = _rec getOrDefault ["type", ""];
-        if !(_type in ["MOTOR", "MECH", "HELI"]) then { continue };
+        if !(_type in ["MOTOR", "MECH", "HELI", "PLANE"]) then { continue };
         if (_type == "HELI" && { !_useAir || { !_heliWeather } }) then { continue };
+        if (_type == "PLANE" && { !_usePara || { (_rec getOrDefault ["airfield", -1]) >= 0 } }) then { continue };
         if ((hashValue _grp) in _queued) then { continue };
         if !((_rec getOrDefault ["task", "IDLE"]) in ["IDLE", "DEFEND", "PATROL"]) then { continue };
         if (_grp getVariable ["AIC_exclude", false]) then { continue };
@@ -187,19 +199,32 @@ if (_fresh) then {
         {
             private _veh = _x;
             if (!alive _veh || { !canMove _veh } || { fuel _veh < AIC_RIDE_MIN_FUEL } || { (locked _veh) == 2 }) then { continue };
-            if (_veh isKindOf "Ship" || { _veh isKindOf "Plane" }) then { continue };
+            if (_veh isKindOf "Ship") then { continue };
+            private _isPlane = _veh isKindOf "Plane";
+            if (_isPlane && {
+                !_usePara
+                || { !isTouchingGround _veh } || { (abs (speed _veh)) > 2 }
+                || { ((getPosATL _veh) distance2D _cargoPos) > AIC_PARA_PICKUP_RANGE }
+                || { (fuel _veh) < 0.5 }
+                || {
+                    private _af = [_cmd, getPosATL _veh] call AIC_fnc_heldAirfield;
+                    _af isEqualTo [] || { ((_af select 1) distance2D _veh) > AIC_AIRFIELD_TURNAROUND_RANGE }
+                }
+            }) then { continue };
             // repair, fuel and ammo trucks have their own job
             if (([_veh] call AIC_fnc_supplyRoles) isNotEqualTo []) then { continue };
 
-            private _isHeli = _veh isKindOf "Air";
+            private _isHeli = (_veh isKindOf "Air") && { !_isPlane };
             private _d = (getPosATL _veh) distance2D _cargoPos;
             // transport-only vehicles wait at bases and exist to go and fetch squads
             if (_d > (_searchR * ([1, AIC_TRANSPORT_RANGE_MULT] select _transportOnly))) then { continue };
             // a fighting vehicle from farther away than the walk itself is not worth it
-            if (!_isHeli && { !_transportOnly } && { _d > _trip }) then { continue };
+            if (!_isHeli && { !_isPlane } && { !_transportOnly } && { _d > _trip }) then { continue };
 
             private _arm = [_veh] call AIC_fnc_vehicleArmament;
-            private _tier = if (_isHeli isEqualTo _preferHeli) then { 0 } else { 1 };
+            // (a plane is a long-trip ride like a helicopter; a helicopter close by still goes first)
+            private _tier = if ((_isHeli || _isPlane) isEqualTo _preferHeli) then { 0 } else { 1 };
+            if (_isPlane) then { _arm = _arm + 1; };
             private _key = _tier * 1e7 + _d * (1 + 0.6 * _arm) * ([1.25, 1] select _atBase);
             _entries pushBack [_key, _grp, _veh, [_veh, _grp, _cargo] call AIC_fnc_freeSeats, _veh isEqualTo _leaderVeh, _transportOnly];
         } forEach _vehicles;

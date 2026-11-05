@@ -67,6 +67,21 @@
             - Vehicle has not moved 20 m for 180 s away from the drop, or
               the ride is older than record "rideLimit" (>= 900 s) ->
               aborted.
+          Paradrop (transport plane, record "paradrop"): PICKUP as above
+            without landing or LOAD waypoint (the plane stands at its
+            airfield); once everybody is aboard the plane gets its flight:
+            run-in point ("dzRunIn"), drop zone ("dropPos"), and a point
+            beyond, CARELESS, flyInHeight AIC_PARA_HEIGHT. In RIDE, within
+            AIC_PARA_DROP_RANGE of the drop zone and at least
+            AIC_PARA_MIN_HEIGHT above the ground the stick jumps
+            (AIC_fnc_paradrop, record "paraStarted", "paraTime"); a plane
+            that flew past without dropping flies the run again. The plane
+            is released (cargo "transport" cleared) once the last man is
+            out; the "final" order is issued when everybody is on the
+            ground (or AIC_PARA_TIMEOUT + 30 s after the jump). Any get-out
+            from a plane in the air (abort, lost transport, stragglers left
+            inside) is a parachute jump instead; too low, they stay aboard
+            until it is down.
           RALLY - a team waiting at the drop. The "final" order is issued
             when no other team is riding any more, after
             AIC_TEAM_RALLY_WAIT s, or at once if it comes under fire.
@@ -86,7 +101,10 @@
         the nearest base for helicopters and transport-only crews (a home
         the side no longer holds is not gone back to; then the commander
         "hq", which follows the bases) with task "RTB" via
-        AIC_fnc_issueOrder (force). Armed vehicles that carried a squad to
+        AIC_fnc_issueOrder (force); a transport plane is sent to land at
+        the nearest airfield the side holds (assignToAirport / landAt,
+        task "RTB", record "airfield", so AIC_fnc_rearmCycle turns it
+        around and sets it IDLE). Armed vehicles that carried a squad to
         an ATTACK / REINFORCE take that same order instead and stay with it.
         If its vehicle is gone or cannot move
         (or the order fails) it is set "IDLE" instead, so the garrison
@@ -148,7 +166,10 @@ private _fnc_relocateLz = {
 
     private _old = if (_center isEqualTo []) then { _rec getOrDefault [_posKey, getPosATL _veh] } else { _center };
     private _c = [_old select 0, _old select 1, 0];
-    private _p = [_c, 20, 400, 15, 0, 0.2, 0, [], [_c, _c]] call BIS_fnc_findSafePos;
+    // a hot LZ is moved AIC_LZ_OFFSET_HELI short of the threat: search only so
+    // far around that spot that the new pad stays out of AIC_HOT_LZ_RADIUS
+    private _maxR = [400, (AIC_LZ_OFFSET_HELI - AIC_HOT_LZ_RADIUS - 20) max 50] select (_flag isEqualTo "hotLzMoved");
+    private _p = [_c, 20, _maxR, 15, 0, 0.2, 0, [], [_c, _c]] call BIS_fnc_findSafePos;
     if (!(_p isEqualType []) || { count _p < 2 }) exitWith { false };
     _p = [_p select 0, _p select 1, 0];
     if (surfaceIsWater _p || { (_p distance2D _c) < 20 }) exitWith { false };
@@ -170,6 +191,18 @@ private _fnc_relocateLz = {
     };
     _veh land "NONE";
     true
+};
+
+// out of the vehicle: from a plane in the air that is a parachute jump
+// (too low: they stay aboard until it is down); else the normal dismount
+private _fnc_getOut = {
+    params ["_grp", "_veh"];
+    if (!isNull _veh && { alive _veh } && { _veh isKindOf "Plane" } && { !isTouchingGround _veh }) exitWith {
+        if (((getPosATL _veh) select 2) >= AIC_PARA_MIN_HEIGHT) then {
+            [(units _grp) select { (objectParent _x) isEqualTo _veh }, _veh] call AIC_fnc_paradrop;
+        };
+    };
+    [_grp, _veh, true, true] call AIC_fnc_dismountCarrier;
 };
 
 // is another team of this group's squad still on its way in?
@@ -292,6 +325,19 @@ private _fnc_boardFallback = {
         continue;
     };
 
+    // -------------------------------------------------- jumped: everybody down?
+    if ((_rec getOrDefault ["paraStarted", false]) isEqualTo true) then {
+        // the plane is free once the last man is out
+        if (!isNull (_rec getOrDefault ["transport", grpNull]) && { ({ (objectParent _x) isEqualTo _veh } count _units) == 0 }) then {
+            _rec set ["transport", grpNull];
+        };
+        if (({ !isNull objectParent _x } count _units) == 0
+            || { (time - (_rec getOrDefault ["paraTime", time])) > (AIC_PARA_TIMEOUT + 30) }) then {
+            _finals pushBack [_grp, _rec, "landed by parachute", false];
+        };
+        continue;
+    };
+
     // -------------------------------------------------- transport still there?
     private _tUnits = if (isNull _tGroup) then { [] } else { (units _tGroup) select { alive _x } };
     private _drv = if (isNull _veh) then { objNull } else { driver _veh };
@@ -307,12 +353,13 @@ private _fnc_boardFallback = {
         default { "" };
     };
     if (_lost isNotEqualTo "") then {
-        [_grp, _veh, true, true] call AIC_fnc_dismountCarrier;
+        [_grp, _veh] call _fnc_getOut;
         _finals pushBack [_grp, _rec, format ["transport lost (%1, %2 aboard) at %3", _lost, _aboardNow, _lpos apply { round _x }], true];
         continue;
     };
 
-    private _isHeli = _veh isKindOf "Air";
+    private _isPlane = _veh isKindOf "Plane";
+    private _isHeli = (_veh isKindOf "Air") && { !_isPlane };
     private _aboard = { objectParent _x isEqualTo _veh } count _units;
     private _inAnyVeh = { !isNull objectParent _x } count _units;
     private _vPos = getPosATL _veh;
@@ -364,6 +411,27 @@ private _fnc_boardFallback = {
                 _tRec set ["pickupLz", objNull];
                 _rec set ["pickupLz", objNull];
                 if (_isHeli) then { _veh land "NONE"; };
+                // a plane takes off now: run-in, drop zone, beyond
+                if (_isPlane) then {
+                    [_tGroup] call AIC_fnc_clearWaypoints;
+                    _tGroup setBehaviour "CARELESS";
+                    _tGroup setCombatMode "BLUE";
+                    _veh flyInHeight AIC_PARA_HEIGHT;
+                    private _runIn = _tRec getOrDefault ["dzRunIn", []];
+                    private _legs = [];
+                    if ([_runIn] call _fnc_validPos) then { _legs pushBack _runIn; };
+                    _legs pushBack _dropPos;
+                    _legs pushBack (_dropPos getPos [2500, _pickupPos getDir _dropPos]);
+                    {
+                        private _wp = _tGroup addWaypoint [_x, 0];
+                        _wp setWaypointType "MOVE";
+                        _wp setWaypointBehaviour "CARELESS";
+                        _wp setWaypointSpeed "NORMAL";
+                        _wp setWaypointCompletionRadius 300;
+                        if (_x isEqualTo _dropPos) then { _tRec set ["wpUnload", _wp select 1]; };
+                    } forEach _legs;
+                    _tGroup setCurrentWaypoint [_tGroup, 0];
+                };
                 // push the transport on in case the LOAD / GETIN sync hangs
                 private _iNext = (_tRec getOrDefault ["wpLoad", -2]) + 1;
                 if (_iNext > 0 && { _iNext < count (waypoints _tGroup) } && { (currentWaypoint _tGroup) < _iNext }) then {
@@ -378,7 +446,7 @@ private _fnc_boardFallback = {
             };
 
             if (_orderAge > _PICKUP_TIMEOUT) exitWith {
-                [_grp, _veh, true, true] call AIC_fnc_dismountCarrier;
+                [_grp, _veh] call _fnc_getOut;
                 _finals pushBack [_grp, _rec, "pickup timed out", true];
             };
 
@@ -397,7 +465,7 @@ private _fnc_boardFallback = {
                 _finals pushBack [_grp, _rec, "pickup called off, under fire", true];
             };
             // stuck on the way: no point in waiting for the timeout
-            if (!_isHeli && { !_near } && { (_vPos distance2D _pickupPos) > 100 } && { _tStill > AIC_STUCK_TIMEOUT } && { (speed _veh) < 3 }) exitWith {
+            if (!_isHeli && { !_isPlane } && { !_near } && { (_vPos distance2D _pickupPos) > 100 } && { _tStill > AIC_STUCK_TIMEOUT } && { (speed _veh) < 3 }) exitWith {
                 _finals pushBack [_grp, _rec, "pickup called off, vehicle stuck", true];
             };
             // a transport never leaves without its troops
@@ -447,7 +515,8 @@ private _fnc_boardFallback = {
                         _leader doMove _vPos;
                         { if (_x isNotEqualTo _leader) then { _x doFollow _leader; }; } forEach _units;
                         private _tLeader = leader _tGroup;
-                        if (!isNull _tLeader && { alive _tLeader }) then {
+                        // a plane does not taxi across the fields to them
+                        if (!_isPlane && { !isNull _tLeader } && { alive _tLeader }) then {
                             [_tGroup, false] call AIC_fnc_setMarch;
                             _tLeader doMove _lpos;
                         };
@@ -467,6 +536,11 @@ private _fnc_boardFallback = {
                         { unassignVehicle _x; } forEach _left;
                         _left orderGetIn false;
                         private _sGrp = createGroup [_side, true];
+                        if (isNull _sGrp) exitWith {
+                            // no group can be made (group limit): no split, the ride is called off
+                            [_grp, _veh] call _fnc_getOut;
+                            _finals pushBack [_grp, _rec, "stragglers could not be split off", true];
+                        };
                         if (!isNull _sGrp) then {
                             _left joinSilent _sGrp;
                             { _sGrp setVariable [_x, _grp getVariable [_x, false]]; } forEach ["AIC_noDynSim", "AIC_keep"];
@@ -494,7 +568,7 @@ private _fnc_boardFallback = {
                             _side, groupId _tGroup, count _left, groupId _grp, _aboard
                         ]] call AIC_fnc_log;
                     } else {
-                        [_grp, _veh, true, true] call AIC_fnc_dismountCarrier;
+                        [_grp, _veh] call _fnc_getOut;
                         _finals pushBack [_grp, _rec, format ["only %1/%2 boarded", _aboard, count _units], true];
                     };
                 };
@@ -523,8 +597,29 @@ private _fnc_boardFallback = {
     private _rideLimit = _rec getOrDefault ["rideLimit", AIC_RIDE_TIMEOUT];
     if !(_rideLimit isEqualType 0) then { _rideLimit = AIC_RIDE_TIMEOUT; };
     if (_phaseAge > (_rideLimit max AIC_RIDE_TIMEOUT)) then {
-        [_grp, _veh, true, true] call AIC_fnc_dismountCarrier;
+        [_grp, _veh] call _fnc_getOut;
         _finals pushBack [_grp, _rec, "ride timed out", true];
+        continue;
+    };
+
+    // a transport plane: the stick jumps over the drop zone
+    if (_isPlane) then {
+        private _dz = _vPos distance2D _dropPos;
+        if (_dz < AIC_PARA_DROP_RANGE && { (_vPos select 2) >= AIC_PARA_MIN_HEIGHT }) then {
+            [_units select { (objectParent _x) isEqualTo _veh }, _veh] call AIC_fnc_paradrop;
+            _rec set ["paraStarted", true];
+            _rec set ["paraTime", time];
+            ["%1: group %2 jumps from %3 (%4) over the drop zone %5", [
+                _side, groupId _grp, groupId _tGroup, typeOf _veh, _dropPos apply { round _x }
+            ]] call AIC_fnc_log;
+        } else {
+            // flew past the drop zone (too low, too wide a turn): fly the run again
+            private _iDz = _tRec getOrDefault ["wpUnload", -1];
+            if (_iDz isEqualType 0 && { _iDz >= 0 } && { (currentWaypoint _tGroup) > _iDz } && { _dz >= AIC_PARA_DROP_RANGE }) then {
+                _tGroup setCurrentWaypoint [_tGroup, (_iDz - 1) max 0];
+                ["%1: %2 missed the drop zone of group %3, flies the run again", [_side, groupId _tGroup, groupId _grp]] call AIC_fnc_log;
+            };
+        };
         continue;
     };
 
@@ -551,7 +646,7 @@ private _fnc_boardFallback = {
         private _nearAge = time - (_rec get "nearDropTime");
         if (_isHeli) then {
             if ([_veh] call AIC_fnc_isLanded) then {
-                [_grp, _veh, true, true] call AIC_fnc_dismountCarrier;
+                [_grp, _veh] call _fnc_getOut;
             } else {
                 if (_nearAge > 20 && { (time - (_rec getOrDefault ["landOrderTime", -1e6])) > 45 }) then {
                     [_veh, _tRec getOrDefault ["lz", objNull], "GET OUT"] call _fnc_landAt;
@@ -568,7 +663,7 @@ private _fnc_boardFallback = {
                 };
             };
         } else {
-            if (_stopped && { _nearAge > 10 }) then { [_grp, _veh, true, true] call AIC_fnc_dismountCarrier; };
+            if (_stopped && { _nearAge > 10 }) then { [_grp, _veh] call _fnc_getOut; };
         };
         continue;
     };
@@ -576,7 +671,7 @@ private _fnc_boardFallback = {
 
     // TR UNLOAD finished somewhere else and the vehicle sits on the ground
     if (_wpsDone && { _stopped } && { !_isHeli || { [_veh] call AIC_fnc_isLanded } }) then {
-        [_grp, _veh, true, true] call AIC_fnc_dismountCarrier;
+        [_grp, _veh] call _fnc_getOut;
         continue;
     };
     if (_wpsDone && { _isHeli } && { !([_veh] call AIC_fnc_isLanded) }
@@ -588,7 +683,7 @@ private _fnc_boardFallback = {
 
     // ride stuck away from the drop -> get out and walk
     if (_tStill > AIC_STUCK_TIMEOUT && { _stopped }) then {
-        [_grp, _veh, true, true] call AIC_fnc_dismountCarrier;
+        [_grp, _veh] call _fnc_getOut;
         _finals pushBack [_grp, _rec, format ["transport stuck %1 m from drop", round _dDrop], true];
     };
 } forEach _cargoRecs;
@@ -666,6 +761,24 @@ private _fnc_objPos = {
     if !(_veh isEqualType objNull) then { _veh = objNull; };
     private _inside = if (isNull _veh) then { [] } else { _cargoUnits select { objectParent _x isEqualTo _veh } };
     if (_inside isNotEqualTo [] && { alive _veh }) then {
+        // still in a plane in the air: they jump; too low, they ride it down
+        // to the nearest held airfield and get out there
+        if (_veh isKindOf "Plane" && { !isTouchingGround _veh }) then {
+            if (((getPosATL _veh) select 2) >= AIC_PARA_MIN_HEIGHT) then {
+                [_inside, _veh] call AIC_fnc_paradrop;
+            } else {
+                if !((_rec getOrDefault ["paraLanding", false]) isEqualTo true) then {
+                    private _af = [_cmd, getPosATL _veh] call AIC_fnc_heldAirfield;
+                    if (_af isNotEqualTo []) then {
+                        _veh assignToAirport (_af select 0);
+                        _veh landAt (_af select 0);
+                        _rec set ["paraLanding", true];
+                    };
+                };
+            };
+            continue;
+        };
+        _rec set ["paraLanding", false];
         private _outTime = _rec getOrDefault ["cargoOutTime", -1];
         if (_outTime < 0) then {
             _rec set ["cargoOutTime", time];
@@ -679,6 +792,32 @@ private _fnc_objPos = {
         };
         { moveOut _x; } forEach _inside;
     };
+
+    // a transport plane lands at the nearest airfield the side holds;
+    // AIC_fnc_rearmCycle turns it around there and sets it IDLE
+    if (!isNull _veh && { alive _veh } && { _veh isKindOf "Plane" }) then {
+        private _af = [_cmd, getPosATL _veh] call AIC_fnc_heldAirfield;
+        if (_af isEqualTo []) exitWith {};
+        _af params ["_fId", "_fPos"];
+        [_grp] call AIC_fnc_clearWaypoints;
+        _grp setBehaviour "CARELESS";
+        _grp setCombatMode "BLUE";
+        _veh assignToAirport _fId;
+        _veh landAt _fId;
+        _rec set ["task", "RTB"];
+        _rec set ["taskPos", +_fPos];
+        _rec set ["taskTime", time];
+        _rec set ["objective", ""];
+        _rec set ["airfield", _fId];
+        _rec set ["turnaround", -1];
+        _rec set ["transport", grpNull];
+        _rec set ["cargoOutTime", -1];
+        _changes = _changes + 1;
+        ["%1: transport plane %2 done (cargo %3), lands at airfield %4", [
+            _side, groupId _grp, if (isNull _cargo) then { "-" } else { groupId _cargo }, _fId
+        ]] call AIC_fnc_log;
+    };
+    if ((_rec getOrDefault ["task", ""]) isNotEqualTo "TRANSPORT") then { continue };
 
     // home: own garrison objective, else BASE_HQ, else commander hq.
     // Transport-only crews and helicopters wait at the nearest base

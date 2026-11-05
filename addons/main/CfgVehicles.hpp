@@ -139,6 +139,14 @@ class CfgVehicles
                 typeName = "BOOL";
                 defaultValue = "true";
             };
+            class UseParadrop: Checkbox
+            {
+                property = "AIC_ModuleCommander_UseParadrop";
+                displayName = "Paradrops";
+                tooltip = "Transport planes (and VTOLs) standing at a held airfield fly squads on long trips to a drop zone short of the target, where they jump by parachute (a parachute is provided). Needs air units.";
+                typeName = "BOOL";
+                defaultValue = "true";
+            };
             class ManageCleanup: Checkbox
             {
                 property = "AIC_ModuleCommander_ManageCleanup";
@@ -200,6 +208,14 @@ class CfgVehicles
                 property = "AIC_ModuleCommander_GarrisonManStatics";
                 displayName = "Garrisons man static weapons";
                 tooltip = "Up to half of an infantry garrison mans empty static weapons in its area (mortars excluded).";
+                typeName = "BOOL";
+                defaultValue = "true";
+            };
+            class FortifyObjectives: Checkbox
+            {
+                property = "AIC_ModuleCommander_FortifyObjectives";
+                displayName = "Dig in at held places";
+                tooltip = "Once a base, airfield or town has been held for a while with no enemy near, its garrison builds roadblocks on the roads in, sandbagged MG/AT nests on the perimeter, AA and a watchtower at bases and airfields, and a refuel / rearm / repair point by the vehicle park. New guns are manned by the garrison.";
                 typeName = "BOOL";
                 defaultValue = "true";
             };
