@@ -1,0 +1,12 @@
+schema_version: "1.1"
+name: swarm-fixes-tracker-bugs
+expected_outcome: |
+  The lead surveys AGENTS.md, MODEL_HANDOFF.md, the tracker, CONTRACT.md and the
+  code itself before delegating. Each of F03, F04 and F05 becomes a separately
+  briefed Haiku worker task with an explicit owned-file list, a decided approach
+  and an acceptance check. No two concurrent workers own the same file. Every
+  worker diff is reviewed by a separate Haiku agent given the brief and the diff.
+  The lead updates the tracker rows itself with status IN_REVIEW or FIXED (never
+  VERIFIED) and records that hemtt or Arma runtime checks were unavailable if
+  they were. The final message is a short table of task, change, review result
+  and remaining checks.
