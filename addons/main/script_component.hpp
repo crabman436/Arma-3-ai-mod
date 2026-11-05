@@ -30,6 +30,11 @@
 // away from its target is stuck (orders re-issued, transport rides aborted)
 #define AIC_STUCK_TIMEOUT 180
 #define AIC_MOVE_THRESHOLD 20
+// the same order re-issued this often without the group moving: the group is
+// released (IDLE) instead; and the least seconds between two resets of a
+// group the engine left in COMBAT behaviour after its fight (monitorOrders)
+#define AIC_STUCK_REISSUES 3
+#define AIC_CALM_REPEAT 120
 
 // re-issue tolerances: an objective-less order counts as the same job when
 // the current taskPos is within this distance of the new position.
