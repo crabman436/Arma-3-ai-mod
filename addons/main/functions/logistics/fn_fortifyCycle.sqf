@@ -14,15 +14,17 @@
         record "fort": "side", "items", "next", "objects", "service") is
         made once per owner and built AIC_FORT_PER_CYCLE items per cycle in
         all, so a place is dug in over a few minutes, until
-        "fortifyMaxObjects" objects stand for the commander
-        ("fortifyCount"). Before an item is made, what stands there is
+        "fortifyMaxObjects" of the objects it built still stand (destroyed
+        ones free the budget). A place the side loses has its plan dropped;
+        retaken, it is planned again and what still stands is reused. Before an item is made, what stands there is
         reused: an object of the same class (a static weapon of any class)
         within 3 m counts as built. An empty static weapon another side's
         commander put there (object variable "AIC_fortSide") is replaced by
         the own one. Props (sandbags, barriers, tower, camo net, service
         point) are aligned to the ground; every object made carries
         "AIC_fortSide". The camo net waits until the base's vehicle park is
-        laid out (AIC_fnc_parkSlot) and goes over its middle.
+        laid out (AIC_fnc_parkSlot) and goes over its middle; until then
+        the place counts as done ("netPending") and the net is added later.
 
         Manning. With setting "garrisonManStatics" a new static weapon gets
         a gunner at once from an infantry DEFEND group of the side at that
@@ -33,7 +35,8 @@
         is seated straight in the gun.
 
         Service points. A vehicle of the side standing (speed < 1) within
-        AIC_FORT_SERVICE_RADIUS m of a built service point is refuelled,
+        AIC_FORT_SERVICE_RADIUS m of a built service point, on the ground
+        (also an abandoned one, nobody aboard), is refuelled,
         rearmed and repaired by 0.25 per cycle, for what that point has
         (fuel, ammunition, repair item).
 
@@ -67,7 +70,9 @@ private _records = (values _groupData) select { _x isEqualType createHashMap };
 private _objectives = (_cmd getOrDefault ["objectives", []]) select { _x isEqualType createHashMap };
 private _manStatics = ([_cmd, "garrisonManStatics"] call AIC_fnc_getSetting) isEqualTo true;
 private _max = [_cmd, "fortifyMaxObjects"] call AIC_fnc_getSetting;
-private _count = _cmd getOrDefault ["fortifyCount", 0];
+// what stands of what this commander built (destroyed objects free the budget)
+private _count = 0;
+{ _count = _count + ({ alive _x } count ((_x getOrDefault ["fort", createHashMap]) getOrDefault ["objects", []])); } forEach ((_cmd getOrDefault ["objectives", []]) select { _x isEqualType createHashMap });
 private _dangers = ((_cmd getOrDefault ["knownEnemies", []]) + (_cmd getOrDefault ["threats", []]))
     select { _x isEqualType createHashMap && { (_x getOrDefault ["pos", []]) isEqualType [] } && { count (_x get "pos") >= 2 } };
 private _made = 0;
@@ -80,6 +85,8 @@ private _fnc_valid = { params ["_p"]; _p isEqualType [] && { count _p >= 2 } };
         if !("fortHeldSince" in _x) then { _x set ["fortHeldSince", time]; };
     } else {
         _x deleteAt "fortHeldSince";
+        // lost: planned afresh (and what stands reused) once it is ours again
+        _x deleteAt "fort";
     };
 } forEach _objectives;
 
@@ -129,17 +136,25 @@ private _cands = _objectives select {
     (_o getOrDefault ["owner", sideUnknown]) isEqualTo _side
     && { [_c] call _fnc_valid }
     && { (time - (_o getOrDefault ["fortHeldSince", time])) >= AIC_FORT_HOLD }
-    && { !((_o getOrDefault ["fort", createHashMap]) getOrDefault ["done", false]) || { ((_o get "fort") getOrDefault ["side", sideUnknown]) isNotEqualTo _side } }
+    && { !((_o getOrDefault ["fort", createHashMap]) getOrDefault ["done", false])
+        || { ((_o get "fort") getOrDefault ["side", sideUnknown]) isNotEqualTo _side }
+        // the camo net that waited for the park, now that there is one
+        || { ((_o get "fort") getOrDefault ["netPending", false]) && { (_o getOrDefault ["parkSlots", []]) isNotEqualTo [] } } }
     && { (_dangers findIf { ((_x get "pos") distance2D _c) < (_r + AIC_FORT_SAFE) }) < 0 }
     && { (_records findIf {
             private _g = _x getOrDefault ["group", grpNull];
             !isNull _g && { alive leader _g } && { ((leader _g) distance2D _c) < _r }
         }) >= 0 }
 };
-private _order = _cands apply {
-    private _key = ([0, 10] select ((_x getOrDefault ["isBase", false]) isEqualTo true)) + (_x getOrDefault ["priority", 1]);
-    [_key, _forEachIndex]
-};
+// (bases and airfields first, then priority; sorted as [key, index]: never a HashMap as a sort key)
+private _fields = call AIC_fnc_airfields;
+private _order = [];
+{
+    private _o = _x;
+    private _major = (_o getOrDefault ["isBase", false]) isEqualTo true
+        || { (_fields findIf { ((_x select 1) distance2D (_o get "pos")) < ((_o getOrDefault ["radius", 250]) + 600) }) >= 0 };
+    _order pushBack [([0, 10] select _major) + (_o getOrDefault ["priority", 1]), _forEachIndex];
+} forEach _cands;
 _order sort false;
 
 {
@@ -162,7 +177,9 @@ _order sort false;
         // the camo net waits for the park
         if (_pos isEqualTo "PARK") then {
             private _slots = _obj getOrDefault ["parkSlots", []];
-            if (_slots isEqualTo []) exitWith { _pos = [] };
+            // no park yet: the rest is done, the net goes up once there is one
+            if (_slots isEqualTo []) exitWith { _pos = []; _fort set ["netPending", true]; _fort set ["done", true]; };
+            _fort set ["netPending", false];
             private _sum = [0, 0, 0];
             { _sum = _sum vectorAdd _x; } forEach _slots;
             _pos = _sum vectorMultiply (1 / count _slots);
@@ -173,7 +190,10 @@ _order sort false;
         _fort set ["next", (_fort get "next") + 1];
 
         // what stands there already
-        private _here = (nearestObjects [_pos, [[_cls], ["StaticWeapon"]] select (_kind isEqualTo "STATIC"), 3]) select { alive _x };
+        // (guns: any gun within 3 m; props: the same class right on the spot)
+        // (2D: a tall object's centre stands well above the ground point)
+        private _reach = [1.2, 3] select (_kind isEqualTo "STATIC");
+        private _here = (nearestObjects [_pos, [[_cls], ["StaticWeapon"]] select (_kind isEqualTo "STATIC"), _reach + 4]) select { alive _x && { (_x distance2D _pos) < _reach } };
         if (_kind isEqualTo "STATIC") then {
             // an empty gun another commander dug in here is replaced by our own
             {
@@ -183,7 +203,9 @@ _order sort false;
             _here = _here select { !isNull _x && { alive _x } && { (_x getVariable ["AIC_fortSide", _side]) isEqualTo _side || { (crew _x) isNotEqualTo [] } } };
         };
         if (_here isNotEqualTo []) then {
-            _objects pushBack (_here select 0);
+            // ours (or neutral): counted as built; a manned gun of another side just blocks the spot
+            private _mine = _here select { (_x getVariable ["AIC_fortSide", _side]) isEqualTo _side };
+            if (_mine isNotEqualTo []) then { _objects pushBack (_mine select 0); };
             continue;
         };
 
@@ -200,10 +222,11 @@ _order sort false;
     };
     if ((_fort get "next") >= (count _items)) then {
         _fort set ["done", true];
+        _fort set ["netPending", false];
         ["%1: '%2' is dug in (%3 objects)", [_side, _obj getOrDefault ["name", ""], count _objects]] call AIC_fnc_log;
     };
 } forEach _order;
-_cmd set ["fortifyCount", _count];
+_cmd set ["fortifyCount", _count]; // (standing objects, for the debug log / missions)
 
 // ---------------------------------------------------------------- service points and parks
 {
@@ -225,7 +248,8 @@ _cmd set ["fortifyCount", _count];
         if (count _has > 0) then {
             {
                 private _v = _x;
-                if (alive _v && { (abs (speed _v)) < 1 } && { (side (group (effectiveCommander _v))) isEqualTo _side } && { !(_v isKindOf "StaticWeapon") }) then {
+                if (alive _v && { (abs (speed _v)) < 1 } && { isTouchingGround _v } && { !(_v isKindOf "StaticWeapon") }
+                    && { (crew _v) isEqualTo [] || { (side (group (effectiveCommander _v))) isEqualTo _side } }) then {
                     if ("FUEL" in _has && { (fuel _v) < 1 }) then { _v setFuel (((fuel _v) + 0.25) min 1); };
                     if ("REPAIR" in _has && { (damage _v) > 0 }) then { _v setDamage (((damage _v) - 0.25) max 0); };
                     if ("AMMO" in _has) then { _v setVehicleAmmo 1; };

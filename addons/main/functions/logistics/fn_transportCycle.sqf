@@ -73,7 +73,8 @@
             run-in point ("dzRunIn"), drop zone ("dropPos"), and a point
             beyond, CARELESS, flyInHeight AIC_PARA_HEIGHT. In RIDE, within
             AIC_PARA_DROP_RANGE of the drop zone and at least
-            AIC_PARA_MIN_HEIGHT above the ground the stick jumps
+            AIC_PARA_MIN_HEIGHT above the ground the stick jumps (checked
+            twice a second by a watcher started at boarding, and by the cycle)
             (AIC_fnc_paradrop, record "paraStarted", "paraTime"); a plane
             that flew past without dropping flies the run again. The plane
             is released (cargo "transport" cleared) once the last man is
@@ -102,9 +103,11 @@
         the side no longer holds is not gone back to; then the commander
         "hq", which follows the bases) with task "RTB" via
         AIC_fnc_issueOrder (force); a transport plane is sent to land at
-        the nearest airfield the side holds (assignToAirport / landAt,
-        task "RTB", record "airfield", so AIC_fnc_rearmCycle turns it
-        around and sets it IDLE). Armed vehicles that carried a squad to
+        the nearest airfield the side holds (assignToAirport; a VTOL
+        (config "VTOL") lands vertically on an invisible pad where it took
+        off, record "pickupLz", any other plane landAt the airport; task
+        "RTB", record "airfield", so AIC_fnc_rearmCycle turns it around and
+        sets it IDLE). Armed vehicles that carried a squad to
         an ATTACK / REINFORCE take that same order instead and stay with it.
         If its vehicle is gone or cannot move
         (or the order fails) it is set "IDLE" instead, so the garrison
@@ -193,12 +196,37 @@ private _fnc_relocateLz = {
     true
 };
 
+// a transport plane goes home to land: a VTOL straight down on an invisible
+// pad where it took off ("pickupPos", landAt a helipad), any other plane on
+// the airfield's runway (landAt the airport); returns the airfield [id, pos]
+private _fnc_planeHome = {
+    params ["_veh", "_tRec"];
+    private _af = [_cmd, getPosATL _veh] call AIC_fnc_heldAirfield;
+    if (_af isEqualTo []) exitWith { [] };
+    _af params ["_fId", "_fPos"];
+    // the run's jump height would keep it up
+    _veh flyInHeight 100;
+    _veh assignToAirport _fId;
+    private _home = _tRec getOrDefault ["pickupPos", []];
+    if ((getNumber (configOf _veh >> "VTOL")) > 0 && { [_home] call _fnc_validPos } && { (_home distance2D _fPos) < AIC_AIRFIELD_TURNAROUND_RANGE }) then {
+        private _old = _tRec getOrDefault ["pickupLz", objNull];
+        if (_old isEqualType objNull && { !isNull _old }) then { deleteVehicle _old; };
+        private _pad = createVehicle ["Land_HelipadEmpty_F", [_home select 0, _home select 1, 0], [], 0, "CAN_COLLIDE"];
+        _tRec set ["pickupLz", _pad];
+        if !(_veh landAt [_pad, "LAND"]) then { _veh landAt _fId; };
+    } else {
+        _veh landAt _fId;
+    };
+    _af
+};
+
 // out of the vehicle: from a plane in the air that is a parachute jump
 // (too low: they stay aboard until it is down); else the normal dismount
 private _fnc_getOut = {
     params ["_grp", "_veh"];
-    if (!isNull _veh && { alive _veh } && { _veh isKindOf "Plane" } && { !isTouchingGround _veh }) exitWith {
-        if (((getPosATL _veh) select 2) >= AIC_PARA_MIN_HEIGHT) then {
+    if (!isNull _veh && { _veh isKindOf "Plane" } && { !isTouchingGround _veh }) exitWith {
+        // (a plane shot down still falling: they jump while there is half the height for it)
+        if (((getPosATL _veh) select 2) >= ([AIC_PARA_MIN_HEIGHT, AIC_PARA_MIN_HEIGHT * 0.5] select !alive _veh)) then {
             [(units _grp) select { (objectParent _x) isEqualTo _veh }, _veh] call AIC_fnc_paradrop;
         };
     };
@@ -431,6 +459,30 @@ private _fnc_boardFallback = {
                         if (_x isEqualTo _dropPos) then { _tRec set ["wpUnload", _wp select 1]; };
                     } forEach _legs;
                     _tGroup setCurrentWaypoint [_tGroup, 0];
+                    // the jump is watched twice a second: a plane crosses the
+                    // drop zone between two commander cycles
+                    [_rec, _veh, _dropPos, _grp, _side, groupId _tGroup] spawn {
+                        params ["_rec", "_veh", "_dz", "_grp", "_side", "_tName"];
+                        private _t0 = time;
+                        private _fnc_in = {
+                            ((getPosATL _veh) distance2D _dz) < AIC_PARA_DROP_RANGE && { ((getPosATL _veh) select 2) >= AIC_PARA_MIN_HEIGHT }
+                        };
+                        waitUntil {
+                            sleep 0.5;
+                            !alive _veh
+                            || { (_rec getOrDefault ["paraStarted", false]) isEqualTo true }
+                            || { (_rec getOrDefault ["task", ""]) isNotEqualTo "TRANSPORTED" }
+                            || { (time - _t0) > 1800 }
+                            || _fnc_in
+                        };
+                        if (alive _veh && { !((_rec getOrDefault ["paraStarted", false]) isEqualTo true) }
+                            && { (_rec getOrDefault ["task", ""]) isEqualTo "TRANSPORTED" } && _fnc_in) then {
+                            [(units _grp) select { (objectParent _x) isEqualTo _veh }, _veh] call AIC_fnc_paradrop;
+                            _rec set ["paraStarted", true];
+                            _rec set ["paraTime", time];
+                            ["%1: group %2 jumps from %3 (%4) over the drop zone %5", [_side, groupId _grp, _tName, typeOf _veh, _dz apply { round _x }]] call AIC_fnc_log;
+                        };
+                    };
                 };
                 // push the transport on in case the LOAD / GETIN sync hangs
                 private _iNext = (_tRec getOrDefault ["wpLoad", -2]) + 1;
@@ -768,11 +820,11 @@ private _fnc_objPos = {
                 [_inside, _veh] call AIC_fnc_paradrop;
             } else {
                 if !((_rec getOrDefault ["paraLanding", false]) isEqualTo true) then {
-                    private _af = [_cmd, getPosATL _veh] call AIC_fnc_heldAirfield;
-                    if (_af isNotEqualTo []) then {
-                        _veh assignToAirport (_af select 0);
-                        _veh landAt (_af select 0);
+                    if (([_veh, _rec] call _fnc_planeHome) isNotEqualTo []) then {
                         _rec set ["paraLanding", true];
+                    } else {
+                        // nowhere to land: up to jump height, they jump next time
+                        _veh flyInHeight AIC_PARA_HEIGHT;
                     };
                 };
             };
@@ -796,14 +848,12 @@ private _fnc_objPos = {
     // a transport plane lands at the nearest airfield the side holds;
     // AIC_fnc_rearmCycle turns it around there and sets it IDLE
     if (!isNull _veh && { alive _veh } && { _veh isKindOf "Plane" }) then {
-        private _af = [_cmd, getPosATL _veh] call AIC_fnc_heldAirfield;
-        if (_af isEqualTo []) exitWith {};
-        _af params ["_fId", "_fPos"];
         [_grp] call AIC_fnc_clearWaypoints;
         _grp setBehaviour "CARELESS";
         _grp setCombatMode "BLUE";
-        _veh assignToAirport _fId;
-        _veh landAt _fId;
+        private _af = [_veh, _rec] call _fnc_planeHome;
+        if (_af isEqualTo []) exitWith {};
+        _af params ["_fId", "_fPos"];
         _rec set ["task", "RTB"];
         _rec set ["taskPos", +_fPos];
         _rec set ["taskTime", time];

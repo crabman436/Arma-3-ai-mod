@@ -243,8 +243,9 @@ if (_isPlane) then {
     private _off = [AIC_PARA_DZ_OFFSET_SAFE, AIC_PARA_DZ_OFFSET] select _threatened;
     private _center = _dest getPos [_off min (_trip * 0.5), _dirBack];
     _center = [_center select 0, _center select 1, 0];
-    private _p = [_center, 250, "meadow - 2*forest - 2*trees - 3*houses - 10*sea", 30] call AIC_fnc_bestPlace;
-    _dropPos = [_p, _center] select (_p isEqualTo [] || { surfaceIsWater _p });
+    // open ground near that point, never closer to the target than half the stand-off
+    private _p = [_center, (_off * 0.6) max 100, "meadow - 2*forest - 2*trees - 3*houses - 10*sea", 30] call AIC_fnc_bestPlace;
+    _dropPos = [_p, _center] select (_p isEqualTo [] || { surfaceIsWater _p } || { (_p distance2D _dest) < (_off * 0.5) });
     if (surfaceIsWater _dropPos) then { _dropPos = +_dest; };
     _runIn = _dropPos getPos [AIC_PARA_RUN_IN min (_trip * 0.5), _dropPos getDir _pickupPos];
     _runIn = [_runIn select 0, _runIn select 1, 0];

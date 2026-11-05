@@ -46,6 +46,7 @@ _radius = _radius max 50;
 private _center = [_pos select 0, _pos select 1, 0];
 
 if (_type in ["STATIC", "ARTY"]) exitWith {
+    [_group] call AIC_fnc_clearWaypoints;
     _group setBehaviour "AWARE";
     _group setCombatMode "YELLOW";
     false

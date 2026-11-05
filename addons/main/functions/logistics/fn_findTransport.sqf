@@ -137,6 +137,9 @@ private _fresh = _pool isEqualType createHashMap
 private _entries = [];
 if (_fresh) then {
     _entries = _pool get "entries";
+    // a group queued for another job since the pool was built is no taxi either
+    _queued = [_cmd] call AIC_fnc_queuedGroups;
+    if !(_queued isEqualType createHashMap) then { _queued = createHashMap; };
 } else {
     private _useAir = ([_cmd, "useAir"] call AIC_fnc_getSetting) isEqualTo true;
     private _heliDist = [_cmd, "heliTransportDistance"] call AIC_fnc_getSetting;
@@ -200,6 +203,8 @@ if (_fresh) then {
             private _veh = _x;
             if (!alive _veh || { !canMove _veh } || { fuel _veh < AIC_RIDE_MIN_FUEL } || { (locked _veh) == 2 }) then { continue };
             if (_veh isKindOf "Ship") then { continue };
+            // nobody drives off with a player aboard
+            if (((crew _veh) findIf { isPlayer _x }) >= 0) then { continue };
             private _isPlane = _veh isKindOf "Plane";
             if (_isPlane && {
                 !_usePara

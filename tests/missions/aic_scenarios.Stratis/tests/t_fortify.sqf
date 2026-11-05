@@ -9,7 +9,8 @@ private _m = createMarker ["aic_base_west", _af];
 _m setMarkerShape "ELLIPSE";
 _m setMarkerSize [300, 300];
 _m setMarkerText "Airbase";
-private _town = (nearestLocations [_af, ["NameVillage", "NameCity", "NameCityCapital"], 8000]) param [0, locationNull];
+// a real village, not the air base's own name
+private _town = ((nearestLocations [_af, ["NameVillage", "NameCity", "NameCityCapital"], 8000]) select { ((locationPosition _x) distance2D _af) > 1500 }) param [0, locationNull];
 private _tPos = if (isNull _town) then { [] } else { locationPosition _town };
 
 private _gB = [west, _af getPos [60, 0], 8] call AIC_T_squad;
@@ -50,12 +51,14 @@ for "_i" from 1 to 30 do {
         && { count _townObj == 0 || { (_townObj getOrDefault ["fort", createHashMap]) getOrDefault ["done", false] } }) exitWith {};
 };
 private _fort = _base getOrDefault ["fort", createHashMap];
-[_id, (_fort getOrDefault ["done", false]) isEqualTo true, format ["airfield dug in: %1 objects (%2 made in all)", count (_fort getOrDefault ["objects", []]), _made]] call AIC_T_check;
+[_id, (_fort getOrDefault ["done", false]) isEqualTo true, format ["airfield dug in: %1 objects (%2 made in all, camo net pending: %3)", count (_fort getOrDefault ["objects", []]), _made, _fort getOrDefault ["netPending", false]]] call AIC_T_check;
 private _objs = (_fort getOrDefault ["objects", []]) select { !isNull _x };
 private _onRw = _objs select { [getPosATL _x, 40] call AIC_fnc_onRunway };
 [_id, _onRw isEqualTo [], format ["no object on the runway (%1)", _onRw apply { typeOf _x }]] call AIC_T_check;
 private _guns = _objs select { _x isKindOf "StaticWeapon" };
-sleep 30;
+// the gunners walk up to 180 m to their guns
+private _t0 = time;
+waitUntil { sleep 5; ({ alive gunner _x } count _guns) >= 1 || { time - _t0 > 180 } };
 private _manned = { alive gunner _x } count _guns;
 [_id, _manned >= 1, format ["garrison mans the new guns: %1/%2 manned", _manned, count _guns]] call AIC_T_check;
 private _gunners = { !isNull (_x getVariable ["AIC_gunnerOf", objNull]) } count units _gB;
@@ -97,5 +100,10 @@ for "_i" from 1 to 30 do {
     [_ce] call AIC_fnc_fortifyCycle;
     if ((_eBase getOrDefault ["fort", createHashMap]) getOrDefault ["done", false]) exitWith {};
 };
-private _propsAfter = count ((allMissionObjects "All") select { (_x getVariable ["AIC_fortSide", sideUnknown]) isNotEqualTo sideUnknown && { !(_x isKindOf "StaticWeapon") } });
-[_id, (_propsAfter - _propsBefore) <= 2, format ["new owner reuses the props: %1 -> %2", _propsBefore, _propsAfter]] call AIC_T_check;
+private _all = (allMissionObjects "All") select { (_x getVariable ["AIC_fortSide", sideUnknown]) isNotEqualTo sideUnknown };
+private _propsAfter = count (_all select { !(_x isKindOf "StaticWeapon") });
+// the new owner may face its own threat (new nests), but never stacks a second object on one that stands
+private _stacked = _all select { private _o = _x; (_all findIf { _x isNotEqualTo _o && { typeOf _x == typeOf _o } && { (_x distance _o) < 1 } }) >= 0 };
+[_id, _stacked isEqualTo [], format ["new owner stacks nothing on what stands (props %1 -> %2, stacked %3)", _propsBefore, _propsAfter, count _stacked]] call AIC_T_check;
+private _eGuns = (_all select { _x isKindOf "StaticWeapon" && { (_x getVariable ["AIC_fortSide", sideUnknown]) isEqualTo west } && { (crew _x) isEqualTo [] } && { (_x distance2D (_base get "pos")) < 250 } });
+[_id, true, format ["%1 empty west guns left in the base after the east plan", count _eGuns]] call AIC_T_check;

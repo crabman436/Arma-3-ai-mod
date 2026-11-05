@@ -91,7 +91,8 @@ CFG
     fi
     echo "== script errors"
     ERR=$(grep -a -n -A6 "Error in expression\|Error position\|Error Undefined\|Error Generic\|Error Type\|Error Missing\|Error Zero divisor\|Error Invalid number\|Error Foreign" "$R" || true)
-    if [ -n "$ERR" ]; then echo "$ERR" | head -120; STATUS=1; else echo "none"; fi
+    if [ -n "$ERR" ]; then printf '%s
+' "$ERR" | head -120 || true; STATUS=1; else echo "none"; fi
     FAILS=$(grep -ac "AIC_TEST|.*|FAIL|" "$R" || true)
     DONE=$(grep -ac "AIC_TEST|DONE" "$R" || true)
     if [ "$DONE" -lt 1 ] || [ "$FAILS" -gt 0 ]; then STATUS=1; fi

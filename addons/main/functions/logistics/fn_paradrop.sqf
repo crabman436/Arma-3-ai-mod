@@ -11,7 +11,8 @@
         and given part of the aircraft's speed. A unit that cannot be seated
         in a parachute (no parachute vehicle could be made) gets the
         parachute backpack AIC_PARA_BACKPACK for the jump instead and his own
-        backpack (with its contents) back once he is down. Units no longer
+        backpack (with its contents, or none if he had none) back once he is
+        down, also when he died on the way. Units no longer
         aboard or dead are skipped. Damage is off for the first 3 s of a
         jump (no collision with the aircraft). Empty parachutes are deleted
         once their man is down (AIC_PARA_CLEANUP s after landing, or after
@@ -65,10 +66,9 @@ if (_units isEqualTo []) exitWith { scriptNull };
             // no parachute vehicle: a parachute backpack for the jump, his own back later
             if (!isNull _chute) then { deleteVehicle _chute; _chute = objNull; };
             private _bp = backpack _u;
-            if (_bp isNotEqualTo "" && { _bp isNotEqualTo AIC_PARA_BACKPACK }) then {
-                _saved = [_bp, backpackItems _u];
-                removeBackpackGlobal _u;
-            };
+            // what he had ("" = no backpack): given back once he is down, dead or alive
+            _saved = [_bp, backpackItems _u];
+            if (_bp isNotEqualTo "" && { _bp isNotEqualTo AIC_PARA_BACKPACK }) then { removeBackpackGlobal _u; };
             if ((backpack _u) isNotEqualTo AIC_PARA_BACKPACK) then { _u addBackpackGlobal AIC_PARA_BACKPACK; };
         } else {
             _chute setVelocity ((velocity _veh) vectorMultiply 0.3);
@@ -94,12 +94,16 @@ if (_units isEqualTo []) exitWith { scriptNull };
                     params ["_u", "_chute", "_saved"];
                     sleep AIC_PARA_CLEANUP;
                     if (!isNull _chute && { (crew _chute) isEqualTo [] }) then { deleteVehicle _chute; };
-                    if (_saved isNotEqualTo [] && { alive _u } && { isNull objectParent _u }) then {
-                        if ((backpack _u) isEqualTo AIC_PARA_BACKPACK) then { removeBackpackGlobal _u; };
+                    if (_saved isNotEqualTo [] && { !isNull _u } && { isNull objectParent _u }) then {
                         _saved params ["_bp", "_items"];
-                        _u addBackpackGlobal _bp;
-                        clearAllItemsFromBackpack _u;
-                        { _u addItemToBackpack _x; } forEach _items;
+                        if (_bp isNotEqualTo AIC_PARA_BACKPACK) then {
+                            if ((backpack _u) isEqualTo AIC_PARA_BACKPACK) then { removeBackpackGlobal _u; };
+                            if (_bp isNotEqualTo "") then {
+                                _u addBackpackGlobal _bp;
+                                clearAllItemsFromBackpack _u;
+                                { _u addItemToBackpack _x; } forEach _items;
+                            };
+                        };
                     };
                 };
             };

@@ -37,8 +37,10 @@ if (isNull _group || { isNull _carrier }) exitWith { false };
 
 private _landed = [_carrier] call AIC_fnc_isLanded;
 private _isAir = _carrier isKindOf "Air";
-// (also with the engine gone: a pilot may still autorotate / glide it down)
-private _flying = _isAir && { !_landed } && { alive _carrier } && { alive (driver _carrier) };
+// (also with the engine gone while it still moves: a pilot may autorotate /
+// glide it down; a wreck hanging still in a tree or on a roof is not flying)
+private _flying = _isAir && { !_landed } && { alive _carrier } && { alive (driver _carrier) }
+    && { canMove _carrier || { (abs (speed _carrier)) > 3 } };
 if (_flying) exitWith {
     if (_land && { (time - (_carrier getVariable ["AIC_landOrderTime", -1e6])) > 45 }) then {
         _carrier setVariable ["AIC_landOrderTime", time];

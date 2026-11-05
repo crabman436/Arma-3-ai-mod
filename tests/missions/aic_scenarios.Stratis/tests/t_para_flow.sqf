@@ -49,16 +49,27 @@ private _dz = _cRec getOrDefault ["dropPos", []];
 private _t0 = time;
 private _stage = "board";
 private _tBoard = -1; private _tJump = -1; private _tDown = -1; private _tLand = -1;
+// the cycle runs every 20 s like a real commander cycle: the jump itself must
+// come from the drop watcher (a plane crosses the drop zone between two cycles)
+private _nextCycle = 0;
 waitUntil {
     sleep 5;
-    [_c] call AIC_fnc_transportCycle;
-    [_c] call AIC_fnc_rearmCycle;
+    if (time >= _nextCycle) then {
+        _nextCycle = time + 20;
+        [_c] call AIC_fnc_transportCycle;
+        [_c] call AIC_fnc_rearmCycle;
+    };
     if (_tBoard < 0 && { (_cRec getOrDefault ["transportPhase", ""]) == "RIDE" }) then { _tBoard = time - _t0; };
     if (_tJump < 0 && { (_cRec getOrDefault ["paraStarted", false]) isEqualTo true }) then { _tJump = time - _t0; };
     if (_tDown < 0 && { (_cRec getOrDefault ["task", ""]) != "TRANSPORTED" }) then { _tDown = time - _t0; };
     if (_tDown >= 0 && { _tLand < 0 } && { isTouchingGround _plane } && { (abs speed _plane) < 3 }) then { _tLand = time - _t0; };
+    if (_tJump >= 0 && { ((round (time - _t0)) % 60) < 5 }) then {
+        diag_log text format ["AIC_TEST|PARAFLOW|INFO|t=%1 plane alt %2 m, %3 km/h, %4 m from the airfield, task %5, airfield %6", round (time - _t0),
+            round ((getPosATL _plane) select 2), round speed _plane, round (_plane distance2D _af), _tRec getOrDefault ["task", ""], _tRec getOrDefault ["airfield", -1]];
+    };
     (_tLand >= 0 && { (_tRec getOrDefault ["task", ""]) == "IDLE" }) || { time - _t0 > 1050 } || { !alive _plane }
 };
+[_id, alive _plane, format ["plane survived the flight (%1)", ["destroyed", "alive"] select (alive _plane)]] call AIC_T_check;
 [_id, _tBoard >= 0, format ["squad boarded (%1 s)", round _tBoard]] call AIC_T_check;
 [_id, _tJump >= 0, format ["stick jumped over the drop zone (%1 s, plane %2 m up)", round _tJump, round ((getPosATL _plane) select 2)]] call AIC_T_check;
 private _alive = (units _sq) select { alive _x };

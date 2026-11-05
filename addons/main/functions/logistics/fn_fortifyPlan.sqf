@@ -106,7 +106,9 @@ private _fnc_spot = {
     && { (_taken findIf { (_x distance2D _p) < 8 }) < 0 }
     && { (nearestTerrainObjects [_p, _terrain, _clear, false, true]) isEqualTo [] }
     && { ((ATLToASL _p) isFlatEmpty [-1, -1, 0.3, 3, 0, false, objNull]) isNotEqualTo [] }
-    && { ((nearestObjects [_p, ["AllVehicles", "Static", "Thing"], _clear]) findIf { !(_x isKindOf "CAManBase") }) < 0 }
+    // (what an AIC commander dug in there does not count: the same plan reuses it)
+    && { ((nearestObjects [_p, ["AllVehicles", "Static", "Thing"], _clear]) findIf {
+        !(_x isKindOf "CAManBase") && { (_x getVariable ["AIC_fortSide", sideUnknown]) isEqualTo sideUnknown } }) < 0 }
 };
 
 // ---------------------------------------------------------------- threat direction
@@ -133,6 +135,12 @@ private _fnc_angDiff = { params ["_a", "_b"]; abs (((_a - _b + 540) % 360) - 180
 
 private _items = [];
 private _fnc_add = { params ["_kind", "_cls", "_p", "_dir", ["_role", ""]]; _items pushBack [_kind, _cls, [_p select 0, _p select 1, 0], _dir % 360, _role]; };
+// a prop at a road's edge: dry, not on a runway, not inside a building or wall
+private _fnc_propOk = {
+    params ["_p"];
+    !surfaceIsWater _p && { !([_p] call _fnc_onRunway) }
+    && { (nearestTerrainObjects [_p, ["BUILDING", "HOUSE", "WALL", "FENCE", "ROCK", "ROCKS", "TREE"], 1.5, false, true]) isEqualTo [] }
+};
 // a sandbag wall in front of a gun (long) and at its sides (short)
 private _fnc_sandbags = {
     params ["_p", "_dir"];
@@ -214,10 +222,15 @@ if (_nRoad > 0) then {
         if ([_rp] call _fnc_onRunway) then { continue };
         _blocks pushBack _b;
         private _half = _w / 2 + 1.5;
-        ["PROP", AIC_FORT_BARRIER, _rp getPos [_half, _d - 90], _d] call _fnc_add;
-        ["PROP", AIC_FORT_BARRIER, (_rp getPos [6, _d]) getPos [_half, _d + 90], _d] call _fnc_add;
-        ["PROP", "RoadCone_L_F", (_rp getPos [14, _d]) getPos [_w / 2, _d - 90], _d] call _fnc_add;
-        ["PROP", "RoadCone_L_F", (_rp getPos [14, _d]) getPos [_w / 2, _d + 90], _d] call _fnc_add;
+        {
+            _x params ["_cls", "_p"];
+            if ([_p] call _fnc_propOk) then { ["PROP", _cls, _p, _d] call _fnc_add; };
+        } forEach [
+            [AIC_FORT_BARRIER, _rp getPos [_half, _d - 90]],
+            [AIC_FORT_BARRIER, (_rp getPos [6, _d]) getPos [_half, _d + 90]],
+            ["RoadCone_L_F", (_rp getPos [14, _d]) getPos [_w / 2, _d - 90]],
+            ["RoadCone_L_F", (_rp getPos [14, _d]) getPos [_w / 2, _d + 90]]
+        ];
         // the gun beside the road, whichever side has room
         private _gunCls = ["HMG"] call _fnc_gun;
         if (_gunCls isNotEqualTo "") then {
@@ -239,16 +252,21 @@ private _fnc_inside = {
     params ["_rad", ["_clear", 6]];
     private _p = [_c, _rad, "meadow - 3*houses - 2*forest - trees - 10*sea", 12] call AIC_fnc_bestPlace;
     if (_p isNotEqualTo [] && { [_p, _clear] call _fnc_spot }) exitWith { _p };
-    // the engine's choice was blocked: a few fixed tries around the centre
+    // the engine's choice was blocked (an apron, a cluttered base): fixed
+    // tries around the centre, then with less room around the spot
     private _found = [];
-    for "_b" from 0 to 330 step 30 do {
-        {
-            private _q = _c getPos [_x, _b];
-            _q = [_q select 0, _q select 1, 0];
-            if ([_q, _clear] call _fnc_spot) exitWith { _found = _q; };
-        } forEach [_rad * 0.5, _rad * 0.8, _rad * 0.3];
+    {
+        private _cl = _x;
+        for "_b" from 0 to 345 step 15 do {
+            {
+                private _q = _c getPos [_x, _b];
+                _q = [_q select 0, _q select 1, 0];
+                if ([_q, _cl] call _fnc_spot) exitWith { _found = _q; };
+            } forEach [_rad * 0.5, _rad * 0.8, _rad * 0.3, _rad, _rad * 0.15];
+            if (_found isNotEqualTo []) exitWith {};
+        };
         if (_found isNotEqualTo []) exitWith {};
-    };
+    } forEach [_clear, (_clear * 0.6) max 3];
     _found
 };
 
@@ -273,12 +291,25 @@ if (_nService > 0) then {
             _x params ["_list", "_k"];
             private _i = _list findIf { isClass (configFile >> "CfgVehicles" >> _x) };
             // in a row across the way in: left, middle, right, 8 m apart
-            if (_i >= 0) then { ["SERVICE", _list select _i, _p getPos [8 * (abs (_forEachIndex - 1)), _dir + ([-90, 0, 90] select _forEachIndex)], _dir, _k] call _fnc_add; };
+            // the middle item on the point itself; the side ones on the first
+            // free spot around it (left / right first, then all round, 8 then 12 m)
+            private _q = [];
+            if (_forEachIndex == 1) then { _q = _p; } else {
+                private _side = [-90, 0, 90] select _forEachIndex;
+                private _sg = [1, -1] select (_side < 0);
+                {
+                    _x params ["_d", "_b"];
+                    private _t = _p getPos [_d, _dir + _side + _b];
+                    _t = [_t select 0, _t select 1, 0];
+                    if ([_t] call _fnc_propOk && { (_taken findIf { (_x distance2D _t) < 5 }) < 0 }) exitWith { _q = _t; };
+                } forEach [[8, 0], [8, 45 * _sg], [8, -45 * _sg], [12, 0], [12, 90 * _sg], [12, -90 * _sg], [8, 180]];
+            };
+            if (_i >= 0 && { _q isNotEqualTo [] }) then { _taken pushBack _q; ["SERVICE", _list select _i, _q, _dir, _k] call _fnc_add; };
         } forEach [[AIC_FORT_FUEL, "FUEL"], [AIC_FORT_AMMO, "AMMO"], [AIC_FORT_REPAIR, "REPAIR"]];
     };
 };
 
-if (_nNet > 0) then {
+if (_nNet > 0 && { (_obj getOrDefault ["isBase", false]) isEqualTo true } && { ([_cmd, "useVehicleParks"] call AIC_fnc_getSetting) isEqualTo true }) then {
     private _net = ["CamoNet_BLUFOR_big_F", "CamoNet_OPFOR_big_F", "CamoNet_INDP_big_F"] param [[west, east, independent] find _side, ""];
     if (_net isNotEqualTo "" && { isClass (configFile >> "CfgVehicles" >> _net) }) then { _items pushBack ["NET", _net, "PARK", 0, ""]; };
 };

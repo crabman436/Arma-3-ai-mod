@@ -75,6 +75,8 @@ if !(_key in _obj) then {
             };
         };
     };
+    // nothing fits (the engine's spot sat on a runway): laid out again next time
+    if (_slots isEqualTo []) exitWith {};
     _obj set [_key, _slots];
     // the way parked vehicles face: out of the base (AIC_fnc_fortifyCycle lines them up)
     if (!_isHeli) then {_obj set ["parkDir", _dir]};
@@ -84,7 +86,7 @@ if !(_key in _obj) then {
     ]] call AIC_fnc_log;
 };
 
-private _slots = _obj get _key;
+private _slots = _obj getOrDefault [_key, []];
 if (_slots isEqualTo []) exitWith {[]};
 
 // --- find its place --------------------------------------------------------------
@@ -104,7 +106,8 @@ private _own = -1;
         private _hRec = if (isNull _holder) then {createHashMap} else {_groupData getOrDefault [hashValue _holder, createHashMap]};
         if (
             isNull _holder
-            || {({alive _x} count (units _holder)) == 0}
+            // a dead crew's vehicle still standing in it keeps the place taken
+            || {({alive _x} count (units _holder)) == 0 && {((_slots select _forEachIndex) nearEntities [["LandVehicle", "Air"], 5]) isEqualTo []}}
             // the holder still parks here: its home, or for a group without a
             // home (helicopters) the base it was given this place at
             || {
