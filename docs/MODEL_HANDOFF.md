@@ -148,3 +148,15 @@ The [dated initial review](reviews/2026-11-03-initial-review.md) records what wa
 ## Implementation start — 2026-11-04
 
 Sol coordinates three Luna work packages for F02/F09/F10/F11/F12/F13. [Concrete plan](plans/2026-11-04-ai-reliability.md). Branch `codex/ai-reliability-luna-2026-11-04` builds on PR #4 head 73f2339. Claims expire 2026-11-05T09:15:40Z; status IN_PROGRESS. Runtime validation is pending.
+
+### 2026-11-05 — Claude (Opus 5.5), branch consolidation and AI reliability
+
+- **Authorized scope:** Repository owner asked to conform all branches into one line, then work on the AI; review with a Haiku swarm for lean, fast, correct code; Arma available for testing.
+- **Start → result:** `claude/arma3-ai-coordination-qilgd4` @ `2c77dc8` → `claude/conform-branches` (merges PR #4/#6 line `34f48fd` and `claude/dazzling-hypatia-94s12g`; ports `claude/replan-on-contact`).
+- **Branches:** `fix/ai-stuck-garrison` and `codex/ai-reliability-luna-2026-11-04` are ancestors of `claude/ecstatic-mayer-ambvf2` (fully merged). `claude/replan-on-contact` and `claude/jev-commander` are prefixes of `claude/jev-general`; their replan feature is ported, their alternative Jev "general" design (PR #3, closed) is superseded by the PR #4 Jev advisor and not merged. `codex/reactive-army` (PR #1) predates the 2026-10 rewrite of the mod and is not mergeable; its observation-expiry idea is covered by F08 and stale-contact handling.
+- **Claims:** Luna work packages A–C (F02, F09–F13) had no pushed implementation; taken over on the owner's instruction before the 09:15Z expiry, recorded in the tracker histories. All claims released on hand-off to review.
+- **Work completed:** F02, F03 (residual), F04, F07, F08, F09, F10, F11, F12, F13 → IN_REVIEW. F01, F05, F06 revalidated: already fixed on the PR #4 line. Replan-on-contact ported (default `replanMinInterval` 10 s).
+- **Reviews:** Haiku correctness swarm (34 bounded checks + 2 refuters each) and lean/fast swarm (51 inspectors + 2 refuters each); every survivor re-checked by hand, fixes in `a399943`, `28b756a`. Recurring false positive: `sleep` inside a `waitUntil` condition — valid, confirmed in-engine.
+- **Tests run:** `hemtt check` 0 errors (54 pre-existing style warnings). Arma 3 2.22.154089 dedicated server, VR, `tests/run-arma-tests.sh` (`tests/missions/aic_regression.VR`): 44/44 checks pass on the fix branch, no script errors; the same tests on `34f48fd` fail 13 (F02, F07, F08, F10, F11, F13, replan), so they discriminate. Soak with two live commanders (see PR for the long run).
+- **Not run:** F03/F04/F09/F12 scenario tests (covered only by the soak's no-error run), multiplayer/headless-client checks, Jev live API.
+- **Next step:** Review and merge the PR into the default branch; then mark records FIXED, and VERIFIED where an independent run of `tests/run-arma-tests.sh` passes. Add scenario tests for F04/F09/F12.

@@ -997,6 +997,23 @@ mod.cpp
 3. The finished mod folder `@aic` (from `.hemttout/release`) contains
    `addons/aic_main.pbo`, the key, and `mod.cpp`.
 
+### Regression tests in Arma
+
+`tests/run-arma-tests.sh` (Git Bash on Windows) builds the mod, starts a
+local dedicated server (`arma3server_x64.exe -autoInit`) with the mission
+`tests/missions/aic_regression.VR` and reports from the RPT. The mission calls
+the real functions for the fixed tracker findings (F02, F07, F08, F10, F11,
+F13), checks the replan-on-contact loop timing, then lets two live commanders
+fight for `SOAK` seconds and fails on any script error.
+
+```bash
+ARMA="/d/SteamLibrary/steamapps/common/Arma 3" SOAK=240 tests/run-arma-tests.sh
+```
+
+It copies the mission to `<ARMA>/MPMissions/aic_regression.VR` and keeps the
+staged mod, server profile and RPT in `.hemttout/arma-test`. Exit code 0 means
+every check passed and the RPT has no script error.
+
 ### Arma 3 Tools: Addon Builder
 
 1. Open **Arma 3 Tools > Addon Builder**.
