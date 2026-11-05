@@ -50,7 +50,10 @@ private _fnc_free = {
     params ["_r"];
     private _grp = _r get "group";
     private _engaged = _r getOrDefault ["lastEngaged", -1e6];
-    (_r getOrDefault ["type", ""]) isEqualTo "INF"
+    // (a group emptied by a merge, perhaps still listing its men while the
+    // join travels to a headless client)
+    !((_r getOrDefault ["merged", false]) isEqualTo true)
+    && {(_r getOrDefault ["type", ""]) isEqualTo "INF"}
     && {!((_r getOrDefault ["task", ""]) in ["TRANSPORT", "TRANSPORTED", "RETREAT"])}
     && {!(_grp getVariable ["AIC_exclude", false])}
     && {!(_grp getVariable ["AIC_noSplit", false])}
@@ -64,11 +67,15 @@ private _fnc_merge = {
     private _fromGrp = _from get "group";
     private _toGrp = _to get "group";
     private _units = (units _fromGrp) select {alive _x};
+    // the emptied group is no loss (AIC_fnc_groupEvent "Empty")
+    _from set ["merged", true];
     [_fromGrp] call AIC_fnc_clearWaypoints;
-    _units joinSilent _toGrp;
-    _units doFollow (leader _toGrp);
-    // the newcomers take the state of the group they join (march or not)
+    [_units, "joinSilent", _toGrp] call AIC_fnc_do;
+    [_units, "doFollow", (leader _toGrp)] call AIC_fnc_do;
+    // the newcomers take the state of the group they join (march or not);
+    // directly too: on a headless client the join lands after setMarch below
     private _marching = _toGrp getVariable ["AIC_marching", false];
+    {[_x, ["enableAI", "disableAI"] select _marching, "AUTOCOMBAT"] call AIC_fnc_do} forEach _units;
     _toGrp setVariable ["AIC_marching", !_marching];
     [_toGrp, _marching] call AIC_fnc_setMarch;
     _to set ["initialSize", (_to getOrDefault ["initialSize", 1]) + (_from getOrDefault ["initialSize", count _units])];
@@ -128,6 +135,8 @@ private _teams = createHashMap;
                 && {(_rec getOrDefault ["task", ""]) isEqualTo (_lead getOrDefault ["task", ""])}
                 && {(_rec getOrDefault ["objective", ""]) isEqualTo (_lead getOrDefault ["objective", ""])}
                 && {((leader (_rec get "group")) distance2D (leader _leadGrp)) < AIC_TEAM_MERGE_RADIUS}
+                // both on the same machine (server or one headless client)
+                && {(groupOwner (_rec get "group")) isEqualTo (groupOwner _leadGrp)}
             ) then {
                 [_rec, _lead] call _fnc_merge;
                 _joined = _joined + 1;
@@ -171,6 +180,7 @@ private _used = [];
             && {!(_oGrp in _used)}
             && {(([_other] call _fnc_size) + _size) <= AIC_SQUAD_MAX_SIZE}
             && {[_other] call _fnc_free}
+            && {(groupOwner _oGrp) isEqualTo (groupOwner _grp)}
         ) then {
             _bestDist = _d;
             _best = _other;

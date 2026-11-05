@@ -87,7 +87,7 @@ private _seen = [];
         if (_forEachIndex > 0 && {(time - (_rec getOrDefault ["lastSpread", -1e6])) > AIC_CROWD_COOLDOWN}) then {
             private _p = _pos getPos [AIC_CROWD_SPREAD, _start + _forEachIndex * 360 / (_count - 1)];
             if (!surfaceIsWater _p) then {
-                (leader _member) doMove [_p select 0, _p select 1, 0];
+                [(leader _member), "doMove", [_p select 0, _p select 1, 0]] call AIC_fnc_do;
                 _rec set ["lastSpread", time];
                 _moved = _moved + 1;
             };

@@ -162,7 +162,7 @@ private _taken = [];
             _rec set ["taskPos", [_p select 0, _p select 1, 0]];
             [_grp, _i] setWaypointPosition [_p, 0];
             // also restarts a waypoint the truck had already finished
-            _grp setCurrentWaypoint [_grp, _i];
+            [_grp, "setCurrentWaypoint", [_grp, _i]] call AIC_fnc_do;
         };
         continue;
     };
@@ -179,17 +179,17 @@ private _taken = [];
         _truck setRepairCargo (((getRepairCargo _truck) - 0.25) max 0);
     };
     if ("fuel" in _todo) then {
-        _target setFuel 1;
+        [_target, "setFuel", 1] call AIC_fnc_do;
         _truck setFuelCargo (((getFuelCargo _truck) - 0.25) max 0);
     };
     if ("ammo" in _todo) then {
-        _target setVehicleAmmo 1;
+        [_target, "setVehicleAmmo", 1] call AIC_fnc_do;
         _truck setAmmoCargo (((getAmmoCargo _truck) - 0.25) max 0);
     };
     // a crew that bailed out climbs back in
     {
         private _out = (units (_x get "group")) select {alive _x && {isNull objectParent _x} && {(assignedVehicle _x) isEqualTo _target}};
-        if (_out isNotEqualTo []) then {_out orderGetIn true};
+        if (_out isNotEqualTo []) then {[_out, "orderGetIn", true] call AIC_fnc_do};
     } forEach _records;
 
     _served = _served + 1;
@@ -230,6 +230,8 @@ if (_freeTrucks isNotEqualTo []) then {
 
 // ------------------------------------------------------------ new jobs
 private _jobs = 0;
+// vehicle hash -> no threat near it (filled lazily by the truck loop)
+private _safe = createHashMap;
 {
     private _rec = _x;
     private _grp = _rec get "group";
@@ -263,7 +265,12 @@ private _jobs = 0;
             && {_v isNotEqualTo _truck}
             && {!(_v in _taken)}
             && {(_needs findIf {_x in _stock}) >= 0}
-            && {([_cmd, getPosATL _v, AIC_SUPPLY_DANGER_RADIUS] call AIC_fnc_nearestThreat) isEqualTo []}
+            && {
+                // asked once per vehicle and cycle, not once per truck
+                private _k = hashValue _v;
+                if !(_k in _safe) then { _safe set [_k, ([_cmd, getPosATL _v, AIC_SUPPLY_DANGER_RADIUS] call AIC_fnc_nearestThreat) isEqualTo []]; };
+                _safe get _k
+            }
         ) then {
             _bestDist = _d;
             _best = _v;
@@ -273,16 +280,16 @@ private _jobs = 0;
 
     [_cmd, _grp, false] call AIC_fnc_setGroupSim;
     [_grp] call AIC_fnc_clearWaypoints;
-    if ((leader _grp) isNotEqualTo (driver _truck)) then {_grp selectLeader (driver _truck)};
-    _grp setBehaviour "AWARE";
-    _grp setCombatMode "YELLOW";
-    _grp setSpeedMode "FULL";
+    if ((leader _grp) isNotEqualTo (driver _truck)) then {[_grp, "selectLeader", (driver _truck)] call AIC_fnc_do};
+    [_grp, "setBehaviour", "AWARE"] call AIC_fnc_do;
+    [_grp, "setCombatMode", "YELLOW"] call AIC_fnc_do;
+    [_grp, "setSpeedMode", "FULL"] call AIC_fnc_do;
     private _p = getPosATL _best;
     private _wp = _grp addWaypoint [_p, 0];
     _wp setWaypointType "MOVE";
     _wp setWaypointSpeed "FULL";
     _wp setWaypointCompletionRadius (AIC_SUPPLY_REACH * 0.5);
-    _grp setCurrentWaypoint _wp;
+    [_grp, "setCurrentWaypoint", _wp] call AIC_fnc_do;
 
     _rec set ["task", "SUPPLY"];
     _rec set ["taskPos", [_p select 0, _p select 1, 0]];

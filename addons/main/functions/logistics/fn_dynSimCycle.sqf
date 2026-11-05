@@ -107,7 +107,35 @@ private _enemyPositions = (((_cmd getOrDefault ["knownEnemies", []]) + (_cmd get
 // around it instead of every hostile unit on the map.
 private _interval = [_cmd, "loopInterval"] call AIC_fnc_getSetting;
 private _wakeRange = _range + (_interval max 0) * AIC_WAKE_SPEED;
-private _cells = createHashMap;
+// positions into cells _size wide: [x cell, y cell] -> positions
+private _fnc_grid = {
+    params ["_positions", "_size"];
+    private _grid = createHashMap;
+    {
+        private _key = [floor ((_x select 0) / _size), floor ((_x select 1) / _size)];
+        private _cell = _grid getOrDefault [_key, []];
+        if (_cell isEqualTo []) then { _grid set [_key, _cell]; };
+        _cell pushBack _x;
+    } forEach _positions;
+    _grid
+};
+// is a position of the grid within _size of _p? (the 3 x 3 cells around it)
+private _fnc_gridNear = {
+    params ["_grid", "_size", "_p"];
+    if (count _grid == 0) exitWith { false };
+    private _cx = floor ((_p select 0) / _size);
+    private _cy = floor ((_p select 1) / _size);
+    private _found = false;
+    for "_i" from -1 to 1 do {
+        for "_j" from -1 to 1 do {
+            private _cell = _grid getOrDefault [[_cx + _i, _cy + _j], []];
+            if ((_cell findIf { (_x distance2D _p) < _size }) > -1) exitWith { _found = true; };
+        };
+        if (_found) exitWith {};
+    };
+    _found
+};
+private _hostile = [];
 {
     if (alive _x && { !captive _x } && {
         private _eSide = side group _x;
@@ -115,29 +143,12 @@ private _cells = createHashMap;
         && { _eSide isNotEqualTo _side }
         && { (_side getFriend _eSide) < AIC_HOSTILE_FRIEND }
     }) then {
-        private _p = getPosATL _x;
-        private _key = [floor ((_p select 0) / _wakeRange), floor ((_p select 1) / _wakeRange)];
-        private _cell = _cells getOrDefault [_key, []];
-        if (_cell isEqualTo []) then { _cells set [_key, _cell]; };
-        _cell pushBack _p;
+        _hostile pushBack getPosATL _x;
     };
 } forEach allUnits;
-// is a hostile unit within the wake radius of a position?
-private _fnc_hostileNear = {
-    params ["_p"];
-    if (count _cells == 0) exitWith { false };
-    private _cx = floor ((_p select 0) / _wakeRange);
-    private _cy = floor ((_p select 1) / _wakeRange);
-    private _found = false;
-    for "_i" from -1 to 1 do {
-        for "_j" from -1 to 1 do {
-            private _cell = _cells getOrDefault [[_cx + _i, _cy + _j], []];
-            if ((_cell findIf { (_x distance2D _p) < _wakeRange }) > -1) exitWith { _found = true; };
-        };
-        if (_found) exitWith {};
-    };
-    _found
-};
+private _cells = [_hostile, _wakeRange] call _fnc_grid;
+// the known enemy positions as well, in cells one _range wide
+private _enemyCells = [_enemyPositions, _range] call _fnc_grid;
 
 // --- one picket per patrolled objective stays awake (an awake patrol first)
 private _pickets = createHashMap; // objective id -> [hashValue group, awake]
@@ -184,8 +195,8 @@ private _woken = 0;
     // ---------------------------------------------------------- wake conditions
     private _wake = _task in _wakeTasks;
 
-    if (!_wake && { _enemyPositions isNotEqualTo [] }) then {
-        _wake = (_enemyPositions findIf { (_x distance2D _lpos) < _range }) > -1;
+    if (!_wake) then {
+        _wake = [_enemyCells, _range, _lpos] call _fnc_gridNear;
     };
 
     // engaged recently: the group event handlers (AIC_fnc_attachGroupEHs)
@@ -198,7 +209,7 @@ private _woken = 0;
 
     // parked groups can't see: hostile units close to the leader
     if (!_wake && { _isParked }) then {
-        _wake = [_lpos] call _fnc_hostileNear;
+        _wake = [_cells, _wakeRange, _lpos] call _fnc_gridNear;
     };
 
     // the picket of a patrolled objective keeps its eyes open
@@ -261,7 +272,7 @@ private _woken = 0;
 
     // never park next to an enemy (it would be woken again next cycle and
     // flip between frozen and awake while the enemy closes in)
-    if (_settled && { !([_lpos] call _fnc_hostileNear) } && { [_cmd, _grp, true] call AIC_fnc_setGroupSim }) then { _parked = _parked + 1; };
+    if (_settled && { !([_cells, _wakeRange, _lpos] call _fnc_gridNear) } && { [_cmd, _grp, true] call AIC_fnc_setGroupSim }) then { _parked = _parked + 1; };
 } forEach _records;
 
 if ((_parked + _woken) > 0 && { !isNil "AIC_ns" } && { AIC_ns getOrDefault ["debug", false] isEqualTo true }) then {

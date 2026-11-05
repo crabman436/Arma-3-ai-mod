@@ -62,11 +62,11 @@ if (isNull _leader || {!alive _leader}) exitWith {false};
 if (_type isEqualTo "") then { _type = [_group] call AIC_fnc_classifyGroup; };
 private _dest = [_pos select 0, _pos select 1, 0];
 
-_group allowFleeing 0;
+[_group, "allowFleeing", 0] call AIC_fnc_do;
 
 if (_type in ["STATIC", "ARTY"]) exitWith {
-    _group setBehaviour "AWARE";
-    _group setCombatMode "YELLOW";
+    [_group, "setBehaviour", "AWARE"] call AIC_fnc_do;
+    [_group, "setCombatMode", "YELLOW"] call AIC_fnc_do;
     false
 };
 
@@ -91,9 +91,9 @@ if (!(_type in ["NAVAL", "HELI", "PLANE"]) && {surfaceIsWater _dest}) then {
 
 [_group] call AIC_fnc_clearWaypoints;
 
-_group setBehaviour "CARELESS";
-_group setCombatMode "GREEN";
-_group setSpeedMode "FULL";
+[_group, "setBehaviour", "CARELESS"] call AIC_fnc_do;
+[_group, "setCombatMode", "GREEN"] call AIC_fnc_do;
+[_group, "setSpeedMode", "FULL"] call AIC_fnc_do;
 
 // --- threat-avoiding first leg: straight away from the threat, then to the rally point
 private _first = [];
@@ -139,5 +139,5 @@ if (_type != "PLANE") then {
     _wpL setWaypointCombatMode "YELLOW";
 };
 
-_group setCurrentWaypoint ([_first, _wp] select (_first isEqualTo []));
+[_group, "setCurrentWaypoint", ([_first, _wp] select (_first isEqualTo []))] call AIC_fnc_do;
 true

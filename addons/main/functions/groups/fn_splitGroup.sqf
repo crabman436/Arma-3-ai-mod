@@ -86,7 +86,7 @@ for "_t" from 1 to (_teams - 1) do {
     private _team = _buckets select _t;
     private _grp = createGroup [_side, true];
     if (isNull _grp) then {continue};
-    _team joinSilent _grp;
+    [_team, "joinSilent", _grp] call AIC_fnc_do;
     {_grp setVariable [_x, _group getVariable [_x, false]]} forEach ["AIC_noDynSim", "AIC_keep"];
 
     private _r = [_grp] call AIC_fnc_newGroupRecord;

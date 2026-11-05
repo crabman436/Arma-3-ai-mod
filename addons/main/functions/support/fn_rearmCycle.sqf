@@ -76,8 +76,8 @@ private _changes = 0;
                 _rec set ["taskPos", []];
                 _rec set ["taskTime", time];
                 [_grp] call AIC_fnc_clearWaypoints;
-                _grp setBehaviour "AWARE";
-                _grp setCombatMode "YELLOW";
+                [_grp, "setBehaviour", "AWARE"] call AIC_fnc_do;
+                [_grp, "setCombatMode", "YELLOW"] call AIC_fnc_do;
                 ["%1: %2 (%3) airfield %4 is lost and none is held, carries on as it is", [_side, groupId _grp, typeOf _plane, _field]] call AIC_fnc_log;
             } else {
                 _alt params ["_altId", "_altPos"];
@@ -101,9 +101,14 @@ private _changes = 0;
                 continue;
             };
             if ((time - _since) < AIC_TURNAROUND_TIME) then { continue };
-            _plane setVehicleAmmo 1;
-            _plane setFuel 1;
+            [_plane, "setVehicleAmmo", 1] call AIC_fnc_do;
+            [_plane, "setFuel", 1] call AIC_fnc_do;
             _plane setDamage 0;
+            // back to the combat posture the landing took away; a VTOL's
+            // landing pad (transport record "pickupLz") is not needed now
+            [_rec] call AIC_fnc_deleteHelipads;
+            [_grp, "setBehaviour", "AWARE"] call AIC_fnc_do;
+            [_grp, "setCombatMode", "YELLOW"] call AIC_fnc_do;
             _rec set ["airfield", -1];
             _rec set ["turnaround", -1];
             _rec set ["task", "IDLE"];
@@ -115,6 +120,9 @@ private _changes = 0;
         } else {
             _rec set ["turnaround", -1];
             if ((time - (_rec getOrDefault ["taskTime", time])) > AIC_REARM_TIMEOUT) then {
+                [_rec] call AIC_fnc_deleteHelipads;
+                [_grp, "setBehaviour", "AWARE"] call AIC_fnc_do;
+                [_grp, "setCombatMode", "YELLOW"] call AIC_fnc_do;
                 _rec set ["airfield", -1];
                 _rec set ["task", "IDLE"];
                 _rec set ["taskPos", []];
@@ -145,8 +153,8 @@ private _changes = 0;
 
     [_cmd, _grp, false] call AIC_fnc_setGroupSim;
     [_grp] call AIC_fnc_clearWaypoints;
-    _grp setBehaviour "CARELESS";
-    _grp setCombatMode "GREEN";
+    [_grp, "setBehaviour", "CARELESS"] call AIC_fnc_do;
+    [_grp, "setCombatMode", "GREEN"] call AIC_fnc_do;
     _plane assignToAirport _id;
     _plane landAt _id;
 

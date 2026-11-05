@@ -9,5 +9,6 @@ call compile preprocessFileLineNumbers "harness.sqf";
     "tests\t_f13_markers.sqf",
     "tests\t_paradrop.sqf",
     "tests\t_replan.sqf",
+    "tests\t_hc.sqf",
     "tests\t_soak.sqf"
 ]] call AIC_T_run;

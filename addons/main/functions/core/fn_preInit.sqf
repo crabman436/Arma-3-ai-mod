@@ -13,6 +13,10 @@
             "objectiveModules" - array of AIC_ModuleObjective logics
             "debug"            - bool, default false (systemChat logging)
             "version"          - string, mod version "1.0.0"
+            "cmds"             - HashMap of AIC_fnc_cmdTable (commands
+                                 AIC_fnc_do may send to another machine)
+            "hcIntel", "hcStats", "hcOwnersCache", "hcKnownCache" -
+                                 headless-client reports (AIC_fnc_hcReport)
             "defaultSettings"  - HashMap of AIC_fnc_defaultSettings, built
                                  once; read only by AIC_fnc_getSetting
                                  (never modify it)
@@ -63,5 +67,8 @@ AIC_ns set ["version", "1.0.0"];
 // cached defaults for AIC_fnc_getSetting (rebuilt every preInit, so a changed
 // AIC_fnc_defaultSettings always wins)
 AIC_ns set ["defaultSettings", [] call AIC_fnc_defaultSettings];
+// AI commands AIC_fnc_do may run on a group's owner (also the whitelist
+// of AIC_fnc_execCmd on headless clients)
+AIC_ns set ["cmds", [] call AIC_fnc_cmdTable];
 
 AIC_ns

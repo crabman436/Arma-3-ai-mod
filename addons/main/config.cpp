@@ -23,3 +23,15 @@ class CfgFactionClasses
 
 #include "CfgFunctions.hpp"
 #include "CfgVehicles.hpp"
+
+// remote calls between the server and headless clients (each function also
+// checks who sent it); a mission in whitelist mode must allow them too
+class CfgRemoteExec
+{
+    class Functions
+    {
+        class AIC_fnc_execCmd { allowedTargets = 0; };
+        class AIC_fnc_groupEvent { allowedTargets = 2; };
+        class AIC_fnc_hcReport { allowedTargets = 2; };
+    };
+};

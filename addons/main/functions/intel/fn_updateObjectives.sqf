@@ -105,9 +105,11 @@ private _entityTypes = ["CAManBase", "LandVehicle", "Ship", "Air"];
 private _now = time;
 
 // what the commander can see: its leaders, and the contacts they reported
+// lately (only fresh ones count for an estimate: filtered once, not per objective)
 private _observers = ((_cmd getOrDefault ["groups", []]) select { !isNull _x && { alive leader _x } }) apply { getPosATL leader _x };
 private _contacts = (_cmd getOrDefault ["knownEnemies", []]) select {
     _x isEqualType createHashMap && { count (_x getOrDefault ["pos", []]) >= 2 }
+    && { (_now - (_x getOrDefault ["lastSeen", -1e6])) <= AIC_EST_FRESH }
 };
 
 {
@@ -198,7 +200,7 @@ private _contacts = (_cmd getOrDefault ["knownEnemies", []]) select {
         private _estRange = _radius + AIC_OBJ_THREAT_RANGE;
         private _seen = 0;
         {
-            if (((_x get "pos") distance2D _pos) <= _estRange && { (_now - (_x getOrDefault ["lastSeen", -1e6])) <= AIC_EST_FRESH }) then {
+            if (((_x get "pos") distance2D _pos) <= _estRange) then {
                 private _p = _x getOrDefault ["power", 0];
                 if (_p isEqualType 0) then { _seen = _seen + _p; };
             };

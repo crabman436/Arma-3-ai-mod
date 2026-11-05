@@ -12,7 +12,10 @@
         [side group], flips a few record keys and returns. Handlers of a
         group that is no longer commanded (no record) do nothing.
 
-        Group event handlers (Arma 3 2.10+):
+        Group event handlers (Arma 3 2.10+); what EnemyDetected,
+        UnitKilled and Empty do is AIC_fnc_groupEvent (also called by the
+        forwarding handlers of a headless client, AIC_fnc_hcAttach, since
+        engine events fire only where the group is local):
           - "EnemyDetected": AIC_fnc_groupEngaged (stamp "lastEngaged",
             wake the group at once if it is parked). A sighting is no
             contact under fire: it does not stamp "lastHit".
@@ -37,8 +40,9 @@
           AIC_fnc_jevState reports to the Jev decision model. The log is
           replaced by a new array, never changed in place: the scheduled
           commander cycle may be iterating the old one.
-          - "Empty": deletes the record's "lz" / "pickupLz" helipads, marks
-            the record "removed" and takes the group out of "groups" (a new
+          - "Empty": deletes the record's "lz" / "pickupLz" helipads, logs a
+            "G" loss unless the record is "merged" (AIC_fnc_teamCycle
+            emptied it), marks the record "removed" and takes the group out of "groups" (a new
             array), then deletes the group (AIC_fnc_deleteGroup) if
             "manageCleanup" is on and the group has no "AIC_keep" variable.
             The record itself is NOT deleted here: the commander cycle runs
@@ -185,87 +189,21 @@ if (_gd isEqualType createHashMap) then {
 } forEach (units _group);
 
 // ------------------------------------------------------------------ group
+// (the reactions themselves are AIC_fnc_groupEvent, shared with the
+// forwarding handlers a headless client adds to its groups, AIC_fnc_hcAttach)
 _group addEventHandler ["EnemyDetected", {
     params ["_group"];
-    [_group] call AIC_fnc_groupEngaged;
+    ["engaged", [_group, false]] call AIC_fnc_groupEvent;
 }];
 
 _group addEventHandler ["UnitKilled", {
     params ["_group", "_unit"];
-    if (!isServer || { isNull _unit }) exitWith {};
-    _unit setVariable ["AIC_killedAt", time];
-    private _cmd = [side _group] call AIC_fnc_getCommander;
-    if (count _cmd == 0) exitWith {};
-    // only groups still under this commander's control
-    private _gd = _cmd getOrDefault ["groupData", createHashMap];
-    if !(_gd isEqualType createHashMap) exitWith {};
-    private _rec = _gd getOrDefault [hashValue _group, createHashMap];
-    if (!(_rec isEqualType createHashMap) || { count _rec == 0 }) exitWith {};
-    // casualty log for the Jev state (AIC_fnc_jevState): [time, kind, group
-    // hash, objective attacked]; a new array, the cycle may be iterating the old one
-    private _task = _rec getOrDefault ["task", ""];
-    private _final = _rec getOrDefault ["final", createHashMap];
-    private _attacking = switch (true) do {
-        case (_task isEqualTo "ATTACK"): { _rec getOrDefault ["objective", ""] };
-        case (_task isEqualTo "TRANSPORTED" && { _final isEqualType createHashMap } && { (_final getOrDefault ["task", ""]) isEqualTo "ATTACK" }): { _final getOrDefault ["objective", ""] };
-        default { "" };
-    };
-    private _log = (_cmd getOrDefault ["lossLog", []]) + [[time, "U", hashValue _group, _attacking]];
-    if (count _log > AIC_LOSS_LOG_MAX) then { _log = _log select [count _log - AIC_LOSS_LOG_MAX]; };
-    _cmd set ["lossLog", _log];
-    if (!isPlayer _unit && { ([_cmd, "manageCleanup"] call AIC_fnc_getSetting) isEqualTo true }) then {
-        private _queue = _cmd getOrDefault ["deadQueue", []];
-        _queue pushBack _unit;
-        _cmd set ["deadQueue", _queue];
-    };
-    // morale (AIC_fnc_updateGroups): the leader fell
-    if (_unit isEqualTo (_rec getOrDefault ["leaderUnit", objNull])) then {
-        _rec set ["leaderLost", true];
-        _rec set ["leaderLostTime", time];
-    };
-    // (a scout hit on the job: "lastHit" below ends it in
-    // AIC_fnc_monitorOrders, which sets "reconTime" / "reconContacts")
-    [_group, true] call AIC_fnc_groupEngaged;
+    ["UnitKilled", [_group, _unit]] call AIC_fnc_groupEvent;
 }];
 
 _group addEventHandler ["Empty", {
     params ["_group"];
-    if (!isServer || { isNull _group }) exitWith {};
-    private _cmd = [side _group] call AIC_fnc_getCommander;
-    if (count _cmd == 0) exitWith {};
-    private _groupData = _cmd getOrDefault ["groupData", createHashMap];
-    if !(_groupData isEqualType createHashMap) exitWith {};
-    private _rec = _groupData getOrDefault [hashValue _group, createHashMap];
-    // only groups still under this commander's control
-    if (!(_rec isEqualType createHashMap) || { count _rec == 0 }) exitWith {};
-
-    [_rec] call AIC_fnc_deleteHelipads;
-    // casualty log for the Jev state (AIC_fnc_jevState): [time, kind, group
-    // hash, objective attacked]; a new array, the cycle may be iterating the old one
-    private _task = _rec getOrDefault ["task", ""];
-    private _final = _rec getOrDefault ["final", createHashMap];
-    private _attacking = switch (true) do {
-        case (_task isEqualTo "ATTACK"): { _rec getOrDefault ["objective", ""] };
-        case (_task isEqualTo "TRANSPORTED" && { _final isEqualType createHashMap } && { (_final getOrDefault ["task", ""]) isEqualTo "ATTACK" }): { _final getOrDefault ["objective", ""] };
-        default { "" };
-    };
-    private _log = (_cmd getOrDefault ["lossLog", []]) + [[time, "G", hashValue _group, _attacking]];
-    if (count _log > AIC_LOSS_LOG_MAX) then { _log = _log select [count _log - AIC_LOSS_LOG_MAX]; };
-    _cmd set ["lossLog", _log];
-    // a ride ending with everybody dead would otherwise leave no trace in the log
-    if ((_rec getOrDefault ["task", ""]) in ["TRANSPORT", "TRANSPORTED"]) then {
-        ["%1: group %2 wiped out during a ride (%3)", [side _group, groupId _group, _rec get "task"]] call AIC_fnc_log;
-    };
-    // Never deleteAt the record here: the commander cycle is scheduled and may
-    // be suspended inside a forEach over "groupData". The record is dropped
-    // by the next AIC_fnc_registerGroups sweep; loops skip it until then.
-    _rec set ["removed", true];
-    // a new array, never an in-place delete: a suspended commander cycle may be iterating the old one
-    _cmd set ["groups", (_cmd getOrDefault ["groups", []]) - [_group]];
-
-    if (_group getVariable ["AIC_keep", false]) exitWith {};
-    if !(([_cmd, "manageCleanup"] call AIC_fnc_getSetting) isEqualTo true) exitWith {};
-    [_group] call AIC_fnc_deleteGroup;
+    ["Empty", [_group]] call AIC_fnc_groupEvent;
 }];
 
 _group addEventHandler ["UnitJoined", {

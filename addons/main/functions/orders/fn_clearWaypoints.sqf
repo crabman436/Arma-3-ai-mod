@@ -50,14 +50,14 @@ if (!isNull _leader && {alive _leader}) then {
         if (!isNull _gun) then {
             _x setVariable ["AIC_gunnerOf", nil];
             _gun setVariable ["AIC_gunner", nil];
-            unassignVehicle _x;
-            [_x] orderGetIn false;
-            if ((objectParent _x) isEqualTo _gun) then {doGetOut _x};
+            [_x, "unassignVehicle"] call AIC_fnc_do;
+            [[_x], "orderGetIn", false] call AIC_fnc_do;
+            if ((objectParent _x) isEqualTo _gun) then {[_x, "doGetOut"] call AIC_fnc_do};
         };
         if (alive _x) then {
-            _x doFollow _leader;
-            _x doWatch objNull;
-            _x setUnitPos "AUTO";
+            [_x, "doFollow", _leader] call AIC_fnc_do;
+            [_x, "doWatch", objNull] call AIC_fnc_do;
+            [_x, "setUnitPos", "AUTO"] call AIC_fnc_do;
         };
     } forEach (units _group);
 };

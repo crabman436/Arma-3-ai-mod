@@ -84,7 +84,7 @@ if (_sp isNotEqualTo []) then {
     _car setDamage 0.5;
     sleep 3;
     for "_i" from 1 to 4 do { _c set ["fortifyTime", -1e6]; [_c] call AIC_fnc_fortifyCycle; };
-    [_id, (fuel _car) > 0.8 && { (damage _car) < 0.2 }, format ["service point: fuel %1, damage %2", (fuel _car) toFixed 2, (damage _car) toFixed 2]] call AIC_T_check;
+    [_id, (fuel _car) > 0.8 && { (damage _car) < 0.2 }, format ["service point: fuel %1, damage %2 (car %3 m from it, speed %4)", (fuel _car) toFixed 2, (damage _car) toFixed 2, round (_car distance2D _sp), round (speed _car)]] call AIC_T_check;
 };
 
 // the next owner reuses what stands: no second set of props

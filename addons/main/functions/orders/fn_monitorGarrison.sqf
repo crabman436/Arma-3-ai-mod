@@ -48,6 +48,8 @@
  *   [_group, _rec, _rec get "taskPos", 300] call AIC_fnc_monitorGarrison;
  */
 
+#include "\z\aic\addons\main\script_component.hpp"
+
 params [
     ["_group", grpNull, [grpNull]],
     ["_rec", createHashMap, [createHashMap]],
@@ -73,7 +75,7 @@ if (_valid && {(_rec getOrDefault ["garrisonDone", false]) isEqualTo true}) exit
         if (_old < 0 || {(abs ((_dir - _old + 540) % 360 - 180)) > 45}) then {
             _rec set ["garrisonWatchDir", _dir];
             {
-                if (alive _x && {isNull objectParent _x} && {!(_x getVariable ["AIC_sentry", false])}) then {_x doWatch _threatPos};
+                if (alive _x && {isNull objectParent _x} && {!(_x getVariable ["AIC_sentry", false])}) then {[_x, "doWatch", _threatPos] call AIC_fnc_do};
             } forEach (units _group);
         };
     };
@@ -84,7 +86,11 @@ if (_valid && {(_rec getOrDefault ["garrisonDone", false]) isEqualTo true}) exit
 if (!_valid) exitWith {
     _radius = (_radius min 200) max 30;
     private _done = false;
-    if ((_leader distance2D _center) < (((_radius * 0.5) max 50) + 30)) then {
+    // (also a leader that stopped short of that ring but near the place,
+    // once the order is older than AIC_STUCK_TIMEOUT: it would wait forever)
+    private _d = _leader distance2D _center;
+    if (_d < (((_radius * 0.5) max 50) + 30)
+        || {_d < (_radius + 80) && {(time - (_rec getOrDefault ["taskTime", time])) > AIC_STUCK_TIMEOUT}}) then {
         private _sent = [_group, _center, _radius, _threatPos, _manStatics, _sector] call AIC_fnc_garrisonBuildings;
         _done = _sent == 0;
         _rec set ["garrisonToken", _token];
@@ -104,18 +110,21 @@ private _timedOut = (time - (_rec getOrDefault ["garrisonTime", time])) > 120;
             if (_timedOut || {!isNull objectParent _x}) then {_x setVariable ["AIC_garrisonPos", nil]};
         } else {
             private _there = ((getPosATL _x) distance _bp) < 3;
-            if (unitReady _x && {!_there} && {!_timedOut} && {!(_x getVariable ["AIC_garrisonRetry", false])}) then {
+            // unitReady knows only local units: one on a headless client is
+            // "ready" once it stands still
+            private _ready = if (local _x) then {unitReady _x} else {(speed _x) < 0.5};
+            if (_ready && {!_there} && {!_timedOut} && {!(_x getVariable ["AIC_garrisonRetry", false])}) then {
                 // the move ended short of the spot (a door the engine gave up
                 // on, a blocked path): once more before it settles for the open
                 _x setVariable ["AIC_garrisonRetry", true];
-                _x doMove _bp;
+                [_x, "doMove", _bp] call AIC_fnc_do;
             } else {
-                if (_there || {unitReady _x} || {_timedOut}) then {
-                    if (_x != _leader) then {doStop _x};
+                if (_there || {_ready} || {_timedOut}) then {
+                    if (_x != _leader) then {[_x, "doStop"] call AIC_fnc_do};
                     // at its spot: the stance it was given (UP in a window);
                     // short of it, in the open: crouched, not standing in the street
-                    _x setUnitPos (if (_there) then {_x getVariable ["AIC_garrisonStance", "UP"]} else {"MIDDLE"});
-                    _x doWatch (if (_hasThreat && {!(_x getVariable ["AIC_sentry", false])}) then {_threatPos} else {_bp getPos [200, _center getDir _bp]});
+                    [_x, "setUnitPos", (if (_there) then {_x getVariable ["AIC_garrisonStance", "UP"]} else {"MIDDLE"})] call AIC_fnc_do;
+                    [_x, "doWatch", (if (_hasThreat && {!(_x getVariable ["AIC_sentry", false])}) then {_threatPos} else {_bp getPos [200, _center getDir _bp]})] call AIC_fnc_do;
                     _x setVariable ["AIC_garrisonPos", nil];
                     _x setVariable ["AIC_garrisonRetry", nil];
                 };

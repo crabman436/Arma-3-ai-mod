@@ -91,10 +91,10 @@ private _dir = (_assault get "dir") + ([0, 70, -70] select (_record get "assault
 if (_stage isNotEqualTo [] && {surfaceIsWater (_target getPos [_stageDist, _dir])}) then {_dir = _assault get "dir"};
 
 [_group] call AIC_fnc_clearWaypoints;
-_group allowFleeing 0;
-_group setBehaviour "AWARE";
-_group setCombatMode "YELLOW";
-_group setSpeedMode "NORMAL";
+[_group, "allowFleeing", 0] call AIC_fnc_do;
+[_group, "setBehaviour", "AWARE"] call AIC_fnc_do;
+[_group, "setCombatMode", "YELLOW"] call AIC_fnc_do;
+[_group, "setSpeedMode", "NORMAL"] call AIC_fnc_do;
 
 // a dry spot: the point itself, else the same distance from the target swung
 // around in 15 degree steps, else the fallback (never the town itself for a
@@ -143,7 +143,7 @@ if ((_assault get "state") isEqualTo "STAGE" || {_role isEqualTo "RESERVE"}) exi
     };
     private _wp = [_p, "MOVE", "AWARE", "NORMAL", _formation, 40] call _fnc_wp;
     [_p, "HOLD", "AWARE", "NORMAL", ["WEDGE", "LINE"] select _isInf, 40] call _fnc_wp;
-    _group setCurrentWaypoint ([_first, _wp] select (_first isEqualTo []));
+    [_group, "setCurrentWaypoint", ([_first, _wp] select (_first isEqualTo []))] call AIC_fnc_do;
     _record set ["staged", true];
     _record set ["stagePos", _p];
     true
@@ -170,7 +170,7 @@ if ((_role isEqualTo "SBF" || {_role isEqualTo "" && {!_isInf} && {_assault get 
     } forEach (selectBestPlaces [_p, 150, "hills - forest - trees - houses - 10*sea", 15, 6]);
     private _wp = [_p, "MOVE", "AWARE", "LIMITED", "WEDGE", 40] call _fnc_wp;
     [_p, "HOLD", "AWARE", "LIMITED", "WEDGE", 40] call _fnc_wp;
-    _group setCurrentWaypoint _wp;
+    [_group, "setCurrentWaypoint", _wp] call AIC_fnc_do;
     _record set ["overwatch", true];
     true
 };
@@ -182,6 +182,6 @@ if (count _via >= 2 || {(_leader distance2D _target) > (_radius + 200)}) then {
     _first = [_start, "MOVE", "AWARE", "NORMAL", "WEDGE", ([40, 25] select _isInf)] call _fnc_wp;
 };
 private _wpS = [[_radius * 0.45, 40] call _lanePos, "SAD", "COMBAT", "LIMITED", ["WEDGE", "LINE"] select _isInf, (_radius * 0.5) max 30] call _fnc_wp;
-_group setCurrentWaypoint ([_first, _wpS] select (_first isEqualTo []));
+[_group, "setCurrentWaypoint", ([_first, _wpS] select (_first isEqualTo []))] call AIC_fnc_do;
 
 true

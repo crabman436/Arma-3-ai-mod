@@ -30,6 +30,8 @@ createHashMapFromArray [
     ["objectiveRadius", 300],
     ["maxAutoObjectives", 12],
     ["excludePlayerGroups", true],
+    // groups handed to connected headless clients (AIC_fnc_hcBalance)
+    ["useHeadlessClients", true],
     ["debugMarkers", false],
     ["reportToPlayers", true],
     ["artyCooldown", 120],

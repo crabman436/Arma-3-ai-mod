@@ -65,13 +65,13 @@ private _center = [_pos select 0, _pos select 1, 0];
 // --- Static weapons / artillery: stay where they are ------------------------
 if (_type in ["STATIC", "ARTY"]) exitWith {
     [_group] call AIC_fnc_clearWaypoints;
-    _group setBehaviour "AWARE";
-    _group setCombatMode "YELLOW";
+    [_group, "setBehaviour", "AWARE"] call AIC_fnc_do;
+    [_group, "setCombatMode", "YELLOW"] call AIC_fnc_do;
     true
 };
 
 [_group] call AIC_fnc_clearWaypoints;
-_group allowFleeing 0;
+[_group, "allowFleeing", 0] call AIC_fnc_do;
 
 // --- Air: loiter overhead, never garrison ----------------------------------
 if (_type in ["HELI", "PLANE"]) exitWith {
@@ -82,7 +82,7 @@ if (_type in ["HELI", "PLANE"]) exitWith {
     _wp setWaypointBehaviour "AWARE";
     _wp setWaypointCombatMode "RED";
     _wp setWaypointSpeed "NORMAL";
-    _group setCurrentWaypoint _wp;
+    [_group, "setCurrentWaypoint", _wp] call AIC_fnc_do;
     true
 };
 
@@ -90,8 +90,8 @@ if (_type in ["HELI", "PLANE"]) exitWith {
 if (_type == "NAVAL") exitWith {
     private _water = [_center, _leader, 800] call AIC_fnc_waterPos;
     if (_water isEqualTo []) exitWith {
-        _group setBehaviour "AWARE";
-        _group setCombatMode "YELLOW";
+        [_group, "setBehaviour", "AWARE"] call AIC_fnc_do;
+        [_group, "setCombatMode", "YELLOW"] call AIC_fnc_do;
         true
     };
     private _wpM = _group addWaypoint [_water, 0];
@@ -102,7 +102,7 @@ if (_type == "NAVAL") exitWith {
     private _wpH = _group addWaypoint [_water, 0];
     _wpH setWaypointType "HOLD";
     _wpH setWaypointCombatMode "YELLOW";
-    _group setCurrentWaypoint _wpM;
+    [_group, "setCurrentWaypoint", _wpM] call AIC_fnc_do;
     true
 };
 
@@ -122,14 +122,14 @@ if (_type in ["MOTOR", "MECH", "ARMOR"] && {count _park >= 2}) exitWith {
     _wpH setWaypointCombatMode "YELLOW";
     _wpH setWaypointCompletionRadius 12;
     _wpM setWaypointStatements ["true", "if (local this) then { { if (!isNull objectParent _x) then { (objectParent _x) engineOn false; }; } forEach units group this; };"];
-    _group setCurrentWaypoint _wpM;
+    [_group, "setCurrentWaypoint", _wpM] call AIC_fnc_do;
     true
 };
 
 // --- Ground vehicles: hold a road-friendly spot on the threatened side -----
 if (_type in ["MOTOR", "MECH", "ARMOR"]) exitWith {
     private _dir = _center getDir _leader;
-    private _enemy = _leader findNearestEnemy _center;
+    private _enemy = [_leader, _center] call AIC_fnc_nearestEnemy;
     private _known = true;
     switch (true) do {
         case (count _threatPos >= 2): { _dir = _center getDir _threatPos; };
@@ -154,7 +154,7 @@ if (_type in ["MOTOR", "MECH", "ARMOR"]) exitWith {
     _wpH setWaypointBehaviour "AWARE";
     _wpH setWaypointCombatMode "YELLOW";
     _wpH setWaypointCompletionRadius 40;
-    _group setCurrentWaypoint _wpM;
+    [_group, "setCurrentWaypoint", _wpM] call AIC_fnc_do;
     true
 };
 
@@ -175,6 +175,6 @@ _wpH setWaypointType "HOLD";
 _wpH setWaypointBehaviour "AWARE";
 _wpH setWaypointCombatMode "YELLOW";
 _wpH setWaypointCompletionRadius 25;
-_group setCurrentWaypoint _wpM;
+[_group, "setCurrentWaypoint", _wpM] call AIC_fnc_do;
 
 true

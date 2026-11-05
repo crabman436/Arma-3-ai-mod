@@ -249,7 +249,7 @@ private _fnc_setIdle = {
                     // its pad did not work out (blocked, or it set down
                     // elsewhere and took off again): land right here
                     if ((_rec getOrDefault ["landTries", 0]) >= AIC_HELI_LAND_ATTEMPTS) then {
-                        _air land "LAND";
+                        [_air, "land", "LAND"] call AIC_fnc_do;
                         _rec set ["taskTime", time];
                     } else {
                         _goHome pushBack _group;
@@ -372,12 +372,12 @@ private _fnc_setIdle = {
         };
         _rec set ["reconArrive", -1];
         [_group] call AIC_fnc_clearWaypoints;
-        _group setBehaviour "AWARE";
-        _group setCombatMode "YELLOW";
+        [_group, "setBehaviour", "AWARE"] call AIC_fnc_do;
+        [_group, "setCombatMode", "YELLOW"] call AIC_fnc_do;
         [_rec] call _fnc_setIdle;
         _changes = _changes + 1;
         if (_outcome == "engaged") then {
-            private _enemy = _leader findNearestEnemy _leader;
+            private _enemy = [_leader, _leader] call AIC_fnc_nearestEnemy;
             _fallBack pushBack [_group, if (isNull _enemy) then {+_taskPos} else {getPosATL _enemy}];
         };
         ["%1: group %2 ends its recon of '%3' (%4)", [_side, groupId _group, _objId, _outcome]] call AIC_fnc_log;
@@ -447,9 +447,9 @@ private _fnc_setIdle = {
     if (_qrfOut) then { _done = false; };
     if (_done) then {
         if (_task in ["RETREAT", "RTB"]) then {
-            _group setBehaviour "AWARE";
-            _group setCombatMode "YELLOW";
-            _group setSpeedMode "NORMAL";
+            [_group, "setBehaviour", "AWARE"] call AIC_fnc_do;
+            [_group, "setCombatMode", "YELLOW"] call AIC_fnc_do;
+            [_group, "setSpeedMode", "NORMAL"] call AIC_fnc_do;
         };
         // a transport helicopter back home lands (airborne groups are never parked)
         if (_task in ["RTB", "RETREAT"] && {_type == "HELI"}) then {
@@ -459,7 +459,7 @@ private _fnc_setIdle = {
                 // its own place in the helicopter park, if it has one
                 private _pad = _rec getOrDefault ["parkPad", objNull];
                 if (!(_pad isEqualType objNull) || {isNull _pad} || {(_veh distance2D _pad) > 300} || {!(_veh landAt [_pad, "LAND"])}) then {
-                    _veh land "LAND";
+                    [_veh, "land", "LAND"] call AIC_fnc_do;
                 };
             };
         };
@@ -509,11 +509,18 @@ private _fnc_setIdle = {
 
     // In contact: a close enemy, or a recent engagement (the event handlers
     // stamp "lastEngaged"). Standing still is fighting then, not being stuck.
-    private _enemy = _leader findNearestEnemy _leader;
-    private _enemyDist = if (isNull _enemy) then {1e6} else {_enemy distance2D _leader};
+    // (the nearest enemy only when a test needs it: most groups are neither
+    // in lingering combat nor past the stuck timeout)
+    private _enemyDist = -1;
+    private _fnc_enemyDist = {
+        if (_enemyDist < 0) then {
+            private _enemy = [_leader, _leader] call AIC_fnc_nearestEnemy;
+            _enemyDist = if (isNull _enemy) then {1e6} else {_enemy distance2D _leader};
+        };
+        _enemyDist
+    };
     private _engaged = _rec getOrDefault ["lastEngaged", -1e6];
     private _recent = _engaged isEqualType 0 && {(time - _engaged) < 120};
-    private _inContact = _enemyDist < 400 || {_recent};
     // the behaviour the current waypoint asks for ("" with none left)
     private _wpBeh = if ((currentWaypoint _group) < count _wps) then {waypointBehaviour [_group, currentWaypoint _group]} else {""};
 
@@ -522,13 +529,14 @@ private _fnc_setIdle = {
     // crawling towards a waypoint that asks for AWARE or SAFE. Back to the
     // pace of its order, at most once per AIC_CALM_REPEAT s (a SAD waypoint
     // asks for COMBAT itself and is left alone)
-    if (_enemyDist >= 700 && {!_recent} && {behaviour _leader == "COMBAT"}
+    if (!_recent && {behaviour _leader == "COMBAT"}
         && {_wpBeh in ["CARELESS", "SAFE", "AWARE", "STEALTH"]}
-        && {(time - (_rec getOrDefault ["calmTime", -1e6])) > AIC_CALM_REPEAT}) then {
+        && {(time - (_rec getOrDefault ["calmTime", -1e6])) > AIC_CALM_REPEAT}
+        && {(call _fnc_enemyDist) >= 700}) then {
         _rec set ["calmTime", time];
-        _group setBehaviour _wpBeh;
+        [_group, "setBehaviour", _wpBeh] call AIC_fnc_do;
         private _spd = waypointSpeed [_group, currentWaypoint _group];
-        if (_spd in ["LIMITED", "NORMAL", "FULL"]) then { _group setSpeedMode _spd; };
+        if (_spd in ["LIMITED", "NORMAL", "FULL"]) then { [_group, "setSpeedMode", _spd] call AIC_fnc_do; };
         _calmed = _calmed + 1;
     };
 
@@ -561,7 +569,7 @@ private _fnc_setIdle = {
     if (!_far) then { continue };
 
     // (a SAD waypoint keeps the group in COMBAT on purpose: sweeping is not being stuck)
-    if (_inContact || {behaviour _leader == "COMBAT" && {_wpBeh == "COMBAT"}}) then {
+    if (_recent || {(call _fnc_enemyDist) < 400} || {behaviour _leader == "COMBAT" && {_wpBeh == "COMBAT"}}) then {
         _rec set ["lastMoveTime", time];
         continue;
     };
@@ -643,9 +651,9 @@ private _fnc_setIdle = {
     {
         private _veh = _x;
         private _crew = (units _group) select {alive _x && {objectParent _x isEqualTo _veh}};
-        { unassignVehicle _x; doGetOut _x; } forEach _crew;
-        if (_crew isNotEqualTo []) then { _crew orderGetIn false; };
-        _group leaveVehicle _veh;
+        { [_x, "unassignVehicle"] call AIC_fnc_do; [_x, "doGetOut"] call AIC_fnc_do; } forEach _crew;
+        if (_crew isNotEqualTo []) then { [_crew, "orderGetIn", false] call AIC_fnc_do; };
+        [_group, "leaveVehicle", _veh] call AIC_fnc_do;
     } forEach _vehicles;
     _rec set ["ownVehicles", (_rec getOrDefault ["ownVehicles", []]) - _vehicles];
     ["%1: group %2 abandons %3 immobilised vehicle(s) on %4%5", [
@@ -672,8 +680,8 @@ private _fnc_setIdle = {
         _side, groupId _group, _rec getOrDefault ["task", ""], _rec getOrDefault ["stuckCount", 0]
     ]] call AIC_fnc_log;
     [_group] call AIC_fnc_clearWaypoints;
-    _group setBehaviour "AWARE";
-    _group setCombatMode "YELLOW";
+    [_group, "setBehaviour", "AWARE"] call AIC_fnc_do;
+    [_group, "setCombatMode", "YELLOW"] call AIC_fnc_do;
     [_rec] call _fnc_setIdle;
     _rec set ["lastPos", getPosATL (leader _group)];
     _rec set ["lastMoveTime", time];

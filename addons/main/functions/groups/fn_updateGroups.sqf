@@ -110,7 +110,7 @@ private _fnc_setFleeing = {
     params ["_grp", "_record", "_value"];
     private _stamp = [_value, _record getOrDefault ["taskTime", -1]];
     if ((_record getOrDefault ["fleeing", []]) isEqualTo _stamp) exitWith {};
-    _grp allowFleeing _value;
+    [_grp, "allowFleeing", _value] call AIC_fnc_do;
     _record set ["fleeing", _stamp];
 };
 if (_useMorale) then {
@@ -197,7 +197,7 @@ if (_useMorale) then {
             {
                 private _veh = objectParent _x;
                 if (isNull _veh) then {_veh = assignedVehicle _x};
-                if (!isNull _veh && {alive _veh} && {!(_veh isKindOf "StaticWeapon")}
+                if (!isNull _veh && {!(_veh in _driven)} && {alive _veh} && {!(_veh isKindOf "StaticWeapon")}
                     && {(group (driver _veh)) isEqualTo _grp || {(group (assignedDriver _veh)) isEqualTo _grp}}) then {
                     _driven pushBackUnique _veh;
                 };
@@ -216,8 +216,8 @@ if (_useMorale) then {
                     if (isNull (assignedDriver _veh)) then {
                         private _back = _alive select {isNull objectParent _x && {isNull (assignedVehicle _x)}};
                         if (_back isNotEqualTo []) then {
-                            (_back select 0) assignAsDriver _veh;
-                            {_x assignAsCargo _veh} forEach (_back select [1, 1]);
+                            [(_back select 0), "assignAsDriver", _veh] call AIC_fnc_do;
+                            {[_x, "assignAsCargo", _veh] call AIC_fnc_do} forEach (_back select [1, 1]);
                         };
                     };
                 } forEach _driven;
@@ -238,7 +238,7 @@ if (_useMorale) then {
             private _engaged = _record getOrDefault ["lastEngaged", -1e6];
             if (_transportOnly && {!(_engaged isEqualType 0) || {(time - _engaged) > 60}}) then {
                 private _foot = _alive select {isNull objectParent _x && {(assignedVehicle _x) in _driven}};
-                if (_foot isNotEqualTo []) then {_foot orderGetIn true};
+                if (_foot isNotEqualTo []) then {[_foot, "orderGetIn", true] call AIC_fnc_do};
             };
 
             private _vehHealth = 1;
@@ -309,10 +309,12 @@ if (_useMorale) then {
                 if !(_prev isEqualType 0) then {_prev = 1};
                 private _calm = !(_engaged isEqualType 0) || {(time - _engaged) > 120};
                 private _lPos = getPosATL _leader;
-                private _inOwn = (_ownZones findIf {(_lPos distance2D (_x select 0)) < (_x select 1)}) >= 0;
                 // bad news hits at once, confidence comes back slowly (fastest at rest in a held place)
                 private _morale = if (_target <= _prev) then {_target} else {
-                    if (_calm) then {(_prev + ([0.02, 0.05] select _inOwn)) min _target} else {_prev}
+                    if (_calm) then {
+                        private _inOwn = (_ownZones findIf {(_lPos distance2D (_x select 0)) < (_x select 1)}) >= 0;
+                        (_prev + ([0.02, 0.05] select _inOwn)) min _target
+                    } else {_prev}
                 };
 
                 private _until = _record getOrDefault ["brokenUntil", -1];

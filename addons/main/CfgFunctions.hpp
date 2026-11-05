@@ -150,6 +150,24 @@ class CfgFunctions
             class jevAdvisor {};
         };
 
+        class hc
+        {
+            file = "\z\aic\addons\main\functions\hc";
+            class hcInit { postInit = 1; };
+            class cmdTable {};
+            class do {};
+            class execCmd {};
+            class hcOwners {};
+            class fromHC {};
+            class hcBalance {};
+            class hcAttach {};
+            class hcLoop {};
+            class hcReport {};
+            class hcKnown {};
+            class nearestEnemy {};
+            class groupEvent {};
+        };
+
         class ui
         {
             file = "\z\aic\addons\main\functions\ui";

@@ -620,6 +620,16 @@ private _started = 0;
             } forEach _attacking;
         };
     } else {
+        // an assault planned straight in GO (AIC_fnc_assaultFor found no
+        // assembly spot) gets its roles on its first cycle, and its groups
+        // the orders that go with them
+        if (_hasInf && {!("roles" in _assault)}) then {
+            [_assault, _attacking, _objRadius] call _fnc_assignRoles;
+            _roles = _assault getOrDefault ["roles", createHashMap];
+            {
+                [_cmd, _x get "group", "ATTACK", _assault get "pos", _id, true] call AIC_fnc_issueOrder;
+            } forEach _attacking;
+        };
         // the clocks start with the first group going in near the objective
         if (_contact < 0 && {(_attacking findIf {
             !(([_roles, _x] call _fnc_role) in ["SBF", "RESERVE"])

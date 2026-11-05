@@ -147,6 +147,14 @@ class CfgVehicles
                 typeName = "BOOL";
                 defaultValue = "true";
             };
+            class UseHeadlessClients: Checkbox
+            {
+                property = "AIC_ModuleCommander_UseHeadlessClients";
+                displayName = "Headless clients";
+                tooltip = "Hand infantry and ground vehicle groups to connected headless clients, so their AI runs on other CPU cores. The commander keeps planning on the server. Without headless clients nothing changes.";
+                typeName = "BOOL";
+                defaultValue = "true";
+            };
             class ManageCleanup: Checkbox
             {
                 property = "AIC_ModuleCommander_ManageCleanup";

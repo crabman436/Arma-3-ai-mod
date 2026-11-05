@@ -73,7 +73,7 @@ if (_skill isEqualType 0 && { _skill >= 0 }) then {
         if (alive _unit && { !isPlayer _unit } && { !(_unit getVariable ["AIC_skilled", false]) }) then {
             _unit setVariable ["AIC_skilled", true];
             {
-                _unit setSkill [_x, (_skill max (_unit skill _x))];
+                [_unit, "setSkill", [_x, (_skill max (_unit skill _x))]] call AIC_fnc_do;
             } forEach ["aimingAccuracy", "aimingShake", "aimingSpeed", "spotDistance", "spotTime", "courage", "reloadSpeed", "commanding", "general"];
         };
     } forEach (units _group);
@@ -81,11 +81,11 @@ if (_skill isEqualType 0 && { _skill >= 0 }) then {
 
 // a helicopter back from a job still has its order to land: drop it, or the
 // pilot lands at the target instead of attacking it
-if (_veh isKindOf "Helicopter") then { _veh land "NONE"; };
+if (_veh isKindOf "Helicopter") then { [_veh, "land", "NONE"] call AIC_fnc_do; };
 
 // ---------------------------------------------------------------- waypoints
 [_group] call AIC_fnc_clearWaypoints;
-_group setCombatMode "RED";
+[_group, "setCombatMode", "RED"] call AIC_fnc_do;
 
 // hand the crew what the ground forces know around the target (the contact's
 // "known" objects, AIC_fnc_gatherIntel: never members nobody saw), and
@@ -96,7 +96,7 @@ private _preyPower = -1;
     private _cPos = _x getOrDefault ["pos", []];
     if (_cPos isEqualType [] && { count _cPos >= 2 } && { (_cPos distance2D _target) < 400 }) then {
         private _known = (_x getOrDefault ["known", []]) select { alive _x };
-        { _group reveal [_x, 4]; } forEach _known;
+        { [_group, "reveal", [_x, 4]] call AIC_fnc_do; } forEach _known;
         // a known vehicle first, else a known man
         private _pick = _known param [(_known findIf { !(_x isKindOf "CAManBase") }) max 0, objNull];
         private _power = _x getOrDefault ["power", 0];
@@ -107,11 +107,11 @@ private _preyPower = -1;
     };
 } forEach (_cmd getOrDefault ["knownEnemies", []]);
 if (alive _prey) then {
-    { if (alive _x) then { _x doTarget _prey; }; } forEach (crew _veh);
+    { if (alive _x) then { [_x, "doTarget", _prey] call AIC_fnc_do; }; } forEach (crew _veh);
 };
 
 private _flyHeight = [60, 300] select _isPlane;
-{ (objectParent _x) flyInHeight _flyHeight; } forEach (units _group select { alive _x && { !isNull objectParent _x } });
+{ [(objectParent _x), "flyInHeight", _flyHeight] call AIC_fnc_do; } forEach (units _group select { alive _x && { !isNull objectParent _x } });
 
 private _fnc_wp = {
     params ["_p", "_wpType", "_beh", "_mode", "_speed", "_done"];
@@ -163,7 +163,7 @@ _wpLoiter setWaypointCombatMode "YELLOW";
 _wpLoiter setWaypointSpeed "NORMAL";
 _wpLoiter setWaypointCompletionRadius 100;
 
-_group setCurrentWaypoint _first;
+[_group, "setCurrentWaypoint", _first] call AIC_fnc_do;
 _group setVariable ["AIC_airLoiterWp", _wpLoiter select 1];
 
 // ---------------------------------------------------------------- bookkeeping

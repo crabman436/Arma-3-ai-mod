@@ -34,8 +34,8 @@ if (_type isEqualTo "") then { _type = [_group] call AIC_fnc_classifyGroup; };
 private _target = [_pos select 0, _pos select 1, 0];
 
 if (_type in ["STATIC", "ARTY"]) exitWith {
-    _group setBehaviour "AWARE";
-    _group setCombatMode "RED";
+    [_group, "setBehaviour", "AWARE"] call AIC_fnc_do;
+    [_group, "setCombatMode", "RED"] call AIC_fnc_do;
     false
 };
 
@@ -49,8 +49,8 @@ if (_type == "NAVAL" && {!surfaceIsWater _target}) then {
 if (_type == "NAVAL" && {!surfaceIsWater _target}) exitWith { false };
 
 [_group] call AIC_fnc_clearWaypoints;
-_group allowFleeing 0;
-_group setCombatMode "YELLOW";
+[_group, "allowFleeing", 0] call AIC_fnc_do;
+[_group, "setCombatMode", "YELLOW"] call AIC_fnc_do;
 
 private _first = [];
 private _dist = (getPosATL _leader) distance2D _target;
@@ -91,5 +91,5 @@ _wpS setWaypointFormation (if (_type == "INF") then {"LINE"} else {"WEDGE"});
 _wpS setWaypointCompletionRadius 75;
 
 if (_first isEqualTo []) then { _first = _wpS; };
-_group setCurrentWaypoint _first;
+[_group, "setCurrentWaypoint", _first] call AIC_fnc_do;
 true
