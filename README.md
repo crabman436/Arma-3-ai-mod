@@ -37,7 +37,11 @@ side to let two AI generals fight each other.
 - **Orders**: attack (approach, then search and destroy), defend (hold, or
   garrison buildings for infantry, driven by the commander cycle without any
   extra scripts), patrol, retreat and reinforce. Groups that get stuck receive
-  their orders again.
+  their orders again; a crew whose vehicle cannot move any more gets out and
+  goes on without it (or is released when it was the leader's vehicle), a
+  group that has not moved after three repeated orders is released for
+  another job, and a group the engine left in combat behaviour long after
+  its last contact is set back to the pace its order asks for.
 - **Fire support**: artillery and mortars fire HE on the strongest fresh
   threat in range. The commander checks `inRangeOfArtillery` and refuses any
   mission with friendly units within 150 m (danger close). Missions are
@@ -694,8 +698,10 @@ night is less than 30 minutes away waits at the assembly area for the dark
 (the map's sunset for the date, with time acceleration taken into account).
 It goes at once if it is shot at or the staff advises attacking now. At night
 garrisons post twice the sentries at their edge (up to half of each group).
-Garrisons that are awake post their sentries again once at dusk and once at
-dawn; parked ones keep theirs until they are woken.
+When night falls, a garrison that is awake and settled posts the extra
+sentries on the far side of its sector (a change of the watch: the day
+sentries and everybody else stay where they are), and the night watch stays
+posted at dawn; parked garrisons keep their sentries until they are woken.
 
 **Weather.** No close air support in fog above 0.4 or rain above 0.6, and no
 helicopter sorties in wind above 12 m/s. Aircraft already out on a sortie

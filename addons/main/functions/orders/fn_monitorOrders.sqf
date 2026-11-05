@@ -91,13 +91,33 @@
  *   Stuck detection (group record keys "lastPos" / "lastMoveTime"): the
  *   record remembers the leader position whenever the group moved more
  *   than 20 m. If a moving task (ATTACK, REINFORCE, RETREAT, RTB, PATROL,
- *   DEFEND, SUPPORT) has not moved for 180 s while the leader is still far
- *   from taskPos (PATROL: regardless of distance), the order is re-issued
- *   with force through AIC_fnc_issueOrder. Parked groups (dynamic
- *   simulation enabled) are never treated as stuck. Groups in contact (enemy
- *   within 400 m, engaged in the last 120 s - record "lastEngaged" - or
- *   leader in COMBAT behaviour), STATIC/ARTY/PLANE groups and groups whose
- *   leader vehicle cannot move are not treated as stuck.
+ *   DEFEND, SUPPORT) has not moved for AIC_STUCK_TIMEOUT s while the leader
+ *   is still far from taskPos (PATROL: regardless of distance; infantry on
+ *   DEFEND that has not taken its positions yet, record "garrisonToken":
+ *   outside the AIC_fnc_monitorGarrison start radius plus 50 m), the order
+ *   is re-issued with force through AIC_fnc_issueOrder. Parked groups
+ *   (dynamic simulation enabled) are never treated as stuck. Groups in
+ *   contact (enemy within 400 m, or engaged in the last 120 s - record
+ *   "lastEngaged"), groups sweeping on a SAD waypoint (COMBAT behaviour
+ *   asked for by the waypoint) and STATIC/ARTY/PLANE groups are not treated
+ *   as stuck.
+ *     - Immobilised vehicles (canMove false, or no fuel): the crews of the
+ *       immobile vehicles the group sits in get out (unassigned,
+ *       leaveVehicle, record "ownVehicles" without them). With the leader
+ *       among them the group is released (IDLE, waypoints cleared):
+ *       AIC_fnc_updateGroups reclassifies it on foot next cycle and the
+ *       planner / garrison system take it over. Otherwise the order is given
+ *       again and the group goes on without the vehicle.
+ *     - Record "stuckCount" counts the re-issues since the group last moved
+ *       (reset by movement). From AIC_STUCK_REISSUES on the group is released
+ *       (IDLE) instead: the place is not reachable with that order, the next
+ *       plan or the garrison system gives it another one.
+ *   Lingering combat: a group whose last contact is older than 120 s but
+ *   that is still in COMBAT behaviour (the engine keeps it there long after
+ *   a fight, crawling towards its waypoint) is set back to the behaviour and
+ *   speed its current waypoint asks for (CARELESS / SAFE / AWARE / STEALTH,
+ *   never the COMBAT of a SAD), at most once per AIC_CALM_REPEAT s (record
+ *   "calmTime"). This runs whether the group has moved or not.
  *
  * Parameters:
  *   0: HASHMAP - commander
@@ -129,7 +149,10 @@ private _threats = _cmd getOrDefault ["threats", []];
 if !(_threats isEqualType []) then { _threats = []; };
 
 private _changes = 0;
+private _calmed = 0;
 private _reissue = [];
+private _abandon = [];
+private _giveUp = [];
 private _attackSplits = [];
 private _goHome = [];
 private _fallBack = [];
@@ -168,6 +191,7 @@ private _fnc_setIdle = {
     if ((_leaderPos distance2D _lastPos) > AIC_MOVE_THRESHOLD) then {
         _rec set ["lastPos", _leaderPos];
         _rec set ["lastMoveTime", time];
+        _rec set ["stuckCount", 0];
     };
     private _lastMoveTime = _rec getOrDefault ["lastMoveTime", time];
 
@@ -482,6 +506,32 @@ private _fnc_setIdle = {
             && {(_leaderPos distance2D (_rec get "stagePos")) < 150}}
     }) then { continue };
     if !(_task in ["ATTACK", "REINFORCE", "RETREAT", "RTB", "PATROL", "DEFEND", "SUPPORT"]) then { continue };
+
+    // In contact: a close enemy, or a recent engagement (the event handlers
+    // stamp "lastEngaged"). Standing still is fighting then, not being stuck.
+    private _enemy = _leader findNearestEnemy _leader;
+    private _enemyDist = if (isNull _enemy) then {1e6} else {_enemy distance2D _leader};
+    private _engaged = _rec getOrDefault ["lastEngaged", -1e6];
+    private _recent = _engaged isEqualType 0 && {(time - _engaged) < 120};
+    private _inContact = _enemyDist < 400 || {_recent};
+    // the behaviour the current waypoint asks for ("" with none left)
+    private _wpBeh = if ((currentWaypoint _group) < count _wps) then {waypointBehaviour [_group, currentWaypoint _group]} else {""};
+
+    // Lingering combat: the fight is over (nothing for 120 s, no enemy known
+    // within 700 m) but the engine keeps the group in COMBAT behaviour,
+    // crawling towards a waypoint that asks for AWARE or SAFE. Back to the
+    // pace of its order, at most once per AIC_CALM_REPEAT s (a SAD waypoint
+    // asks for COMBAT itself and is left alone)
+    if (_enemyDist >= 700 && {!_recent} && {behaviour _leader == "COMBAT"}
+        && {_wpBeh in ["CARELESS", "SAFE", "AWARE", "STEALTH"]}
+        && {(time - (_rec getOrDefault ["calmTime", -1e6])) > AIC_CALM_REPEAT}) then {
+        _rec set ["calmTime", time];
+        _group setBehaviour _wpBeh;
+        private _spd = waypointSpeed [_group, currentWaypoint _group];
+        if (_spd in ["LIMITED", "NORMAL", "FULL"]) then { _group setSpeedMode _spd; };
+        _calmed = _calmed + 1;
+    };
+
     if (time - _lastMoveTime < AIC_STUCK_TIMEOUT) then { continue };
 
     // a group marching to its assembly area is measured against that, not the town
@@ -491,32 +541,57 @@ private _fnc_setIdle = {
     };
     // DEFEND: AIC_fnc_orderDefend holds vehicle groups up to ~260 m from the
     // centre (100 m offset + 120 m road snap + 40 m completion radius), so a
-    // group holding there is not stuck
+    // group holding there is not stuck. Infantry that has not taken its
+    // positions yet (AIC_fnc_monitorGarrison starts within (radius * 0.5) max
+    // 50 plus 30 m of the centre, and the MOVE AIC_fnc_orderDefend gives ends
+    // within 0.4 radius) is stuck when it halted 50 m or more outside that:
+    // it holds nothing there
     private _far = switch (_task) do {
         case "PATROL": { true };
-        case "DEFEND": { _dist > ((_arriveR max 200) + 100) };
+        case "DEFEND": {
+            if (_type == "INF" && {(_rec getOrDefault ["garrisonToken", -1]) isNotEqualTo (_group getVariable ["AIC_orderToken", 0])}) then {
+                private _gRadius = (_objRec getOrDefault ["radius", _defRadius]) min 200;
+                _dist > (((_gRadius * 0.5) max 50) + 30 + 50)
+            } else {
+                _dist > ((_arriveR max 200) + 100)
+            }
+        };
         default { _dist > (_arriveR max 200) };
     };
     if (!_far) then { continue };
 
-    // In contact: standing still is fighting, not being stuck. Besides a
-    // close enemy, a recent engagement (event handlers stamp "lastEngaged")
-    // or COMBAT behaviour count, so a group pinned by a distant contact is
-    // not re-ordered (PATROL: new random route) in the middle of a fight.
-    private _enemy = _leader findNearestEnemy _leader;
-    private _engaged = _rec getOrDefault ["lastEngaged", -1e6];
-    if (
-        (!isNull _enemy && {(_enemy distance2D _leader) < 400})
-        || {_engaged isEqualType 0 && {(time - _engaged) < 120}}
-        || {behaviour _leader == "COMBAT"}
-    ) then {
+    // (a SAD waypoint keeps the group in COMBAT on purpose: sweeping is not being stuck)
+    if (_inContact || {behaviour _leader == "COMBAT" && {_wpBeh == "COMBAT"}}) then {
         _rec set ["lastMoveTime", time];
         continue;
     };
 
-    private _veh = objectParent _leader;
-    if (!isNull _veh && {!canMove _veh}) then { continue };
+    // Immobilised vehicles: a crew in a vehicle that cannot move waits for
+    // ever (the engine never completes its waypoint). The crews of the
+    // immobile vehicles get out; with the leader among them the group is
+    // released (IDLE: AIC_fnc_updateGroups reclassifies it on foot, the
+    // planner and the garrison system take it from there), otherwise the
+    // order is given again and the group goes on without the vehicle
+    private _immobile = [];
+    {
+        private _v = objectParent _x;
+        if (!isNull _v && {!(_v isKindOf "StaticWeapon")} && {!canMove _v || {(fuel _v) < 0.01}}) then {
+            _immobile pushBackUnique _v;
+        };
+    } forEach ((units _group) select {alive _x});
+    // (a boat crew never leaves its boat: there is nothing to walk on)
+    if (_immobile isNotEqualTo [] && {_type != "NAVAL"}) then {
+        _abandon pushBack [_group, _rec, _immobile, (objectParent _leader) in _immobile];
+        continue;
+    };
 
+    // re-issued AIC_STUCK_REISSUES times without moving: the place is not
+    // reachable with this order. Released (IDLE), so the next plan or the
+    // garrison system gives it something else (another route, another place)
+    if ((_rec getOrDefault ["stuckCount", 0]) >= AIC_STUCK_REISSUES) then {
+        _giveUp pushBack [_group, _rec];
+        continue;
+    };
     _reissue pushBack [_group, _task, +_taskPos, _objId, _rec];
 } forEach _groupData;
 
@@ -560,6 +635,52 @@ private _fnc_setIdle = {
     };
 } forEach _qrfHome;
 
+// crews of immobilised vehicles get out: the group goes on without them, or
+// is released when its leader sat in one of them
+{
+    _x params ["_group", "_rec", "_vehicles", "_leaderIn"];
+    if (isNull _group) then { continue };
+    {
+        private _veh = _x;
+        private _crew = (units _group) select {alive _x && {objectParent _x isEqualTo _veh}};
+        { unassignVehicle _x; doGetOut _x; } forEach _crew;
+        if (_crew isNotEqualTo []) then { _crew orderGetIn false; };
+        _group leaveVehicle _veh;
+    } forEach _vehicles;
+    _rec set ["ownVehicles", (_rec getOrDefault ["ownVehicles", []]) - _vehicles];
+    ["%1: group %2 abandons %3 immobilised vehicle(s) on %4%5", [
+        _side, groupId _group, count _vehicles, _rec getOrDefault ["task", ""],
+        if (_leaderIn) then {", released"} else {", goes on without them"}
+    ]] call AIC_fnc_log;
+    if (_leaderIn) then {
+        [_group] call AIC_fnc_clearWaypoints;
+        [_rec] call _fnc_setIdle;
+    } else {
+        [_cmd, _group, _rec getOrDefault ["task", "IDLE"], +(_rec getOrDefault ["taskPos", []]), _rec getOrDefault ["objective", ""], true] call AIC_fnc_issueOrder;
+    };
+    _rec set ["lastPos", getPosATL (leader _group)];
+    _rec set ["lastMoveTime", time];
+    _rec set ["stuckCount", 0];
+    _changes = _changes + 1;
+} forEach _abandon;
+
+// given the same order AIC_STUCK_REISSUES times without moving: released
+{
+    _x params ["_group", "_rec"];
+    if (isNull _group) then { continue };
+    ["%1: group %2 cannot carry out %3 (not moved after %4 re-issues), released", [
+        _side, groupId _group, _rec getOrDefault ["task", ""], _rec getOrDefault ["stuckCount", 0]
+    ]] call AIC_fnc_log;
+    [_group] call AIC_fnc_clearWaypoints;
+    _group setBehaviour "AWARE";
+    _group setCombatMode "YELLOW";
+    [_rec] call _fnc_setIdle;
+    _rec set ["lastPos", getPosATL (leader _group)];
+    _rec set ["lastMoveTime", time];
+    _rec set ["stuckCount", 0];
+    _changes = _changes + 1;
+} forEach _giveUp;
+
 // Re-issue outside the iteration (issueOrder may touch groupData)
 {
     _x params ["_group", "_task", "_taskPos", "_objId", "_rec"];
@@ -571,8 +692,13 @@ private _fnc_setIdle = {
         [_cmd, _group, _task, _taskPos, _objId, true] call AIC_fnc_issueOrder;
         _rec set ["lastPos", getPosATL (leader _group)];
         _rec set ["lastMoveTime", time];
+        _rec set ["stuckCount", (_rec getOrDefault ["stuckCount", 0]) + 1];
         _changes = _changes + 1;
     };
 } forEach _reissue;
+
+if (_calmed > 0 && {!isNil "AIC_ns"} && { AIC_ns getOrDefault ["debug", false] isEqualTo true }) then {
+    ["%1: %2 group(s) taken out of lingering COMBAT behaviour", [_side, _calmed]] call AIC_fnc_log;
+};
 
 _changes

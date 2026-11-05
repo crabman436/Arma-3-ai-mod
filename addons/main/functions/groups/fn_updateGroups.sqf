@@ -199,9 +199,12 @@ if (_useMorale) then {
             } forEach _alive;
             // nobody aboard or assigned (a crew that bailed out): the trucks
             // it drove last are still its trucks while they stand close by
+            // and can still drive (a crew that abandoned an immobilised
+            // vehicle, AIC_fnc_monitorOrders, is not put back into it)
             if (_driven isEqualTo []) then {
                 _driven = (_record getOrDefault ["ownVehicles", []]) select {
                     alive _x && {isNull (driver _x)} && {((leader _grp) distance2D _x) < 300}
+                    && {canMove _x} && {(fuel _x) >= 0.01}
                 };
                 {
                     private _veh = _x;

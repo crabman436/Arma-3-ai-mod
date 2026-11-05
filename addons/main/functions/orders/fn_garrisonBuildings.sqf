@@ -41,9 +41,16 @@
  *   4: BOOL   - (optional) man static weapons, default true
  *   5: NUMBER - (optional) the group's sector: bearing from the centre, -1
  *               for none (whole place), default -1
+ *   6: BOOL   - (optional) sentries only, default false: a change of the
+ *               watch at dusk. Only the extra sentries the night asks for
+ *               are posted (the count for the whole group on foot, minus the
+ *               sentries already posted), on the far side of the facing (the
+ *               day sentries hold the near side), taken from the men on the
+ *               perimeter first, then from the buildings. Nobody else moves:
+ *               no static weapons, buildings or perimeter.
  *
  * Returns:
- *   NUMBER - number of units given a position
+ *   NUMBER - number of units given a position (sentries only: sentries posted)
  *
  * Example:
  *   private _sent = [_group, _rec get "taskPos", 150, _threatPos, true, 90] call AIC_fnc_garrisonBuildings;
@@ -57,7 +64,8 @@ params [
     ["_radius", 150, [0]],
     ["_threatPos", [], [[]]],
     ["_manStatics", true, [true]],
-    ["_sector", -1, [0]]
+    ["_sector", -1, [0]],
+    ["_sentriesOnly", false, [false]]
 ];
 
 if (isNull _group || {count _center < 2}) exitWith {0};
@@ -77,6 +85,17 @@ private _free = (units _group) select {
 if (alive _leader && {isNull objectParent _leader} && {!isPlayer _leader}) then {_free pushBack _leader};
 if (_free isEqualTo []) exitWith {0};
 private _total = count _free;
+
+// a change of the watch (dusk): only the extra sentries the night asks for
+// are posted, taken from the men on the perimeter first (they are outside
+// anyway), then from the buildings; the sentries and gunners already posted
+// and everybody else stay where they are
+private _posted = 0;
+if (_sentriesOnly) then {
+    _posted = {alive _x && {_x getVariable ["AIC_sentry", false]}} count (units _group);
+    _free = _free select {!(_x getVariable ["AIC_sentry", false]) && {isNull (_x getVariable ["AIC_gunnerOf", objNull])}};
+    _free = (_free select {(_x getVariable ["AIC_garrisonStance", ""]) isNotEqualTo "UP"}) + (_free select {(_x getVariable ["AIC_garrisonStance", ""]) isEqualTo "UP"});
+};
 
 // every enterable building of the place, with its free positions
 private _buildings = (nearestObjects [_c, ["House", "Building"], _radius * 1.2, true]) select {alive _x};
@@ -106,7 +125,7 @@ private _fnc_claim = {
 
 // --- 1. static weapons ---------------------------------------------------------
 private _guns = 0;
-if (_manStatics) then {
+if (_manStatics && {!_sentriesOnly}) then {
     private _maxGuns = floor (_total / 2);
     // static weapons are entities: the spatial query, nearest first (the
     // group mans the guns of its own ground before those farther out)
@@ -141,15 +160,22 @@ if (_manStatics) then {
 
 // --- 2. sentries at the edge ---------------------------------------------------
 private _sentries = 0;
+// (a change of the watch counts the whole group on foot, not the men left to place)
+private _men = [count _free, _total] select _sentriesOnly;
 private _wanted = switch (true) do {
-    case (count _free >= 7): {2};
-    case (count _free >= AIC_SENTRY_MIN_GROUP): {1};
+    case (_men >= 7): {2};
+    case (_men >= AIC_SENTRY_MIN_GROUP): {1};
     default {0};
 };
 // the dark: twice the eyes on the edge, never more than half the group
 // (night as AIC_fnc_timeToNight sees it: dark, or outside sunrise..sunset)
 if (_wanted > 0 && {([] call AIC_fnc_timeToNight) == 0}) then {
-    _wanted = (2 * _wanted) min (floor ((count _free) / 2));
+    _wanted = (2 * _wanted) min (floor (_men / 2));
+};
+if (_sentriesOnly) then {
+    // the day sentries keep the near side; the night watch takes the far side
+    _wanted = (_wanted - _posted) max 0;
+    _facing = _facing + 180;
 };
 if (_wanted > 0) then {
     private _bearings = switch (_wanted) do {
@@ -162,7 +188,7 @@ if (_wanted > 0) then {
             _list
         };
     };
-    if (_hasThreat && {_hasSector}) then {_bearings set [0, _threatDir]};
+    if (_hasThreat && {_hasSector} && {!_sentriesOnly}) then {_bearings set [0, _threatDir]};
     private _edge = _buildings select {
         private _d = _x distance2D _c;
         _d >= (_radius * 0.6) && {_d <= (_radius * 1.15)}
@@ -196,6 +222,13 @@ if (_wanted > 0) then {
         };
         _sentries = _sentries + 1;
     } forEach _bearings;
+};
+
+if (_sentriesOnly) exitWith {
+    if (_sentries > 0) then {
+        ["garrison: group %1 posts %2 more sentr%3 for the night", [groupId _group, _sentries, ["y", "ies"] select (_sentries > 1)]] call AIC_fnc_log;
+    };
+    _sentries
 };
 
 // --- 3. buildings, spread over the sector --------------------------------------

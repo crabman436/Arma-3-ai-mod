@@ -97,12 +97,16 @@
           6. Night sentries. Sentries are handed out with the positions
              (AIC_fnc_garrisonBuildings doubles them at night), so a
              garrison placed by day would keep its day sentries all night.
-             An awake (not parked), calm INF group on DEFEND of 4 or more
-             men takes its positions again (DEFEND with force) once when
-             night falls and once when day breaks: record "nightSentries" =
-             [night, taskTime] remembers the light ([] call
-             AIC_fnc_timeToNight == 0) of the order its positions came
-             from; a new order just records the light of its own. Parked
+             When night falls, an awake (not parked), calm INF group on
+             DEFEND of AIC_SENTRY_MIN_GROUP or more men whose positions are
+             all taken (record "garrisonDone") posts the extra sentries the
+             night asks for (AIC_fnc_garrisonBuildings with sentries only:
+             the day sentries stay, nobody else moves; the new ones are
+             settled by AIC_fnc_monitorGarrison, "garrisonDone" false /
+             "garrisonTime" now). When day breaks the night watch stays.
+             Record "nightSentries" = [night, taskTime] remembers the light
+             ([] call AIC_fnc_timeToNight == 0) the current order was last
+             checked in; a new order records the light of its own. Parked
              garrisons keep their sentries until they are woken.
 
         With the optional homes-only flag only step 1 (without orders) runs:
@@ -695,7 +699,8 @@ if (_standTo > 0) then {
 };
 
 // ------------------------------------------------------------ 6. night sentries
-// re-post an awake garrison's sentries once at dusk and once at dawn
+// at dusk an awake garrison posts the extra sentries the night asks for (a
+// change of the watch: nobody else moves); at dawn the night watch stays
 private _night = ([] call AIC_fnc_timeToNight) == 0;
 private _reposted = 0;
 {
@@ -712,6 +717,8 @@ private _reposted = 0;
         continue;
     };
     if ((_stamp select 0) isEqualTo _night) then { continue };
+    // day breaks: the night watch stays posted, nothing to do
+    if (!_night) then { _rec set ["nightSentries", [_night, _taskTime]]; continue; };
     private _engaged = _rec getOrDefault ["lastEngaged", -1e6];
     if (
         dynamicSimulationEnabled _grp
@@ -720,14 +727,28 @@ private _reposted = 0;
         || { _engaged isEqualType 0 && { (time - _engaged) < 120 } }
         // about to leave on a planned order anyway
         || { (hashValue _grp) in _queued }
+        // its positions are not all taken yet: AIC_fnc_monitorGarrison is still placing it
+        || { (_rec getOrDefault ["garrisonToken", -1]) isNotEqualTo (_grp getVariable ["AIC_orderToken", 0]) }
+        || { !((_rec getOrDefault ["garrisonDone", false]) isEqualTo true) }
     ) then { continue };
-    if ([_cmd, _grp, "DEFEND", _rec getOrDefault ["taskPos", []], _rec getOrDefault ["objective", ""], true] call AIC_fnc_issueOrder) then {
-        _rec set ["nightSentries", [_night, _rec getOrDefault ["taskTime", -1]]];
+    private _objId = _rec getOrDefault ["objective", ""];
+    private _obj = _objById getOrDefault [_objId, createHashMap];
+    private _taskPos = _rec getOrDefault ["taskPos", []];
+    if (!(_taskPos isEqualType []) || { count _taskPos < 2 }) then { continue };
+    private _threatPos = [_cmd, _taskPos] call AIC_fnc_nearestThreat;
+    if (_threatPos isEqualTo []) then { _threatPos = [_cmd, _objId] call AIC_fnc_alarmPos; };
+    private _sector = if ((_rec getOrDefault ["defendSectorObj", ""]) isEqualTo _objId) then { _rec getOrDefault ["defendSector", -1] } else { -1 };
+    private _n = [_grp, _taskPos, ([_obj] call _fnc_radius) min 200, _threatPos, false, _sector, true] call AIC_fnc_garrisonBuildings;
+    if (_n > 0) then {
+        // the new sentries are settled by AIC_fnc_monitorGarrison like the rest
+        _rec set ["garrisonDone", false];
+        _rec set ["garrisonTime", time];
         _reposted = _reposted + 1;
     };
+    _rec set ["nightSentries", [_night, _taskTime]];
 } forEach _entries;
 if (_reposted > 0) then {
-    ["garrisonCycle: %1 %2, %3 garrisons post their sentries again", [_side, ["day breaks", "night falls"] select _night, _reposted]] call AIC_fnc_log;
+    ["garrisonCycle: %1 night falls, %2 garrisons double their watch", [_side, _reposted]] call AIC_fnc_log;
 };
 
 if (_moves > 0 || { _sentHome > 0 }) then {
