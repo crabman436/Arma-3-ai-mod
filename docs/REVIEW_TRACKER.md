@@ -98,15 +98,15 @@ The exclusion list contains only leaders of this commander's registered groups. 
 | Field | Value |
 |---|---|
 | Type | BUG |
-| Status | OPEN |
+| Status | IN_PROGRESS |
 | Found on / reported by | 2026-11-03 / Codex |
-| Last updated | 2026-11-03 |
+| Last updated | 2026-11-04 |
 | Confidence | Source-supported; gameplay reproduction pending |
-| Owner / claim token | Unassigned / — |
-| Claimed at / expires at (UTC) | — / — |
+| Owner / claim token | luna_group_lifecycle / codex-2026-11-04/luna_group_lifecycle |
+| Claimed at / expires at (UTC) | 2026-11-05T05:15:40Z / 2026-11-05T09:15:40Z |
 | Target branch | `claude/arma3-ai-coordination-qilgd4` |
 | Last assessed code | [`01e0eeda58fbc5e109cd4d31025ac5013d8b14bb`](https://github.com/crabman436/Arma-3-ai-mod/commit/01e0eeda58fbc5e109cd4d31025ac5013d8b14bb) |
-| Work branch / PR | — |
+| Work branch / PR | `codex/ai-reliability-luna-2026-11-04`, follow-up to PR #4 |
 | Fixed on / by | — / — |
 | Fix commit / PR | — |
 | Verified on / by | — / — |
@@ -134,6 +134,8 @@ A claim is reusable when its holder's record `home` differs from the base ID. He
 | Date/time | Actor | Change | Reference / result |
 |---|---|---|---|
 | 2026-11-03 | Codex | Created → OPEN | Imported from the source review; no implementation or engine run. Baseline `01e0eed`; [historical review](reviews/2026-11-03-initial-review.md). |
+
+| 2026-11-04 | Codex / luna_group_lifecycle | OPEN → IN_PROGRESS | User authorized implementation; [plan](plans/2026-11-04-ai-reliability.md). Revalidate against PR #4 head 73f2339; target default after dependency PR #4. |
 
 <a id="f03"></a>
 
@@ -406,15 +408,15 @@ Intel uses the real enemy group behind a detected entity, then classifies and ev
 | Field | Value |
 |---|---|
 | Type | BUG |
-| Status | OPEN |
+| Status | IN_PROGRESS |
 | Found on / reported by | 2026-11-03 / Codex |
-| Last updated | 2026-11-03 |
+| Last updated | 2026-11-04 |
 | Confidence | Source-supported; gameplay reproduction pending |
-| Owner / claim token | Unassigned / — |
-| Claimed at / expires at (UTC) | — / — |
+| Owner / claim token | luna_air_supply / codex-2026-11-04/luna_air_supply |
+| Claimed at / expires at (UTC) | 2026-11-05T05:15:40Z / 2026-11-05T09:15:40Z |
 | Target branch | `claude/arma3-ai-coordination-qilgd4` |
 | Last assessed code | [`01e0eeda58fbc5e109cd4d31025ac5013d8b14bb`](https://github.com/crabman436/Arma-3-ai-mod/commit/01e0eeda58fbc5e109cd4d31025ac5013d8b14bb) |
-| Work branch / PR | — |
+| Work branch / PR | `codex/ai-reliability-luna-2026-11-04`, follow-up to PR #4 |
 | Fixed on / by | — / — |
 | Fix commit / PR | — |
 | Verified on / by | — / — |
@@ -442,6 +444,8 @@ Support runs before rearming. A plane at its loiter waypoint is available for an
 | Date/time | Actor | Change | Reference / result |
 |---|---|---|---|
 | 2026-11-03 | Codex | Created → OPEN | Imported from the source review; no implementation or engine run. Baseline `01e0eed`; [historical review](reviews/2026-11-03-initial-review.md). |
+
+| 2026-11-04 | Codex / luna_air_supply | OPEN → IN_PROGRESS | User authorized implementation; [plan](plans/2026-11-04-ai-reliability.md). Revalidate against PR #4 head 73f2339; target default after dependency PR #4. |
 
 <a id="i01"></a>
 
@@ -716,15 +720,15 @@ Intel substitutes current time for a nonpositive last-seen timestamp. Fire-suppo
 | Field | Value |
 |---|---|
 | Type | BUG |
-| Status | OPEN |
+| Status | IN_PROGRESS |
 | Found on / reported by | 2026-11-03 / Codex (second review) |
-| Last updated | 2026-11-03 |
+| Last updated | 2026-11-04 |
 | Confidence | Source-supported; gameplay reproduction pending |
-| Owner / claim token | Unassigned / — |
-| Claimed at / expires at (UTC) | — / — |
+| Owner / claim token | luna_group_lifecycle / codex-2026-11-04/luna_group_lifecycle |
+| Claimed at / expires at (UTC) | 2026-11-05T05:15:40Z / 2026-11-05T09:15:40Z |
 | Target branch | `claude/arma3-ai-coordination-qilgd4` |
 | Last assessed code | [`564dd8ce56e7ca1840fde15871d0ccb9cc415985`](https://github.com/crabman436/Arma-3-ai-mod/commit/564dd8ce56e7ca1840fde15871d0ccb9cc415985) |
-| Work branch / PR | — |
+| Work branch / PR | `codex/ai-reliability-luna-2026-11-04`, follow-up to PR #4 |
 | Fixed on / by | — / — |
 | Fix commit / PR | — |
 | Verified on / by | — / — |
@@ -753,6 +757,8 @@ The registration sweep releases groups when a player joins, AIC_exclude is set, 
 |---|---|---|---|
 | 2026-11-03 | Codex | Created → OPEN | [Second review](reviews/2026-11-03-second-review.md), assessed `564dd8c`; no implementation or engine run. |
 
+| 2026-11-04 | Codex / luna_group_lifecycle | OPEN → IN_PROGRESS | User authorized implementation; [plan](plans/2026-11-04-ai-reliability.md). Revalidate against PR #4 head 73f2339; target default after dependency PR #4. |
+
 <a id="f11"></a>
 
 ### F11 · P2 · Passenger and vehicle splitting discard group preservation and simulation opt-out flags
@@ -760,15 +766,15 @@ The registration sweep releases groups when a player joins, AIC_exclude is set, 
 | Field | Value |
 |---|---|
 | Type | BUG |
-| Status | OPEN |
+| Status | IN_PROGRESS |
 | Found on / reported by | 2026-11-03 / Codex (second review) |
-| Last updated | 2026-11-03 |
+| Last updated | 2026-11-04 |
 | Confidence | Source-supported; gameplay reproduction pending |
-| Owner / claim token | Unassigned / — |
-| Claimed at / expires at (UTC) | — / — |
+| Owner / claim token | luna_group_lifecycle / codex-2026-11-04/luna_group_lifecycle |
+| Claimed at / expires at (UTC) | 2026-11-05T05:15:40Z / 2026-11-05T09:15:40Z |
 | Target branch | `claude/arma3-ai-coordination-qilgd4` |
 | Last assessed code | [`564dd8ce56e7ca1840fde15871d0ccb9cc415985`](https://github.com/crabman436/Arma-3-ai-mod/commit/564dd8ce56e7ca1840fde15871d0ccb9cc415985) |
-| Work branch / PR | — |
+| Work branch / PR | `codex/ai-reliability-luna-2026-11-04`, follow-up to PR #4 |
 | Fixed on / by | — / — |
 | Fix commit / PR | — |
 | Verified on / by | — / — |
@@ -797,6 +803,8 @@ Both createGroup paths in splitPassengers move units into fresh groups without c
 |---|---|---|---|
 | 2026-11-03 | Codex | Created → OPEN | [Second review](reviews/2026-11-03-second-review.md), assessed `564dd8c`; no implementation or engine run. |
 
+| 2026-11-04 | Codex / luna_group_lifecycle | OPEN → IN_PROGRESS | User authorized implementation; [plan](plans/2026-11-04-ai-reliability.md). Revalidate against PR #4 head 73f2339; target default after dependency PR #4. |
+
 <a id="f12"></a>
 
 ### F12 · P2 · An active supply job can service a helicopter after takeoff
@@ -804,15 +812,15 @@ Both createGroup paths in splitPassengers move units into fresh groups without c
 | Field | Value |
 |---|---|
 | Type | BUG |
-| Status | OPEN |
+| Status | IN_PROGRESS |
 | Found on / reported by | 2026-11-03 / Codex (second review) |
-| Last updated | 2026-11-03 |
+| Last updated | 2026-11-04 |
 | Confidence | Source-supported; gameplay reproduction pending |
-| Owner / claim token | Unassigned / — |
-| Claimed at / expires at (UTC) | — / — |
+| Owner / claim token | luna_air_supply / codex-2026-11-04/luna_air_supply |
+| Claimed at / expires at (UTC) | 2026-11-05T05:15:40Z / 2026-11-05T09:15:40Z |
 | Target branch | `claude/arma3-ai-coordination-qilgd4` |
 | Last assessed code | [`564dd8ce56e7ca1840fde15871d0ccb9cc415985`](https://github.com/crabman436/Arma-3-ai-mod/commit/564dd8ce56e7ca1840fde15871d0ccb9cc415985) |
-| Work branch / PR | — |
+| Work branch / PR | `codex/ai-reliability-luna-2026-11-04`, follow-up to PR #4 |
 | Fixed on / by | — / — |
 | Fix commit / PR | — |
 | Verified on / by | — / — |
@@ -841,6 +849,8 @@ The new-target filter requires a helicopter to touch the ground and rejects a pl
 |---|---|---|---|
 | 2026-11-03 | Codex | Created → OPEN | [Second review](reviews/2026-11-03-second-review.md), assessed `564dd8c`; no implementation or engine run. |
 
+| 2026-11-04 | Codex / luna_air_supply | OPEN → IN_PROGRESS | User authorized implementation; [plan](plans/2026-11-04-ai-reliability.md). Revalidate against PR #4 head 73f2339; target default after dependency PR #4. |
+
 <a id="f13"></a>
 
 ### F13 · P2 · Late markers inside an existing objective radius are silently missed
@@ -848,15 +858,15 @@ The new-target filter requires a helicopter to touch the ground and rejects a pl
 | Field | Value |
 |---|---|
 | Type | BUG |
-| Status | OPEN |
+| Status | IN_PROGRESS |
 | Found on / reported by | 2026-11-03 / Codex (second review) |
-| Last updated | 2026-11-03 |
+| Last updated | 2026-11-04 |
 | Confidence | Source-supported; gameplay reproduction pending |
-| Owner / claim token | Unassigned / — |
-| Claimed at / expires at (UTC) | — / — |
+| Owner / claim token | luna_objectives / codex-2026-11-04/luna_objectives |
+| Claimed at / expires at (UTC) | 2026-11-05T05:15:40Z / 2026-11-05T09:15:40Z |
 | Target branch | `claude/arma3-ai-coordination-qilgd4` |
 | Last assessed code | [`564dd8ce56e7ca1840fde15871d0ccb9cc415985`](https://github.com/crabman436/Arma-3-ai-mod/commit/564dd8ce56e7ca1840fde15871d0ccb9cc415985) |
-| Work branch / PR | — |
+| Work branch / PR | `codex/ai-reliability-luna-2026-11-04`, follow-up to PR #4 |
 | Fixed on / by | — / — |
 | Fix commit / PR | — |
 | Verified on / by | — / — |
@@ -884,6 +894,8 @@ Late-marker detection tests whether any existing objective of the same source co
 | Date/time | Actor | Change | Reference / result |
 |---|---|---|---|
 | 2026-11-03 | Codex | Created → OPEN | [Second review](reviews/2026-11-03-second-review.md), assessed `564dd8c`; no implementation or engine run. |
+
+| 2026-11-04 | Codex / luna_objectives | OPEN → IN_PROGRESS | User authorized implementation; [plan](plans/2026-11-04-ai-reliability.md). Revalidate against PR #4 head 73f2339; target default after dependency PR #4. |
 
 <a id="i06"></a>
 

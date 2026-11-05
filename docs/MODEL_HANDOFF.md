@@ -144,3 +144,7 @@ The [dated initial review](reviews/2026-11-03-initial-review.md) records what wa
 - **Validation not run:** HEMTT/PBO, Arma gameplay, multiplayer, and performance checks.
 - **Claims:** None active; ownership remains Unassigned.
 - **Next step if fixes are authorized:** Revalidate the relevant record at the latest commit, then claim it. F10/I06 share release/restoration code; F13/I07 share objective/base concerns. Existing P1 findings F01/F02 remain higher priority.
+
+## Implementation start — 2026-11-04
+
+Sol coordinates three Luna work packages for F02/F09/F10/F11/F12/F13. [Concrete plan](plans/2026-11-04-ai-reliability.md). Branch `codex/ai-reliability-luna-2026-11-04` builds on PR #4 head 73f2339. Claims expire 2026-11-05T09:15:40Z; status IN_PROGRESS. Runtime validation is pending.
