@@ -187,6 +187,13 @@
 // ---------------------------------------------------------------- event handlers / ui
 // min seconds between two groupEngaged calls of an awake group from unit / vehicle EHs
 #define AIC_EH_THROTTLE 10
+
+// ---------------------------------------------------------------- replan on contact
+// a contact is fresh (and asks for an early cycle) when the group had not met
+// the enemy for this many seconds before it
+#define AIC_REPLAN_FRESH_CONTACT 60
+// s between two checks of the commander loop while it waits for the next cycle
+#define AIC_REPLAN_POLL 0.5
 // min seconds between two side-chat reports of one commander
 #define AIC_REPORT_THROTTLE 20
 

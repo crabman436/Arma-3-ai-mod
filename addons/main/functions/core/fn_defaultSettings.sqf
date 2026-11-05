@@ -6,7 +6,8 @@
         (see CONTRACT.md, "Settings HashMap" and the logistics extension:
         dynamic simulation, garrisons and transport; garbage management;
         the Jev decision model; the realism extension: recon, morale,
-        order delays, night assaults, quick-reaction forces).
+        order delays, night assaults, quick-reaction forces;
+        the replan-on-contact extension).
 
     Parameters:
         None
@@ -34,6 +35,10 @@ createHashMapFromArray [
     ["artyCooldown", 120],
     ["airCooldown", 180],
     ["casSkill", 0.8],
+
+    // --- reaction: early cycles when groups meet the enemy
+    ["replanOnContact", true],
+    ["replanMinInterval", 5],
 
     // --- logistics: dynamic simulation
     ["manageDynSim", true],

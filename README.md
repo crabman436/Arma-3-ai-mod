@@ -58,6 +58,10 @@ original evidence; current status lives in the tracker.
 - **Close air support**: armed helicopters and planes search and destroy at
   threat clusters, then return to loiter near HQ. Air tasking also has a
   cooldown.
+- **Fast reaction**: the general thinks every 30 s, but when one of its groups
+  runs into the enemy, or is shot down to the point where it should fall back,
+  it thinks again within seconds (`replanOnContact`), so reinforcements,
+  retreats and fire support don't wait for the next think step.
 - **Player reports**: short HQ messages in side chat about posture changes,
   objectives captured or lost, new major enemy forces, fire missions and CAS,
   delayed attack orders going out, reserves committed, failed or called-off
@@ -132,6 +136,10 @@ if (count _cmd > 0) then {
 // Call a fire mission yourself (refuses danger-close targets)
 [_cmd, myMortarGroup, getMarkerPos "target", 4] call AIC_fnc_fireMission;
 
+// Make the general think again now (within replanMinInterval of its last cycle),
+// for example from a trigger. The reason shows in the debug log.
+[_cmd, "alarm at the airfield"] call AIC_fnc_requestReplan;
+
 // Stop the general. Its groups keep their last orders.
 [east] call AIC_fnc_removeCommander;
 
@@ -183,6 +191,8 @@ change them live through `(_cmd get "settings") set [key, value]`.
 | Key | Default | Meaning |
 |---|---|---|
 | `loopInterval` | 30 | Seconds between commander cycles (minimum 5) |
+| `replanOnContact` | true | A group that meets the enemy, or is shot down to `retreatThreshold`, makes the commander run its next cycle early (see "Reacting between cycles") |
+| `replanMinInterval` | 5 | Least seconds between the end of one cycle and an early cycle (minimum 5) |
 | `aggression` | 0.5 | 0..1, biases the stance toward attacking |
 | `retreatThreshold` | 0.3 | Group strength below which the group falls back to its rally point (the nearest place its side holds behind it, else the HQ) |
 | `reserveRatio` | 0.2 | Share of combat power kept back as a reserve to defend HQ |
@@ -203,7 +213,7 @@ change them live through `(_cmd get "settings") set [key, value]`.
 | `nightAssaults` | true | Staged assaults on towns wait for the night when it is less than 30 minutes away |
 | `useQRF` | true | Each held base keeps its best motorised / mechanised group ready as a quick-reaction force for attacks within 5 km (needs `manageGarrisons`; see "Phased assaults, reserves and quick-reaction forces") |
 
-The Eden module sets Side, Aggression, LoopInterval, UseArtillery, UseAir,
+The Eden module sets Side, Aggression, LoopInterval, ReplanOnContact, UseArtillery, UseAir,
 AutoObjectives, DebugMarkers, ReportToPlayers, ManageDynSim, ManageGarrisons,
 UseTransport, ManageCleanup, SplitPassengers, DynamicSquads, StagedAssaults,
 SpreadGroups, UseVehicleParks, UseSupplyTrucks, GarrisonManStatics, UseJev,
@@ -605,7 +615,9 @@ event happens. Each commanded group gets them once
 
 - group `EnemyDetected`, and unit/vehicle `Hit` and `FiredNear` (hostile
   shooter): a parked group wakes the instant it meets the enemy, and its
-  record is stamped (`lastEngaged`) so it stays awake for 120 s;
+  record is stamped (`lastEngaged`) so it stays awake for 120 s. With
+  `replanOnContact` on, a fresh contact also asks for an early cycle (see
+  below);
 - group `UnitKilled` and vehicle `MPKilled`: the kill time is stored on the
   body or wreck (`AIC_killedAt`) and it is queued for cleanup (bodies only
   while their group is still commanded, so AI of a group that left command
@@ -755,6 +767,37 @@ was seen (at once if the enemy took it) it drives back to its base and is the
 QRF again. A QRF
 that breaks, retreats or gets a new home loses the role, and the base picks a
 new one.
+
+#### Reacting between cycles
+
+The event handlers above only flip flags; reinforcing, retreating and
+calling fire support are still decided by the commander cycle. Without help, a squad that
+walks into an ambush could wait most of `loopInterval` for that. With
+`replanOnContact` on (the default), the handler asks for the next cycle to
+come early (`AIC_fnc_requestReplan`) when:
+
+- the contact is **fresh**: the group had not met the enemy for 60 s before
+  it. A long firefight asks once, not on every shot;
+- the group has just been **shot down to `retreatThreshold`** (alive men
+  against its starting size) while the general still thinks it is above it,
+  so it is pulled back without waiting. Statics, artillery, boats, aircraft
+  on a support task, transport rides and groups already retreating are left
+  out. Vehicle damage alone doesn't count here; the next cycle sees it as
+  before.
+
+The loop then starts that cycle as soon as `replanMinInterval` seconds have
+passed since the last cycle ended, so cycles never run back to back however
+much fighting there is. After an early cycle the regular timer starts again
+from there. One request is enough: further requests before the cycle starts
+change nothing, and requests that come in while a cycle runs ask for the next
+one. With `AIC_ns set ["debug", true]` the cycle-time log line says which
+group's contact or losses started an early cycle.
+
+The fast reaction costs one full cycle per request. On a very large army
+whose cycle takes a long time (see the debug log), raise `replanMinInterval`
+or switch `replanOnContact` off. Mission scripts can ask for an early cycle
+themselves with `[_cmd, "reason"] call AIC_fnc_requestReplan`, whatever
+`replanOnContact` says.
 
 ### Mission-maker tip
 
@@ -979,7 +1022,8 @@ It sets HQ to the side's `aic_base_<side>` marker nearest to the average
 position of those groups (without such a marker: the average itself, moved
 onto land if it falls into water), collects objectives, and
 spawns `AIC_fnc_commanderLoop`. The loop calls `AIC_fnc_commanderCycle` every
-`loopInterval` seconds. Each cycle runs these steps in order:
+`loopInterval` seconds, or earlier when a replan has been requested (see
+"Reacting between cycles"). Each cycle runs these steps in order:
 
 | # | Step | Function(s) | Result |
 |---|---|---|---|
