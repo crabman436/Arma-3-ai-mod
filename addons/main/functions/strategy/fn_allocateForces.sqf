@@ -1190,6 +1190,15 @@ private _attackCap = switch (_stance) do {
 };
 private _attacksStaffed = 0;
 private _staffedAttackTargets = [];
+// running attacks (members on it, riders, a live assault) keep their slots:
+// a new attack scored above them may not take one first
+private _runningLeft = (_targets select {
+    (_x get "task") == "ATTACK" && {(_x get "kind") == "OBJ"} && {
+        ((_x get "members") findIf {!(_x param [2, false])}) >= 0
+        || {(_x getOrDefault ["riders", 0]) > 0}
+        || {(_x get "id") in _liveAssaults}
+    }
+}) apply {_x get "id"};
 
 // drops members of a target (all, or only those whose order is still
 // queued): they become leftovers, and AIC_fnc_drainOrders drops a queued
@@ -1215,6 +1224,7 @@ private _fnc_release = {
     private _members = _target get "members";
     private _isObjAttack = _task == "ATTACK" && {(_target get "kind") == "OBJ"};
     private _liveAssault = _isObjAttack && {(_target get "id") in _liveAssaults};
+    if (_isObjAttack) then {_runningLeft = _runningLeft - [_target get "id"]};
 
     private _cands = (call _fnc_remaining) select {[_x, _target] call _fnc_mayLeave};
     // a shaken group joins no attack it is not already on
@@ -1244,7 +1254,7 @@ private _fnc_release = {
             continue;
         };
         // attack cap (a wave in the queue keeps its slot)
-        if (_isObjAttack && {_attacksStaffed >= _attackCap} && {!_queuedOn}) then {continue};
+        if (_isObjAttack && {(_attacksStaffed + count _runningLeft) >= _attackCap} && {!_queuedOn}) then {continue};
         // reconnaissance first: a new attack on an important objective nobody
         // has looked at lately waits for a scout (none to spare: it goes
         // ahead). Before the Jev hold and the feasibility test: scouting is

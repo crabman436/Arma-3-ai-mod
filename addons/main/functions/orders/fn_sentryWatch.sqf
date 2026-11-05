@@ -73,6 +73,10 @@ if (isNull _spotted) exitWith {false};
 
 _obj set ["alarmTime", time];
 _obj set ["alarmPos", _where];
+// the general hears of it now, not at the end of his cycle
+if (([_cmd, "replanOnContact"] call AIC_fnc_getSetting) isEqualTo true) then {
+    [_cmd, format ["alarm at %1", _id]] call AIC_fnc_requestReplan;
+};
 
 // the whole place wakes and learns of it
 private _groupData = _cmd getOrDefault ["groupData", createHashMap];

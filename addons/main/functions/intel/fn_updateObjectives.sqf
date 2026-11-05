@@ -151,7 +151,12 @@ private _contacts = (_cmd getOrDefault ["knownEnemies", []]) select {
         if !(_prevOwner isEqualType sideUnknown) then { _prevOwner = sideUnknown; };
         private _owner = call {
             if (_total == 0) exitWith { _prevOwner };
-            if (_topCount > 2 * (_total - _topCount)) exitWith { _topSide };
+            // 2:1, and a change of hands needs at least AIC_CAPTURE_MIN men
+            // (a scout or a lost straggler takes no village; the holder's
+            // last few keep it)
+            if (_topCount > 2 * (_total - _topCount)) exitWith {
+                [_prevOwner, _topSide] select (_topCount >= AIC_CAPTURE_MIN || { _topSide isEqualTo _prevOwner })
+            };
             sideUnknown
         };
 

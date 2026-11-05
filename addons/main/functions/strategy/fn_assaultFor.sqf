@@ -130,7 +130,9 @@ private _assault = createHashMapFromArray [
     ["time", time],
     ["firstArrive", -1],
     ["urban", _urban],
-    ["hasInf", true],
+    // (straight in GO: whether the first group is infantry; a staged
+    // assault finds out at GO, AIC_fnc_assaultCycle)
+    ["hasInf", _stage isNotEqualTo [] || {(((_cmd getOrDefault ["groupData", createHashMap]) getOrDefault [hashValue _group, createHashMap]) getOrDefault ["type", "INF"]) isEqualTo "INF"}],
     ["slots", 0],
     ["nightHold", false]
 ];

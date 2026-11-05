@@ -12,7 +12,8 @@
             group AIC parked earlier can never stay frozen.
           - Never parks a group that contains a player or that has a unit
             in an airborne air vehicle (!isTouchingGround).
-        Sets the group record key "parked" and logs every change.
+        Sets the group record key "parked" and logs every change. Waking a
+        cached group brings its men back first (AIC_fnc_uncacheGroup).
 
     Parameters:
         0: HASHMAP - commander
@@ -35,6 +36,11 @@ params [
 
 if (!isServer) exitWith { false };
 if (isNull _group) exitWith { false };
+// (waking a cached group brings its men back, whatever its flags)
+if (!_park) then {
+    private _r = (_cmd getOrDefault ["groupData", createHashMap]) getOrDefault [hashValue _group, createHashMap];
+    if ((_r getOrDefault ["cache", []]) isNotEqualTo []) then { [_cmd, _group] call AIC_fnc_uncacheGroup; };
+};
 if (_group getVariable ["AIC_noDynSim", false]) exitWith { false };
 
 // --- group record (may be missing for unregistered groups)
@@ -49,6 +55,9 @@ private _isParked = dynamicSimulationEnabled _group;
 
 // ---------------------------------------------------------------- wake
 if (!_park) exitWith {
+    // a cached group gets its men back before anything wakes it
+    // (AIC_fnc_uncacheGroup): no order ever reaches half a group
+    if ((_record getOrDefault ["cache", []]) isNotEqualTo []) then { [_cmd, _group] call AIC_fnc_uncacheGroup; };
     if (count _record > 0) then { _record set ["parked", false]; };
     if (_isParked) then {
         _group enableDynamicSimulation false;

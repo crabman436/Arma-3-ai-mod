@@ -46,6 +46,15 @@ private _fnc_size = {
 };
 
 // free to merge: infantry on foot, awake, under command, not fighting
+// groups with a place in an assault (support by fire, assault, reserve):
+// their lanes lie closer than the merge radius, they stay apart
+private _assaultGroups = createHashMap;
+{
+    if (_y isEqualType createHashMap) then {
+        private _roles = _y getOrDefault ["roles", createHashMap];
+        if (_roles isEqualType createHashMap) then { { _assaultGroups set [_x, true]; } forEach (keys _roles); };
+    };
+} forEach (_cmd getOrDefault ["assaults", createHashMap]);
 private _fnc_free = {
     params ["_r"];
     private _grp = _r get "group";
@@ -53,6 +62,8 @@ private _fnc_free = {
     // (a group emptied by a merge, perhaps still listing its men while the
     // join travels to a headless client)
     !((_r getOrDefault ["merged", false]) isEqualTo true)
+    && {!((_r getOrDefault ["staged", false]) isEqualTo true)}
+    && {!((hashValue _grp) in _assaultGroups)}
     && {(_r getOrDefault ["type", ""]) isEqualTo "INF"}
     && {!((_r getOrDefault ["task", ""]) in ["TRANSPORT", "TRANSPORTED", "RETREAT"])}
     && {!(_grp getVariable ["AIC_exclude", false])}

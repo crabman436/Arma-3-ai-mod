@@ -91,6 +91,8 @@ private _total = count _free;
 // anyway), then from the buildings; the sentries and gunners already posted
 // and everybody else stay where they are
 private _posted = 0;
+// (men held at their spots, AIC_fnc_garrisonPath, may be sent to new posts)
+[_group, true] call AIC_fnc_garrisonPath;
 if (_sentriesOnly) then {
     _posted = {alive _x && {_x getVariable ["AIC_sentry", false]}} count (units _group);
     _free = _free select {!(_x getVariable ["AIC_sentry", false]) && {isNull (_x getVariable ["AIC_gunnerOf", objNull])}};

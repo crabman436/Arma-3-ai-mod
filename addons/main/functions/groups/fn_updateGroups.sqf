@@ -141,6 +141,12 @@ if (_useMorale) then {
             _record = [_grp] call AIC_fnc_newGroupRecord;
             _groupData set [_key, _record];
         };
+        // cached (AIC_fnc_cacheGroup): only the leader stands there, the
+        // record keeps the power, strength and morale of the whole group
+        if ((_record getOrDefault ["cache", []]) isNotEqualTo []) then {
+            _totalPower = _totalPower + (_record getOrDefault ["power", 0]);
+            continue
+        };
 
         if (_alive isEqualTo []) then {
             _record set ["power", 0];
@@ -218,6 +224,12 @@ if (_useMorale) then {
                         if (_back isNotEqualTo []) then {
                             [(_back select 0), "assignAsDriver", _veh] call AIC_fnc_do;
                             {[_x, "assignAsCargo", _veh] call AIC_fnc_do} forEach (_back select [1, 1]);
+                            // and in they get once it is calm (an armed vehicle's crew
+                            // too: assigned alone they would stand beside it)
+                            private _eng = _record getOrDefault ["lastEngaged", -1e6];
+                            if (!(_eng isEqualType 0) || {(time - _eng) > 60}) then {
+                                [_back select [0, 2], "orderGetIn", true] call AIC_fnc_do;
+                            };
                         };
                     };
                 } forEach _driven;

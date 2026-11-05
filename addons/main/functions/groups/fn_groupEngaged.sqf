@@ -6,7 +6,9 @@
         group has just met the enemy (EnemyDetected, Hit, FiredNear or a
         unit killed). Looks up the commander of the group's side, stamps
         the group record's "lastEngaged" with the current time and, if the
-        group is parked, wakes it at once with AIC_fnc_setGroupSim. With
+        group is parked, wakes it at once with AIC_fnc_setGroupSim, and gives
+        garrison men held at their spots their pathfinding back
+        (AIC_fnc_garrisonPath). With
         the optional "hit" flag (the group is under fire: Hit, FiredNear by
         a hostile, a unit killed; not a mere sighting) it also stamps the
         record's "lastHit" and the group variable "AIC_hitAt" (the throttle
@@ -75,6 +77,8 @@ if (_hit) then {
 if (dynamicSimulationEnabled _group || { (_rec getOrDefault ["parked", false]) isEqualTo true }) then {
     [_cmd, _group, false] call AIC_fnc_setGroupSim;
 };
+// a garrison that holds its spots may need to move now (AIC_fnc_garrisonPath)
+[_group, true] call AIC_fnc_garrisonPath;
 
 // --- ask for an early commander cycle, so the general reacts in seconds
 // rather than at the end of "loopInterval"

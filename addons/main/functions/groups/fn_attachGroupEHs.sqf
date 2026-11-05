@@ -53,7 +53,8 @@
           (both by calling this function again with the object as 3rd
           parameter)
         Unit event handlers (every unit, guarded by "AIC_ehAttached" on the
-        unit): "Hit" and "FiredNear" (hostile shooter only) call
+        unit): "Hit" and "FiredNear" (both with a hostile shooter only: a
+        fall, a collision or rotor wash is no enemy fire) call
         AIC_fnc_groupEngaged with the under-fire flag ("lastHit"), so a
         parked group wakes the instant it is engaged. They are throttled to
         once per AIC_EH_THROTTLE s per group while the group is awake (on
@@ -106,9 +107,12 @@ private _fnc_attachVehicle = {
     if (_veh getVariable ["AIC_ehAttached", false]) exitWith {};
     _veh setVariable ["AIC_ehAttached", true];
     _veh addEventHandler ["Hit", {
-        params ["_veh"];
+        params ["_veh", "_source", "", "_instigator"];
         private _grp = group (effectiveCommander _veh);
         if (isNull _grp) exitWith {};
+        private _src = [_instigator, _source] select (isNull _instigator);
+        private _shooter = if (isNull _src || { _src isKindOf "CAManBase" }) then { _src } else { effectiveCommander _src };
+        if (isNull _shooter || { (side _grp getFriend side group _shooter) >= AIC_HOSTILE_FRIEND }) exitWith {};
         if (!dynamicSimulationEnabled _grp && { (time - (_grp getVariable ["AIC_hitAt", -1e6])) < AIC_EH_THROTTLE }) exitWith {};
         [_grp, true] call AIC_fnc_groupEngaged;
     }];
@@ -139,9 +143,12 @@ private _fnc_attachUnit = {
 
     // shared by Hit and FiredNear: wake a parked group the instant it is engaged
     _unit addEventHandler ["Hit", {
-        params ["_unit"];
+        params ["_unit", "_source", "", "_instigator"];
         private _grp = group _unit;
         if (isNull _grp) exitWith {};
+        private _src = [_instigator, _source] select (isNull _instigator);
+        private _shooter = if (isNull _src || { _src isKindOf "CAManBase" }) then { _src } else { effectiveCommander _src };
+        if (isNull _shooter || { (side _grp getFriend side group _shooter) >= AIC_HOSTILE_FRIEND }) exitWith {};
         if (!dynamicSimulationEnabled _grp && { (time - (_grp getVariable ["AIC_hitAt", -1e6])) < AIC_EH_THROTTLE }) exitWith {};
         [_grp, true] call AIC_fnc_groupEngaged;
     }];

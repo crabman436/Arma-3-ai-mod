@@ -69,7 +69,13 @@ private _toWake = (_cmd getOrDefault ["groups", []]) select { _x isEqualType grp
 
 // marches end: automatic combat mode and road following back to default
 {
-    if (_x isEqualType grpNull && { !isNull _x }) then { [_x, false] call AIC_fnc_setMarch; };
+    if (_x isEqualType grpNull && { !isNull _x }) then {
+        [_x, false] call AIC_fnc_setMarch;
+        // cached men come back (AIC_fnc_uncacheGroup)
+        [_cmd, _x] call AIC_fnc_uncacheGroup;
+        // garrison men held at their spots get their pathfinding back
+        [_x, true] call AIC_fnc_garrisonPath;
+    };
 } forEach _toWake;
 
 private _woken = 0;

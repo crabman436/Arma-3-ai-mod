@@ -394,7 +394,8 @@ private _fnc_setIdle = {
             _group, _rec, _taskPos, (_objRec getOrDefault ["radius", _defRadius]) min 200,
             _threatPos,
             ([_cmd, "garrisonManStatics"] call AIC_fnc_getSetting) isEqualTo true,
-            if ((_rec getOrDefault ["defendSectorObj", ""]) isEqualTo _objId) then {_rec getOrDefault ["defendSector", -1]} else {-1}
+            if ((_rec getOrDefault ["defendSectorObj", ""]) isEqualTo _objId) then {_rec getOrDefault ["defendSector", -1]} else {-1},
+            ([_cmd, "garrisonHoldPath"] call AIC_fnc_getSetting) isEqualTo true
         ] call AIC_fnc_monitorGarrison;
         // the sentries raise the alarm
         if (_inPlace) then {[_cmd, _group, _rec] call AIC_fnc_sentryWatch};
@@ -449,6 +450,16 @@ private _fnc_setIdle = {
         if (_task in ["RETREAT", "RTB"]) then {
             [_group, "setBehaviour", "AWARE"] call AIC_fnc_do;
             [_group, "setCombatMode", "YELLOW"] call AIC_fnc_do;
+            // home at a base the side holds: its vehicle is refuelled there
+            // (the depot), so a transport fleet does not run dry over a mission
+            private _hv = objectParent _leader;
+            if (_task == "RTB" && {!isNull _hv} && {alive _hv} && {!(_hv isKindOf "Plane")} && {(fuel _hv) < 1}) then {
+                private _bId = [_cmd, getPosATL _leader] call AIC_fnc_nearestBase;
+                private _bObj = [_cmd, _bId] call AIC_fnc_getObjective;
+                if (count _bObj > 0 && {(_hv distance2D (_bObj getOrDefault ["pos", [0, 0, 0]])) < ((_bObj getOrDefault ["radius", 300]) * 1.5)}) then {
+                    [_hv, "setFuel", 1] call AIC_fnc_do;
+                };
+            };
             [_group, "setSpeedMode", "NORMAL"] call AIC_fnc_do;
         };
         // a transport helicopter back home lands (airborne groups are never parked)
@@ -470,6 +481,12 @@ private _fnc_setIdle = {
         };
         [_rec] call _fnc_setIdle;
         _changes = _changes + 1;
+        // a place just taken: the attackers hold it first (consolidation),
+        // out of the planner's pool for AIC_CONSOLIDATE s (AIC_fnc_availableGroups)
+        if (_task == "ATTACK" && {count _objRec > 0} && {(_objRec getOrDefault ["owner", sideUnknown]) isEqualTo _side}) then {
+            _rec set ["consolidateUntil", time + AIC_CONSOLIDATE];
+            [_cmd, _group, "DEFEND", _objRec getOrDefault ["pos", _taskPos], _objId, true] call AIC_fnc_issueOrder;
+        };
         if (!isNil "AIC_ns" && { AIC_ns getOrDefault ["debug", false] isEqualTo true }) then {
             ["%1: group %2 finished %3", [_cmd getOrDefault ["side", sideUnknown], groupId _group, _task]] call AIC_fnc_log;
         };

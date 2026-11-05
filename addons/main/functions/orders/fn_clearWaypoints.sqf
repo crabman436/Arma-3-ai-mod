@@ -37,7 +37,9 @@ for "_i" from ((count waypoints _group) - 1) to 0 step -1 do {
     deleteWaypoint [_group, _i];
 };
 
-// Bring garrisoned / stopped units back into formation
+// Bring garrisoned / stopped units back into formation, with their
+// pathfinding (AIC_fnc_garrisonPath)
+[_group, true] call AIC_fnc_garrisonPath;
 private _leader = leader _group;
 if (!isNull _leader && {alive _leader}) then {
     {
@@ -45,6 +47,7 @@ if (!isNull _leader && {alive _leader}) then {
         _x setVariable ["AIC_buildingPos", nil];
         _x setVariable ["AIC_garrisonStance", nil];
         _x setVariable ["AIC_garrisonRetry", nil];
+        _x setVariable ["AIC_garrisonSpot", nil];
         _x setVariable ["AIC_sentry", nil];
         private _gun = _x getVariable ["AIC_gunnerOf", objNull];
         if (!isNull _gun) then {

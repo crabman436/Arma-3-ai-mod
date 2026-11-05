@@ -68,6 +68,7 @@ createHashMapFromArray [
     ["moveInDriver", { (_this select 0) moveInDriver (_this select 1) }],
     ["moveInGunner", { (_this select 0) moveInGunner (_this select 1) }],
     ["moveOut", { moveOut (_this select 0) }],
+    ["doGetOut", { doGetOut (_this select 0) }],
     ["unassignVehicle", { unassignVehicle (_this select 0) }],
     ["setUnloadInCombat", { (_this select 0) setUnloadInCombat (_this select 1) }],
     // vehicles: driving, flying, state

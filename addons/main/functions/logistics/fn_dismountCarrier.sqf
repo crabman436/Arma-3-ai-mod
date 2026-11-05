@@ -6,7 +6,10 @@
         only). The one place that does so. Nobody jumps from a flying
         helicopter that still has a pilot: it can be told to land instead,
         and the caller tries again. Otherwise only a stopped vehicle or a
-        landed helicopter is left, unless the caller forces it.
+        landed helicopter is left, unless the caller forces it. Forced out of
+        an aircraft still in the air that nobody flies (pilot dead,
+        destroyed), the men bail out by parachute (AIC_fnc_paradrop) when it
+        is at least AIC_PARA_MIN_HEIGHT / 2 up, else they stay aboard.
         Cargo groups of a running ride are handled by AIC_fnc_transportCycle,
         which calls this.
 
@@ -24,6 +27,8 @@
     Example:
         [_group, _heli, true] call AIC_fnc_dismountCarrier;
 */
+
+#include "\z\aic\addons\main\script_component.hpp"
 
 params [
     ["_group", grpNull, [grpNull]],
@@ -49,6 +54,16 @@ if (_flying) exitWith {
     false
 };
 if (!_landed && { !_force }) exitWith { false };
+// still in the air without anyone flying it (pilot dead, airframe
+// destroyed): out only with parachutes and only high enough
+// (AIC_fnc_paradrop); lower, they ride it down
+if (_isAir && { !_landed } && { ((getPosATL _carrier) select 2) > 5 }) exitWith {
+    private _aboard = (units _group) select { alive _x && { (objectParent _x) isEqualTo _carrier } };
+    if (_aboard isEqualTo [] || { ((getPosATL _carrier) select 2) < (AIC_PARA_MIN_HEIGHT * 0.5) }) exitWith { false };
+    [_aboard, _carrier] call AIC_fnc_paradrop;
+    ["%1: group %2 bails out of %3 by parachute", [side _group, groupId _group, typeOf _carrier]] call AIC_fnc_log;
+    true
+};
 
 private _aboard = (units _group) select { alive _x && { objectParent _x isEqualTo _carrier } };
 {

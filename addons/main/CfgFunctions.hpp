@@ -79,6 +79,7 @@ class CfgFunctions
             class roadPos {};
             class waterPos {};
             class garrisonBuildings {};
+            class garrisonPath {};
             class monitorGarrison {};
             class sentryWatch {};
             class alarmPos {};
@@ -113,6 +114,9 @@ class CfgFunctions
         {
             file = "\z\aic\addons\main\functions\logistics";
             class setGroupSim {};
+            class cacheCycle {};
+            class cacheGroup {};
+            class uncacheGroup {};
             class dynSimCycle {};
             class garrisonStatus {};
             class canLeaveGarrison {};
@@ -133,6 +137,8 @@ class CfgFunctions
             class findTransport {};
             class orderTransport {};
             class transportCycle {};
+            class airliftFor {};
+            class airliftCycle {};
             class cleanupCycle {};
             class deleteHelipads {};
             class deleteGroup {};

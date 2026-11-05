@@ -127,6 +127,7 @@ private _changes = 0;
                 _rec set ["task", "IDLE"];
                 _rec set ["taskPos", []];
                 _rec set ["taskTime", time];
+                _rec set ["rearmGaveUp", time];
                 ["%1: %2 (%3) never made it down at airfield %4, carries on as it is", [_side, groupId _grp, typeOf _plane, _field]] call AIC_fnc_log;
             };
         };
@@ -144,7 +145,12 @@ private _changes = 0;
         default { false };
     };
     if (!_free) then { continue };
-    private _needs = !someAmmo _plane || { (fuel _plane) < AIC_PLANE_RTB_FUEL } || { (damage _plane) > 0.3 };
+    // a plane that gave up on a landing tries again later, not every cycle
+    if ((time - (_rec getOrDefault ["rearmGaveUp", -1e6])) < AIC_REARM_RETRY) then { continue };
+    // (no ammunition counts only for a plane with weapons: an unarmed
+    // transport has none to run out of, it is never sent back for it)
+    private _armed = ([_plane] call AIC_fnc_vehicleArmament) > 0;
+    private _needs = (_armed && { !someAmmo _plane }) || { (fuel _plane) < AIC_PLANE_RTB_FUEL } || { (damage _plane) > 0.3 };
     if (!_needs) then { continue };
 
     private _af = [_cmd, getPosATL _plane] call AIC_fnc_heldAirfield;
@@ -170,7 +176,7 @@ private _changes = 0;
 
     ["%1: %2 (%3) goes to airfield %4 to rearm (%5)", [
         _side, groupId _grp, typeOf _plane, _id,
-        [["no ammunition", "low fuel"] select (someAmmo _plane), "damaged"] select ((damage _plane) > 0.3 && { someAmmo _plane } && { (fuel _plane) >= AIC_PLANE_RTB_FUEL })
+        [["no ammunition", "low fuel"] select (!_armed || { someAmmo _plane }), "damaged"] select ((damage _plane) > 0.3 && { !_armed || { someAmmo _plane } } && { (fuel _plane) >= AIC_PLANE_RTB_FUEL })
     ]] call AIC_fnc_log;
 } forEach _groupData;
 

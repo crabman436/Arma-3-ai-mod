@@ -406,6 +406,13 @@ private _started = 0;
 
     if (count _obj == 0 || {(_obj getOrDefault ["owner", sideUnknown]) isEqualTo _side}
         || {_members isEqualTo [] && {_pending isEqualTo []} && {(time - (_assault get "time")) > 60}}) then {
+        // every group dropped out (released as stuck, wiped out) with the
+        // place still not ours: not planned on again at once
+        if (count _obj > 0 && {(_obj getOrDefault ["owner", sideUnknown]) isNotEqualTo _side}) then {
+            private _until = _obj getOrDefault ["failedUntil", -1];
+            if !(_until isEqualType 0) then {_until = -1};
+            _obj set ["failedUntil", _until max (time + AIC_ASSAULT_FAIL_COOLDOWN / 3)];
+        };
         _obj deleteAt "attackBoost";
         _assaults deleteAt _id;
         continue;
@@ -425,14 +432,18 @@ private _started = 0;
     private _failed = (_assault get "state") isEqualTo "GO" && {_goAge > AIC_ASSAULT_ABORT};
     // the attackers have lost heart (AIC_fnc_updateGroups "morale")
     private _shaken = false;
-    if (_useMorale && {_attacking isNotEqualTo []}) then {
+    // (the groups that go in: not the reserve held back, not support by fire)
+    private _rolesNow = _assault getOrDefault ["roles", createHashMap];
+    if !(_rolesNow isEqualType createHashMap) then {_rolesNow = createHashMap};
+    private _goingIn = _attacking select {!((_rolesNow getOrDefault [hashValue (_x getOrDefault ["group", grpNull]), ""]) in ["RESERVE", "SBF"])};
+    if (_useMorale && {_goingIn isNotEqualTo []}) then {
         private _sum = 0;
         {
             private _m = _x getOrDefault ["morale", 1];
             if !(_m isEqualType 0) then {_m = 1};
             _sum = _sum + _m;
-        } forEach _attacking;
-        _shaken = (_sum / (count _attacking)) < AIC_MORALE_SHAKY;
+        } forEach _goingIn;
+        _shaken = (_sum / (count _goingIn)) < AIC_MORALE_SHAKY;
     };
     if (_shaken) then {_failed = true};
 
@@ -551,6 +562,9 @@ private _started = 0;
         if !(_prepTime isEqualType 0) then {_prepTime = -1};
         private _prepFresh = _prepTime >= 0 && {(time - _prepTime) <= (AIC_PREP_FIRE_TIME + AIC_PREP_FIRE_DELAY)};
         private _fnc_prepFire = {
+            // the guns are busy with another assault's preparation: go without
+            private _slot = _cmd getOrDefault ["prepTarget", []];
+            if (count _slot >= 2 && {(time - (_slot select 1)) <= AIC_PREP_FIRE_TIME} && {((_slot select 0) distance2D (_assault get "pos")) > 50}) exitWith {};
             _prepTime = time;
             _prepFresh = true;
             _assault set ["prepTime", time];
@@ -603,7 +617,12 @@ private _started = 0;
             // no preparatory fire before (no artillery): the guns and aircraft
             // take the objective's defenders now, while the assault goes in
             // (AIC_fnc_supportCycle)
-            if (!_prepFresh) then {_cmd set ["prepTarget", [_assault get "pos", time]]};
+            if (!_prepFresh) then {
+                private _slot = _cmd getOrDefault ["prepTarget", []];
+                if (count _slot < 2 || {(time - (_slot select 1)) > AIC_PREP_FIRE_TIME} || {((_slot select 0) distance2D (_assault get "pos")) <= 50}) then {
+                    _cmd set ["prepTarget", [_assault get "pos", time]];
+                };
+            };
             _started = _started + 1;
             // support by fire, assault and reserve
             [_assault, _attacking, _objRadius] call _fnc_assignRoles;
@@ -623,7 +642,9 @@ private _started = 0;
         // an assault planned straight in GO (AIC_fnc_assaultFor found no
         // assembly spot) gets its roles on its first cycle, and its groups
         // the orders that go with them
-        if (_hasInf && {!("roles" in _assault)}) then {
+        if (_hasInf && {!("roles" in _assault)} && {!("rolesTried" in _assault)}) then {
+            _assault set ["rolesTried", true];
+            _assault set ["hasInf", true];
             [_assault, _attacking, _objRadius] call _fnc_assignRoles;
             _roles = _assault getOrDefault ["roles", createHashMap];
             {

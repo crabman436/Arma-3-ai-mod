@@ -204,7 +204,8 @@ if (_fresh) then {
         private _leaderVeh = vehicle (leader _grp);
         {
             private _veh = _x;
-            if (!alive _veh || { !canMove _veh } || { fuel _veh < AIC_RIDE_MIN_FUEL } || { (locked _veh) == 2 }) then { continue };
+            // (an aircraft needs fuel for the trip and back: AIC_RIDE_MIN_FUEL_AIR)
+            if (!alive _veh || { !canMove _veh } || { fuel _veh < ([AIC_RIDE_MIN_FUEL, AIC_RIDE_MIN_FUEL_AIR] select (_veh isKindOf "Air")) } || { (locked _veh) == 2 }) then { continue };
             if (_veh isKindOf "Ship") then { continue };
             // nobody drives off with a player aboard
             if (((crew _veh) findIf { isPlayer _x }) >= 0) then { continue };
@@ -226,8 +227,10 @@ if (_fresh) then {
             private _d = (getPosATL _veh) distance2D _cargoPos;
             // transport-only vehicles wait at bases and exist to go and fetch squads
             if (_d > (_searchR * ([1, AIC_TRANSPORT_RANGE_MULT] select _transportOnly))) then { continue };
-            // a fighting vehicle from farther away than the walk itself is not worth it
-            if (!_isHeli && { !_isPlane } && { !_transportOnly } && { _d > _trip }) then { continue };
+            // a fighting vehicle from farther away than the walk itself is not
+            // worth it; a truck not from more than twice as far (its fetch
+            // would take longer than the squad's walk)
+            if (!_isHeli && { !_isPlane } && { _d > (_trip * ([1, 2] select _transportOnly)) }) then { continue };
 
             private _arm = [_veh] call AIC_fnc_vehicleArmament;
             // (a plane is a long-trip ride like a helicopter; a helicopter close by still goes first)
