@@ -9,6 +9,7 @@ This repository uses a shared Markdown tracker to coordinate review findings and
 - [docs/MODEL_HANDOFF.md](docs/MODEL_HANDOFF.md) — claims, concurrent work, lifecycle, evidence requirements, and handoff templates.
 - [CONTRACT.md](CONTRACT.md) — interfaces and state contracts.
 - [docs/CODE_BEST_PRACTICES.md](docs/CODE_BEST_PRACTICES.md) — SQF conventions and validation expectations.
+- [.claude/skills/code-swarm/SKILL.md](.claude/skills/code-swarm/SKILL.md) — the `code-swarm` skill: how a lead model splits batch work into briefed subagent tasks with independent review. Use it for multi-item fix or documentation batches; it does not relax any rule above.
 
 ## Scope and coordination
 
