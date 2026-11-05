@@ -107,6 +107,9 @@ if (count _via >= 2 || {_approachDist > 0 && {_dist > (_approachDist + _radius +
     if (surfaceIsWater _app && {!_isAir}) then {
         _app = _target getPos [_approachDist * 0.5, _target getDir _leaderPos];
         _app = [_app select 0, _app select 1, 0];
+        if (_isGroundVeh) then { _app = [_app, 200] call AIC_fnc_roadPos; };
+        // still wet: the approach ends at the target itself
+        if (surfaceIsWater _app) then { _app = [_target select 0, _target select 1, 0] };
     };
     private _wpA = _group addWaypoint [_app, 0];
     _wpA setWaypointType "MOVE";

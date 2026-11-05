@@ -74,7 +74,9 @@ private _isGroundVeh = _type in ["MOTOR", "MECH", "ARMOR"];
 
 if (_type == "NAVAL" && {!surfaceIsWater _dest}) then {
     private _water = [_dest, _leader, 1000] call AIC_fnc_waterPos;
-    if (_water isNotEqualTo []) then { _dest = _water; };
+    // no water near the rally point: a ship stays where it is, at sea
+    _dest = [getPosATL _leader, _water] select (_water isNotEqualTo []);
+    _dest = [_dest select 0, _dest select 1, 0];
 };
 if (_isGroundVeh) then { _dest = [_dest, 150] call AIC_fnc_roadPos; };
 // infantry falling back does not end up on one spot

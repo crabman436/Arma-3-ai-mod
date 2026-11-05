@@ -36,7 +36,7 @@ if (isNull _veh) exitWith { 0 };
 // also counted as a cargo seat)
 private _free = {
     _x params ["_unit", "_role", "_cargoIdx", "_path", ["_isFFV", false]];
-    (isNull _unit || { !isNull _cargo && { (group _unit) isEqualTo _cargo } })
+    (isNull _unit || { alive _unit && { !isNull _cargo } && { (group _unit) isEqualTo _cargo } })
     && { (_role == "cargo" && { _cargoIdx < 0 || { !(_veh lockedCargo _cargoIdx) } }) || { _isFFV isEqualTo true } }
 } count (fullCrew [_veh, "", true]);
 

@@ -4,7 +4,9 @@
  *   A parking place at a base for a vehicle group (server only, setting
  *   "useVehicleParks"). Each base lays out, the first time it is asked, a
  *   motor pool on open flat ground (AIC_fnc_bestPlace): up to 20 places in rows for ground
- *   vehicles ("parkSlots") and up to 6 for helicopters ("heliSlots"), each
+ *   vehicles ("parkSlots"; 7 m side by side, rows 13 m apart, off roads and
+ *   runways (AIC_fnc_onRunway), facing out of the base: "parkDir") and up
+ *   to 6 for helicopters ("heliSlots"), each
  *   helicopter place with an invisible helipad so the pilot lands there
  *   (base key "heliPads", deleted by AIC_fnc_removeCommander).
  *   A group keeps its place while its record "home" is this base, also
@@ -43,7 +45,10 @@ private _key = ["parkSlots", "heliSlots"] select _isHeli;
 if !(_key in _obj) then {
     private _c = _obj get "pos";
     _c = [_c select 0, _c select 1, 0];
-    private _size = [14, 40] select _isHeli;
+    // ground: side by side 7 m apart, rows 13 m apart (room to drive out);
+    // helicopters: 40 m all round
+    private _size = [13, 40] select _isHeli;
+    private _gap = [7, 40] select _isHeli;
     private _cols = [5, 3] select _isHeli;
     private _rows = [4, 2] select _isHeli;
     private _reach = ((_obj getOrDefault ["radius", 300]) min 250) max 60;
@@ -56,9 +61,11 @@ if !(_key in _obj) then {
     private _slots = [];
     for "_r" from 0 to (_rows - 1) do {
         for "_col" from 0 to (_cols - 1) do {
-            private _p = (_centre getPos [(_r - (_rows - 1) / 2) * _size, _dir]) getPos [(_col - (_cols - 1) / 2) * _size, _dir + 90];
+            private _p = (_centre getPos [(_r - (_rows - 1) / 2) * _size, _dir]) getPos [(_col - (_cols - 1) / 2) * _gap, _dir + 90];
             _p = [_p select 0, _p select 1, 0];
-            if (!surfaceIsWater _p && {(_p isFlatEmpty [_size * 0.4, -1, 0.3, _size * 0.4, 0, false]) isNotEqualTo []}) then {
+            // dry, flat and empty, off the roads and the runways
+            if (!surfaceIsWater _p && {!isOnRoad _p} && {!([_p] call AIC_fnc_onRunway)}
+                && {(_p isFlatEmpty [_gap * 0.4, -1, 0.3, _gap * 0.4, 0, false]) isNotEqualTo []}) then {
                 _slots pushBack _p;
                 if (_isHeli) then {
                     private _pads = _obj getOrDefault ["heliPads", []];
@@ -68,14 +75,18 @@ if !(_key in _obj) then {
             };
         };
     };
+    // nothing fits (the engine's spot sat on a runway): laid out again next time
+    if (_slots isEqualTo []) exitWith {};
     _obj set [_key, _slots];
+    // the way parked vehicles face: out of the base (AIC_fnc_fortifyCycle lines them up)
+    if (!_isHeli) then {_obj set ["parkDir", _dir]};
     ["%1: %2 park at '%3' with %4 places", [
         _cmd getOrDefault ["side", sideUnknown], ["vehicle", "helicopter"] select _isHeli,
         _obj getOrDefault ["name", ""], count _slots
     ]] call AIC_fnc_log;
 };
 
-private _slots = _obj get _key;
+private _slots = _obj getOrDefault [_key, []];
 if (_slots isEqualTo []) exitWith {[]};
 
 // --- find its place --------------------------------------------------------------
@@ -95,7 +106,8 @@ private _own = -1;
         private _hRec = if (isNull _holder) then {createHashMap} else {_groupData getOrDefault [hashValue _holder, createHashMap]};
         if (
             isNull _holder
-            || {({alive _x} count (units _holder)) == 0}
+            // a dead crew's vehicle still standing in it keeps the place taken
+            || {({alive _x} count (units _holder)) == 0 && {((_slots select _forEachIndex) nearEntities [["LandVehicle", "Air"], 5]) isEqualTo []}}
             // the holder still parks here: its home, or for a group without a
             // home (helicopters) the base it was given this place at
             || {
@@ -107,7 +119,11 @@ private _own = -1;
 } forEach _slots;
 
 private _index = if (_own >= 0) then {_own} else {_free};
-if (_index < 0) exitWith {[]};
+if (_index < 0) exitWith {
+    // no place here: a pad of another base must not be landed on
+    if (_isHeli) then {_rec set ["parkPad", objNull]};
+    []
+};
 
 _claims set [_index, _group];
 // a group without a home keeps the claim by it while away (a sortie, a

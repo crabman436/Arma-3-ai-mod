@@ -97,6 +97,7 @@ class CfgFunctions
         {
             file = "\z\aic\addons\main\functions\support";
             class supportCycle {};
+            class onRunway {};
             class flyingWeather {};
             class fireMission {};
             class tasksAir {};
@@ -122,6 +123,10 @@ class CfgFunctions
             class supplyRoles {};
             class supplyCycle {};
             class splitForRide {};
+            class paradrop {};
+            class fortifyCycle {};
+            class fortifyPlan {};
+            class staticClasses {};
             class flightPath {};
             class isLanded {};
             class freeSeats {};

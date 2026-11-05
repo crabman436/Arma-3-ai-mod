@@ -46,6 +46,7 @@ _radius = _radius max 50;
 private _center = [_pos select 0, _pos select 1, 0];
 
 if (_type in ["STATIC", "ARTY"]) exitWith {
+    [_group] call AIC_fnc_clearWaypoints;
     _group setBehaviour "AWARE";
     _group setCombatMode "YELLOW";
     false
@@ -78,8 +79,14 @@ private _formation = switch (true) do {
     default {"WEDGE"};
 };
 
+// at night infantry keeps closer to the place and stops longer to listen
+private _night = _type == "INF" && {([] call AIC_fnc_timeToNight) == 0};
+if (_night) then { _radius = (_radius * 0.75) max 50; };
+
 // A route around the place, not a random walk through it: 5-6 points on a ring
-// at about the edge, in order, starting on the side the group is on
+// at about the edge, in order, starting on the side the group is on. Infantry
+// goes from cover to cover: each point moves to the best cover within 60 m
+// (woods, trees, the side of a building), not into the middle of a field
 private _points = [];
 private _wanted = 5 + floor random 2;
 private _start = _center getDir _leader;
@@ -88,6 +95,10 @@ for "_i" from 0 to (_wanted - 1) do {
     private _p = _center getPos [_radius * (0.85 + random 0.3), _start + _turn * _i * 360 / _wanted];
     _p = [_p select 0, _p select 1, 0];
     if (_isGroundVeh) then { _p = [_p, 150] call AIC_fnc_roadPos; };
+    if (_type == "INF") then {
+        private _cover = [_p, 60, "forest + trees + 0.5*houses - meadow - 10*sea", 0] call AIC_fnc_bestPlace;
+        if (_cover isNotEqualTo [] && {!surfaceIsWater _cover}) then { _p = _cover; };
+    };
     private _wet = surfaceIsWater _p;
     private _ok = switch (true) do {
         case (_isAir): {true};
@@ -125,8 +136,15 @@ private _first = [];
     _wp setWaypointSpeed _speed;
     _wp setWaypointFormation _formation;
     _wp setWaypointCompletionRadius (if (_isGroundVeh || _isAir || _isNaval) then {50} else {20});
-    // infantry stops and looks around at each point
-    if (_type == "INF") then { _wp setWaypointTimeout [10, 20, 40]; };
+    // infantry stops and looks around at each point (longer at night, in file)
+    if (_type == "INF") then {
+        if (_night) then {
+            _wp setWaypointTimeout [20, 40, 70];
+            _wp setWaypointFormation "FILE";
+        } else {
+            _wp setWaypointTimeout [10, 20, 40];
+        };
+    };
     if (_forEachIndex == 0) then { _first = _wp; };
 } forEach _points;
 

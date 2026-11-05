@@ -494,6 +494,12 @@ is parked again.
 | `"transportMinDistance"` | 1200 | an infantry order farther than this tries to get a transport |
 | `"heliTransportDistance"` | 3000 | beyond this, helicopters are preferred (if `useAir`) |
 | `"transportSearchRadius"` | 4000 | max distance between the infantry group and a candidate transport |
+| `"useParadrop"` | true | transport planes at a held airfield drop squads by parachute (see the paradrop and digging-in extension) |
+| `"paradropDistance"` | 3000 | least trip for a paradrop; clamped to >= 1000 |
+| `"fortifyObjectives"` | true | `AIC_fnc_fortifyCycle` digs in at held places |
+| `"fortifyRoadblocks"` | true | the plan has roadblocks |
+| `"fortifyServicePoints"` | true | the plan has a service point at bases and airfields |
+| `"fortifyMaxObjects"` | 400 | most objects one commander builds; clamped to >= 0 |
 
 ## New / extended record keys
 
@@ -1013,3 +1019,27 @@ by `AIC_fnc_moduleCommander` into `"replanOnContact"`.
 - `AIC_fnc_commanderLoop`: at the start of every iteration sets `"replanRequested"` false and `"replanReason"` `""`, then calls the cycle. Instead of one `sleep`, it waits with `waitUntil { sleep AIC_REPLAN_POLL; ... }` until the first of: the commander is disabled; `time` reaches the cycle's end + `(loopInterval - elapsed) max 1` (the old wait); `"replanRequested"` is true **and** `time` ≥ the cycle's end + `replanMinInterval max 5`. Both settings are read live. In debug mode the cycle-time log line of an early cycle ends with `(early: <reason>)`.
 - `AIC_fnc_groupEngaged`: reads the record's `"lastEngaged"` before stamping it. Then, if `"replanOnContact"` is true and no request is pending, calls `AIC_fnc_requestReplan` with reason `"contact of <groupId>"` when `time - previous lastEngaged ≥ AIC_REPLAN_FRESH_CONTACT`, else with `"losses of <groupId>"` when all of these hold: type not STATIC / ARTY / NAVAL; task not RETREAT / SUPPORT / TRANSPORT / TRANSPORTED / RTB; the record's `"strength"` (last cycle) is above `"retreatThreshold"`; alive units / `"initialSize"` is at or below it. Vehicle damage is not part of this estimate.
 - `AIC_fnc_createCommander`: initial keys `"replanRequested"` (false) and `"replanReason"` (`""`); clamps `"replanMinInterval"` to ≥ 5.
+
+# Paradrop and digging-in extension
+
+## Paradrop
+
+- `AIC_fnc_paradrop` (logistics) — `[units, aircraft] call` → script handle (scriptNull if nothing to do). Server only. Units aboard the aircraft jump in array order, one every `AIC_PARA_SPACING` s: unassigned, `allowGetIn false`, `moveOut`, placed 12 m behind and 4 m below it, seated in their own parachute vehicle `AIC_PARA_CHUTE` (0.3 x the aircraft's velocity), damage off for 3 s. Without a parachute vehicle: `AIC_PARA_BACKPACK` for the jump, the own backpack and its contents back once down. Empty parachutes are deleted `AIC_PARA_CLEANUP` s after landing (`AIC_PARA_TIMEOUT` at the latest).
+- `AIC_fnc_findTransport`: type PLANE candidates (see its header): `useParadrop` and `useAir`, flying weather, trip > `paradropDistance`, the plane on the ground and still at a held airfield (`AIC_AIRFIELD_TURNAROUND_RANGE`), record `"airfield"` < 0, within `AIC_PARA_PICKUP_RANGE` of the cargo leader, fuel >= 0.5. Same tier as helicopters, cost x (1 + 0.6 x (armament + 1)).
+- `AIC_fnc_orderTransport` plane branch: pickup = the plane's position, no LOAD / TR UNLOAD waypoints, no GETIN sync; drop zone open ground (`AIC_fnc_bestPlace`, never water) `AIC_PARA_DZ_OFFSET` (threatened) / `AIC_PARA_DZ_OFFSET_SAFE` m short of the destination; records `"paradrop"` true (both), `"dzRunIn"` (transport, up to `AIC_PARA_RUN_IN` m before the drop zone towards the pickup), `"paraStarted"` false (cargo).
+- `AIC_fnc_transportCycle`: on boarding the plane gets MOVE waypoints run-in, drop zone (`"wpUnload"`), 2500 m beyond, CARELESS / BLUE, `flyInHeight AIC_PARA_HEIGHT`. RIDE: within `AIC_PARA_DROP_RANGE` (2D) and at least `AIC_PARA_MIN_HEIGHT` ATL → `AIC_fnc_paradrop` (watched every 0.5 s by a script spawned at boarding, the cycle checks too), cargo `"paraStarted"` true, `"paraTime"`; past the drop zone without a jump → back to the waypoint before it. After the jump the cargo's `"transport"` is cleared once nobody is aboard; the final order is issued when nobody is in a vehicle any more (or `AIC_PARA_TIMEOUT` + 30 s). Every dismount of the cargo loop goes through `_fnc_getOut`: from a plane in the air a jump (below `AIC_PARA_MIN_HEIGHT`: nothing, they stay aboard). Transport section: a plane with cargo still inside in the air drops them (too low: `landAt` the nearest held airfield once, transport record `"paraLanding"`); a finished plane gets `flyInHeight 100`, `assignToAirport` the nearest held airfield and `landAt`: a VTOL (config `VTOL` > 0) on an invisible pad where it took off (transport record `"pickupLz"`), any other plane at the airport; task `"RTB"`, `"taskPos"` the airfield, `"airfield"` its id, `"turnaround"` -1, so `AIC_fnc_rearmCycle` turns it around and sets it IDLE.
+
+## Digging in
+
+- `AIC_fnc_fortifyCycle` (logistics) — `[commander] call` → objects made. Run by `commanderCycle` after `supplyCycle`; does nothing more often than `AIC_FORT_INTERVAL` (commander key `"fortifyTime"`). Objective keys: `"fortHeldSince"` (time the side took it, cleared when it is not the owner), `"fort"` HashMap `{"side", "items", "next", "objects", "service", "kind", "done", "netPending"}` (dropped when the side loses the place, planned again when it is retaken). Commander key `"fortifyCount"` (objects of its plans still standing; building stops at `fortifyMaxObjects`). The camo net waits for the park: until then the plan is `"done"` with `"netPending"` true. Conditions, reuse, manning, service points and park alignment: see the function header. Objects carry the public variable `AIC_fortSide` (side).
+- `AIC_fnc_fortifyPlan` (logistics) — `[commander, objective] call` → HashMap `"items"` (`[kind, class, posATL or "PARK", dir, role]`, kind `"STATIC"`, `"PROP"`, `"SERVICE"`, `"NET"`), `"service"`, `"kind"` (`"BASE"`, `"AIRFIELD"`, `"OTHER"`), `"threatDir"`. Deterministic for a given terrain.
+- `AIC_fnc_staticClasses` (logistics) — `[commander] call` → HashMap role (`"HMG"`, `"GMG"`, `"AT"`, `"AA"`) → classes of the faction most of the commander's leaders belong to; vanilla fallback per side. Cached in `AIC_ns` `"staticClasses"`.
+- `AIC_fnc_onRunway` (support) — `[pos, clearance(optional, AIC_FORT_RUNWAY_CLEAR)] call` → bool. Runway and taxiway segments from the world config, cached in `AIC_ns` `"runways"`.
+- `AIC_fnc_parkSlot`: ground slots 7 m apart, rows 13 m (`_gap` / `_size`), never on a road or runway; objective key `"parkDir"` (facing of the ground park, out of the base).
+- `AIC_fnc_setMarch`: group variable `AIC_marchVehicles` (the vehicles a march limited, reset on the way off and then cleared); off the march only those and the group's own driven vehicles are reset.
+- `AIC_fnc_orderPatrol`: infantry patrol points move to the best cover within 60 m (`AIC_fnc_bestPlace` "forest + trees + 0.5*houses - meadow - 10*sea"); at night (`AIC_fnc_timeToNight` 0) radius x 0.75, timeouts 20/40/70 s, formation FILE.
+
+## Constants (script_component.hpp)
+
+`AIC_PARA_CHUTE` "NonSteerable_Parachute_F", `AIC_PARA_BACKPACK` "B_Parachute", `AIC_PARA_SPACING` 0.6, `AIC_PARA_CLEANUP` 10, `AIC_PARA_TIMEOUT` 180, `AIC_PARA_HEIGHT` 300, `AIC_PARA_MIN_HEIGHT` 150, `AIC_PARA_DROP_RANGE` 350, `AIC_PARA_PICKUP_RANGE` 1200, `AIC_PARA_DZ_OFFSET` 600, `AIC_PARA_DZ_OFFSET_SAFE` 250, `AIC_PARA_RUN_IN` 3000; `AIC_FORT_INTERVAL` 45, `AIC_FORT_HOLD` 120, `AIC_FORT_SAFE` 600, `AIC_FORT_PER_CYCLE` 6, `AIC_FORT_SERVICE_RADIUS` 25, `AIC_FORT_PLAYER_NEAR` 300, `AIC_FORT_RUNWAY_LEN` 1600, `AIC_FORT_RUNWAY_CLEAR` 70, `AIC_FORT_TOWER`, `AIC_FORT_BARRIER`, `AIC_FORT_FUEL`, `AIC_FORT_AMMO`, `AIC_FORT_REPAIR` (class lists, the first existing class is used).
+

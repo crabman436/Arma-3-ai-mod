@@ -470,3 +470,51 @@
 #ifndef AIC_SENTRY_MIN_GROUP
 #define AIC_SENTRY_MIN_GROUP 4
 #endif
+
+// ---------------------------------------------------------------- paradrop
+// parachute vehicle every jumper is seated in (none equipped needed); the
+// backpack is the fallback when no parachute vehicle can be made
+#define AIC_PARA_CHUTE "NonSteerable_Parachute_F"
+#define AIC_PARA_BACKPACK "B_Parachute"
+// s between two jumpers of a stick
+#define AIC_PARA_SPACING 0.6
+// s after a jumper is down before his empty parachute is deleted
+#define AIC_PARA_CLEANUP 10
+// s after the jump after which a jumper counts as down whatever happened
+#define AIC_PARA_TIMEOUT 180
+// flyInHeight of a transport plane on its run (m)
+#define AIC_PARA_HEIGHT 300
+// least height above the ground for a jump (m)
+#define AIC_PARA_MIN_HEIGHT 150
+// the stick jumps within this distance of the drop zone (m, 2D)
+#define AIC_PARA_DROP_RANGE 350
+// the squad walks at most this far to a transport plane (m)
+#define AIC_PARA_PICKUP_RANGE 1200
+// drop zone short of a threatened / quiet destination (m)
+#define AIC_PARA_DZ_OFFSET 600
+#define AIC_PARA_DZ_OFFSET_SAFE 250
+// run-in point before the drop zone (m, at most half the trip)
+#define AIC_PARA_RUN_IN 3000
+
+// ---------------------------------------------------------------- digging in (AIC_fnc_fortifyCycle)
+// s between two fortify passes of a commander
+#define AIC_FORT_INTERVAL 45
+// s a place must be held before work starts there
+#define AIC_FORT_HOLD 120
+// no known enemy within the place's radius plus this (m)
+#define AIC_FORT_SAFE 600
+// objects made per pass, all places together
+#define AIC_FORT_PER_CYCLE 6
+// m around a service point within which standing vehicles are serviced
+#define AIC_FORT_SERVICE_RADIUS 25
+// no park vehicle is turned while a player is this close (m)
+#define AIC_FORT_PLAYER_NEAR 300
+// runway line length each way from an airport's ilsPosition, and clearance (m)
+#define AIC_FORT_RUNWAY_LEN 1600
+#define AIC_FORT_RUNWAY_CLEAR 70
+// props (vanilla classes); service point: the first class of each list that exists
+#define AIC_FORT_TOWER "Land_Cargo_Patrol_V1_F"
+#define AIC_FORT_BARRIER "Land_CncBarrier_stripes_F"
+#define AIC_FORT_FUEL ["B_Slingload_01_Fuel_F", "Land_Pod_Heli_Transport_04_fuel_F", "Land_FuelStation_Feed_F"]
+#define AIC_FORT_AMMO ["Box_NATO_AmmoVeh_F", "Box_East_AmmoVeh_F", "Box_IND_AmmoVeh_F"]
+#define AIC_FORT_REPAIR ["B_Slingload_01_Repair_F", "Land_Pod_Heli_Transport_04_repair_F", "Land_ToolTrolley_02_F"]

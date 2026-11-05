@@ -530,6 +530,66 @@ minutes on the ground being rearmed, refuelled and repaired, and is then
 available again. Without a held airfield it stays up as it is. Helicopters use
 their parks and the ammo trucks instead.
 
+### Paradrops
+
+A transport plane or VTOL (any plane with enough passenger seats, armed or
+not) standing at an airfield the side holds can carry a squad on a long trip
+(`useParadrop`, `useAir`, flying weather, trip longer than
+`paradropDistance`; the squad within 1200 m of the plane, which is not in a
+turnaround). The squad walks to the plane and boards where it stands; once
+everybody is aboard the plane takes off and flies a run-in point, the drop
+zone and a point beyond at 300 m. The drop zone is open ground 250 m short
+of the target (600 m when the target is threatened), never water. Over it
+the stick jumps, one man every 0.6 s. Every jumper gets a parachute of his
+own, so nobody needs one equipped and backpacks are left alone. A plane that
+flew past without dropping flies the run again. The plane is free as soon as
+the last man is out and lands at the nearest held airfield, where it is
+refuelled and rearmed like a CAS plane; the squad gets its order once
+everybody is on the ground. Troops are never ordered out of a plane in the
+air: an aborted ride, a lost transport or stragglers left inside jump too
+(below 150 m they stay aboard and the plane lands first).
+
+Mission scripts can drop any units themselves:
+
+```sqf
+[units _squad, _plane] call AIC_fnc_paradrop;
+```
+
+### Digging in
+
+Once a base, airfield or town has been held for two minutes, with no enemy
+known within its radius plus 600 m and a group of the side inside it, the
+garrison digs in (`fortifyObjectives`), six objects every 45 s:
+
+- **Roadblocks** on the roads leading in (bases 3, airfields and towns 2,
+  `fortifyRoadblocks`): striped concrete barriers on both shoulders, staggered,
+  cones farther out and an HMG nest beside the road facing out. The lane stays
+  open, so convoys of both sides still pass.
+- **Nests** on the perimeter (0.8 x radius, at most 180 m, so the garrison
+  mans them): HMG and GMG (3 at bases and airfields, 2 in towns) and one AT,
+  on the highest free spots, the threat's side first, facing out behind a
+  sandbag wall.
+- **AA** inside bases (1) and airfields (2), a **watchtower** on the
+  perimeter, a **service point** (fuel, vehicle ammunition, repair;
+  `fortifyServicePoints`) on open ground inside, and a **camo net** over the
+  vehicle park once it is laid out.
+
+Nothing is put on water, roads, runways or taxiways, steep ground, or within
+4 m of buildings, walls, trees, rocks or other objects. The guns are the
+side's own faction's static weapons from the loaded config (modded factions
+too), with the vanilla guns as fallback. A new gun is manned at once by the
+garrison (`garrisonManStatics`, at most half a squad on guns). Vehicles of
+the side standing at the service point are refuelled, rearmed and repaired
+step by step. A side that takes a place over reuses the sandbags, barriers
+and tower that stand there and replaces the other side's empty guns with its
+own. A commander builds at most `fortifyMaxObjects` objects; every object
+carries the variable `AIC_fortSide`.
+
+Vehicle parks are laid out 7 m side by side with rows 13 m apart, off roads
+and runways, and standing vehicles are turned to face out of the base when
+no player is near. Infantry patrols go from cover to cover around the place;
+at night they keep closer, stop longer and move in file.
+
 ### Supply trucks
 
 With `useSupplyTrucks` on, the general sends repair, fuel and ammo trucks to
@@ -601,9 +661,15 @@ attack. The rest of the army stays parked and costs nothing.
 | `transportMinDistance` | 1200 | Infantry orders farther than this (m) look for a transport |
 | `heliTransportDistance` | 3000 | Beyond this distance (m), helicopters are preferred (if `useAir`) |
 | `transportSearchRadius` | 4000 | Maximum distance (m) between the infantry and a candidate transport |
+| `useParadrop` | true | Transport planes at a held airfield drop squads by parachute on long trips (needs `useAir`) |
+| `paradropDistance` | 3000 | Least trip (m) for a paradrop (at least 1000) |
+| `fortifyObjectives` | true | Garrisons dig in at bases, airfields and towns the side holds |
+| `fortifyRoadblocks` | true | ... with roadblocks on the roads in |
+| `fortifyServicePoints` | true | ... and a refuel / rearm / repair point at bases and airfields |
+| `fortifyMaxObjects` | 400 | Most objects one commander builds in a mission |
 
-The commander module has `ManageDynSim`, `ManageGarrisons` and `UseTransport`
-checkboxes. The objective module has `Garrison` (power, 0 = automatic) and
+The commander module has `ManageDynSim`, `ManageGarrisons`, `UseTransport`,
+`UseParadrop` and `FortifyObjectives` checkboxes. The objective module has `Garrison` (power, 0 = automatic) and
 `IsBase`.
 
 ### Performance and cleanup
@@ -1000,19 +1066,29 @@ mod.cpp
 ### Regression tests in Arma
 
 `tests/run-arma-tests.sh` (Git Bash on Windows) builds the mod, starts a
-local dedicated server (`arma3server_x64.exe -autoInit`) with the mission
-`tests/missions/aic_regression.VR` and reports from the RPT. The mission calls
-the real functions for the fixed tracker findings (F02, F07, F08, F10, F11,
-F13), checks the replan-on-contact loop timing, then lets two live commanders
-fight for `SOAK` seconds and fails on any script error.
+local dedicated server (`arma3server_x64.exe -autoInit`) for each test mission
+and reports from the RPT:
+
+- `tests/missions/aic_regression.VR`: the real functions for the fixed tracker
+  findings (F02, F07, F08, F10, F11, F13), a parachute jump from a plane in
+  flight, the replan-on-contact loop timing, then two live commanders fighting
+  for `SOAK` seconds.
+- `tests/missions/aic_scenarios.Stratis`: an airfield base and a village dig
+  in (placement rules, manning, service point, reuse by the next owner), and a
+  whole paradrop ride (the plane at the airfield, boarding, the jump, landing
+  and the plane's turnaround), driven with 20 s cycles.
 
 ```bash
 ARMA="/d/SteamLibrary/steamapps/common/Arma 3" SOAK=240 tests/run-arma-tests.sh
+MISSIONS=aic_scenarios.Stratis tests/run-arma-tests.sh
 ```
 
-It copies the mission to `<ARMA>/MPMissions/aic_regression.VR` and keeps the
-staged mod, server profile and RPT in `.hemttout/arma-test`. Exit code 0 means
-every check passed and the RPT has no script error.
+It copies each mission (plus `tests/missions/common/harness.sqf`) to
+`<ARMA>/MPMissions/` and keeps the staged mod, server profiles and RPTs in
+`.hemttout/arma-test`. It refuses to start while another dedicated server
+runs and stops only the server it started. Checks that need DLC data or an
+airfield the map lacks report SKIP. Exit code 0 means every check passed and
+no RPT has a script error.
 
 ### Arma 3 Tools: Addon Builder
 

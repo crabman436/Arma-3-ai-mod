@@ -88,6 +88,8 @@ _settings set ["garrisonPerPriority", (_settings get "garrisonPerPriority") max 
 _settings set ["garrisonMovesPerCycle", (round (_settings get "garrisonMovesPerCycle")) max 0];
 _settings set ["transportMinDistance", (_settings get "transportMinDistance") max 0];
 _settings set ["heliTransportDistance", (_settings get "heliTransportDistance") max 0];
+_settings set ["paradropDistance", (_settings get "paradropDistance") max 1000];
+_settings set ["fortifyMaxObjects", (round (_settings get "fortifyMaxObjects")) max 0];
 _settings set ["transportSearchRadius", (_settings get "transportSearchRadius") max 0];
 _settings set ["cleanupDelay", (_settings get "cleanupDelay") max 0];
 _settings set ["cleanupPlayerDistance", (_settings get "cleanupPlayerDistance") max 0];

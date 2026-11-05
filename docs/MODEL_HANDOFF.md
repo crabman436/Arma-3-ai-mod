@@ -160,3 +160,13 @@ Sol coordinates three Luna work packages for F02/F09/F10/F11/F12/F13. [Concrete 
 - **Tests run:** `hemtt check` 0 errors (54 pre-existing style warnings). Arma 3 2.22.154089 dedicated server, VR, `tests/run-arma-tests.sh` (`tests/missions/aic_regression.VR`): 44/44 checks pass on the fix branch, no script errors; the same tests on `34f48fd` fail 13 (F02, F07, F08, F10, F11, F13, replan), so they discriminate. Soak with two live commanders (see PR for the long run).
 - **Not run:** F03/F04/F09/F12 scenario tests (covered only by the soak's no-error run), multiplayer/headless-client checks, Jev live API.
 - **Next step:** Review and merge the PR into the default branch; then mark records FIXED, and VERIFIED where an independent run of `tests/run-arma-tests.sh` passes. Add scenario tests for F04/F09/F12.
+
+### 2026-11-05 — Claude (Opus 5.5), transport review, paradrops and digging in
+
+- **Authorized scope:** Owner asked to review how troops are moved and transported, add paradrops from transport planes (parachute provided), and make held places realistic: statics, parked vehicles, patrols, garrisons, roadblocks, refuel points.
+- **Start → result:** `claude/arma3-ai-coordination-qilgd4` @ `c0b18d9` → `claude/transport-paradrop-fortify`.
+- **Reviews:** Haiku swarm over transport / movement / garrison code (144 agents: 8 scenario traces, 28 per-file checks, 2 mappers, 2 refuters per finding; 25 survivors → 16 fixed, 4 refuted, 5 left as design) and over the new code (239 agents; 52 survivors → fixed, refuted or left as listed in the commit messages). Every survivor was checked by hand. No new tracker records: the fixes are listed per item in the commits.
+- **Tests:** `hemtt check` 0 errors (54 pre-existing style warnings). Arma 3 2.22.154089 dedicated server: `aic_scenarios.Stratis` 28/28, `aic_regression.VR` 54/54 (see the PR for the final run), no script errors. The Stratis paradrop ride runs with 20 s cycles; in an earlier run with cycle-only checks the jump depended on the test's 5 s cycle (fixed with the 0.5 s drop watcher).
+- **Known limits / not run:** multiplayer and headless-client checks; modded transport planes (only the Apex Blackfish was flown; non-VTOL planes use `landAt` the airport, which a VTOL failed to complete in testing); the camo net waits for a vehicle park; left review items: flight-path detour geometry, convoy separation reset, march state of a deleted group, a NAVAL leader standing on land, a drop zone in trees, a gunner who never reaches his gun.
+- **Next step:** review and merge the PR; fly a modded fixed-wing transport (C-130 class) to confirm the runway landing; consider scenario tests for F03 / F04 / F09 / F12.
+

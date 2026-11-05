@@ -91,6 +91,7 @@ private _fnc_planInf = {
 [_cmd] call AIC_fnc_garrisonCycle;
 [_cmd] call AIC_fnc_transportCycle;
 [_cmd] call AIC_fnc_supplyCycle;
+[_cmd] call AIC_fnc_fortifyCycle;
 
 // 10. follow up on running orders
 [_cmd] call AIC_fnc_monitorOrders;

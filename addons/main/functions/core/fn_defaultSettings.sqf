@@ -51,6 +51,11 @@ createHashMapFromArray [
     ["garrisonMovesPerCycle", 2],
     ["garrisonManStatics", true],
     ["useVehicleParks", true],
+    // --- logistics: digging in at held places (AIC_fnc_fortifyCycle)
+    ["fortifyObjectives", true],
+    ["fortifyRoadblocks", true],
+    ["fortifyServicePoints", true],
+    ["fortifyMaxObjects", 400],
     ["stagedAssaults", true],
     ["spreadGroups", true],
 
@@ -61,6 +66,8 @@ createHashMapFromArray [
     ["useSupplyTrucks", true],
     ["transportMinDistance", 1200],
     ["heliTransportDistance", 3000],
+    ["useParadrop", true],
+    ["paradropDistance", 3000],
     ["transportSearchRadius", 4000],
 
     // --- garbage management

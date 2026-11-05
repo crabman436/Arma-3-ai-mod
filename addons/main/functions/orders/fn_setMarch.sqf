@@ -41,13 +41,22 @@ private _vehicles = [];
     if (alive _x && {!isPlayer _x}) then {
         if (_on) then {_x disableAI "AUTOCOMBAT"} else {_x enableAI "AUTOCOMBAT"};
         private _veh = objectParent _x;
-        // off the march: also a vehicle whose driver died (its road / speed
-        // limits stay on the vehicle for whoever drives it next)
-        if (!isNull _veh && {!_on || {(group (driver _veh)) isEqualTo _group}} && {_veh isKindOf "LandVehicle"} && {!(_veh isKindOf "StaticWeapon")}) then {
+        if (!isNull _veh && {(group (driver _veh)) isEqualTo _group} && {_veh isKindOf "LandVehicle"} && {!(_veh isKindOf "StaticWeapon")}) then {
             _vehicles pushBackUnique _veh;
         };
     };
 } forEach (units _group);
+// off the march: every vehicle this march limited, also one whose crew died
+// or got out since (its road / speed limits stay on it for whoever drives it
+// next); never a vehicle another group drives
+if (!_on) then {
+    {
+        if (!isNull _x && {alive _x} && {isNull (driver _x) || {!alive (driver _x)} || {(group (driver _x)) isEqualTo _group}}) then {
+            _vehicles pushBackUnique _x;
+        };
+    } forEach (_group getVariable ["AIC_marchVehicles", []]);
+    _group setVariable ["AIC_marchVehicles", nil];
+};
 
 if (_vehicles isEqualTo []) exitWith {_on};
 
@@ -57,6 +66,12 @@ if (_vehicles isEqualTo []) exitWith {_on};
     _x limitSpeed (2 * getNumber (configOf _x >> "maxSpeed"));
     if (_on) then {_x setConvoySeparation AIC_CONVOY_SEPARATION};
 } forEach _vehicles;
-if (_on && {count _vehicles > 1}) then {(vehicle (leader _group)) limitSpeed AIC_CONVOY_SPEED};
+// the convoy follows its lead vehicle (one of its own land vehicles)
+if (_on && {count _vehicles > 1}) then {
+    private _lead = vehicle (leader _group);
+    if !(_lead in _vehicles) then {_lead = _vehicles select 0};
+    _lead limitSpeed AIC_CONVOY_SPEED;
+};
+if (_on) then {_group setVariable ["AIC_marchVehicles", _vehicles]};
 
 _on
