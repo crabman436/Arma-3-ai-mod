@@ -71,7 +71,7 @@ class CfgVehicles
             {
                 property = "AIC_ModuleCommander_ReplanOnContact";
                 displayName = "Replan on contact";
-                tooltip = "When a group meets the enemy, or is shot down to its retreat threshold, the general thinks again within seconds instead of waiting for the next think interval (never sooner than 5 s after its last cycle ended; setting replanMinInterval).";
+                tooltip = "When a group meets the enemy, or is shot down to its retreat threshold, the general thinks again within seconds instead of waiting for the next think interval (by default never sooner than 10 s after its last cycle ended; setting replanMinInterval, at least 5).";
                 typeName = "BOOL";
                 defaultValue = "true";
             };

@@ -97,7 +97,7 @@ private _own = -1;
             isNull _holder
             || {({alive _x} count (units _holder)) == 0}
             // the holder still parks here: its home, or for a group without a
-            // home (helicopters, F02) the base it was given this place at
+            // home (helicopters) the base it was given this place at
             || {
                 private _hHome = _hRec getOrDefault ["home", ""];
                 _hHome isNotEqualTo _id && {_hHome isNotEqualTo "" || {(_hRec getOrDefault ["parkBase", ""]) isNotEqualTo _id}}
@@ -110,8 +110,8 @@ private _index = if (_own >= 0) then {_own} else {_free};
 if (_index < 0) exitWith {[]};
 
 _claims set [_index, _group];
-// keeps the claim while the group is away (a sortie, a ride); a place at
-// another base frees this one
+// a group without a home keeps the claim by it while away (a sortie, a
+// ride); a place at another base frees this one
 _rec set ["parkBase", _id];
 // a helicopter is told to land on its own pad (AIC_fnc_monitorOrders, RTB)
 if (_isHeli) then {

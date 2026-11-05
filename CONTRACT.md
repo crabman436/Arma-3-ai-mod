@@ -993,7 +993,7 @@ runs in the handlers beyond a few comparisons.
 | Key | Default | Meaning |
 |---|---|---|
 | `"replanOnContact"` | true | `AIC_fnc_groupEngaged` asks for an early cycle on a fresh contact or when a group is shot down to `"retreatThreshold"` |
-| `"replanMinInterval"` | 5 | least seconds between the end of one cycle and an early cycle; clamped to ≥ 5 by `createCommander` and by the loop |
+| `"replanMinInterval"` | 10 | least seconds between the end of one cycle and an early cycle; clamped to ≥ 5 by `createCommander` and by the loop |
 
 `AIC_ModuleCommander` gets a checkbox `ReplanOnContact` (default true), read
 by `AIC_fnc_moduleCommander` into `"replanOnContact"`.

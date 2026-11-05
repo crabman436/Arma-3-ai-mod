@@ -114,12 +114,10 @@ private _staleKeys = (keys _groupData) select {!(_x in _newData)};
         // invisible helipads of a transport ride
         [_oldRec] call AIC_fnc_deleteHelipads;
     };
-    // a released group gets its automatic combat and free driving back (F10;
-    // argument-local commands: a group already moved to a headless client
-    // keeps them until its new owner changes them)
-    if (!isNull _oldGrp && {(_oldGrp getVariable ["AIC_marching", false]) isEqualTo true}) then {
-        [_oldGrp, false] call AIC_fnc_setMarch;
-    };
+    // a released group gets its automatic combat and free driving back
+    // (no-op unless it marches; argument-local commands: a group already
+    // moved to a headless client keeps them until its new owner changes them)
+    [_oldGrp, false] call AIC_fnc_setMarch;
     if (!isNil "AIC_ns" && { AIC_ns getOrDefault ["debug", false] isEqualTo true }) then {
         ["Commander %1 released group %2", [_side, if (isNull _oldGrp) then {"<dead>"} else {groupId _oldGrp}]] call AIC_fnc_log;
     };

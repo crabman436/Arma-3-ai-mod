@@ -18,7 +18,7 @@
           - detected groups get a fresh contact record (type / power via
             AIC_fnc_classifyGroup / AIC_fnc_groupPower, counting only the
             members and vehicles some observer knows: record "known", the
-            objects seen; unseen members of the group are not exposed, F08);
+            objects seen; unseen members of the group are not exposed);
           - previous contacts not detected this cycle are kept with their old
             (stale) data while lastSeen is within 300 s and the enemy group
             still has alive units; otherwise they are forgotten.
@@ -156,15 +156,20 @@ if (_observers isNotEqualTo []) then {
             _bestPos = [_ePos select 0, _ePos select 1, 0];
         };
 
-        private _known = (_observed getOrDefault [_x, [_probe]]) select { alive _x };
-        if (_known isEqualTo []) then { _known = [_probe]; };
+        private _known = (_observed get _x) select { alive _x };
         private _rec = _previous getOrDefault [_x, createHashMap];
         _rec set ["group", _eg];
         _rec set ["pos", _bestPos];
         _rec set ["known", _known];
-        _rec set ["type", [_eg, _known] call AIC_fnc_classifyGroup];
-        // at least one man: a contact is never nothing
-        _rec set ["power", ([_eg, _known] call AIC_fnc_groupPower) max 1];
+        // at least one man: a contact is never nothing (also when the members
+        // seen are dead and the rest was never seen: [] would mean "all")
+        if (_known isEqualTo []) then {
+            _rec set ["type", "INF"];
+            _rec set ["power", 1];
+        } else {
+            _rec set ["type", [_eg, _known] call AIC_fnc_classifyGroup];
+            _rec set ["power", ([_eg, _known] call AIC_fnc_groupPower) max 1];
+        };
         _rec set ["lastSeen", _lastSeen max (_rec getOrDefault ["lastSeen", -1])];
         _contacts pushBack _rec;
         _seen set [_x, true];

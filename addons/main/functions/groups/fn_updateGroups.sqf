@@ -177,11 +177,11 @@ if (_useMorale) then {
             // town's static gun ("AIC_gunnerOf", AIC_fnc_garrisonBuildings) stays
             // infantry (AIC_fnc_classifyGroup) and is dismounted by
             // AIC_fnc_clearWaypoints on the next order, so that gun neither makes
-            // the squad an anti-air crew (F07) nor lowers its strength
+            // the squad an anti-air crew nor lowers its strength
             private _crewed = [];
             {
                 private _veh = objectParent _x;
-                if (!isNull _veh && {(_veh getCargoIndex _x) < 0} && {isNull (_x getVariable ["AIC_gunnerOf", objNull])}) then {
+                if (!isNull _veh && {(_veh getCargoIndex _x) < 0} && {(_x getVariable ["AIC_gunnerOf", objNull]) isNotEqualTo _veh}) then {
                     _crewed pushBackUnique _veh;
                 };
             } forEach _alive;

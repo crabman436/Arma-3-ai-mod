@@ -4,8 +4,8 @@
     Description:
         Asks a commander to run its next cycle early instead of waiting for
         the rest of "loopInterval". AIC_fnc_commanderLoop starts that cycle
-        once "replanMinInterval" seconds have passed since the last cycle
-        ended. Cheap and safe in event handlers: it only sets the commander
+        once "replanMinInterval" seconds (never fewer than 5) have passed
+        since the last cycle ended. Cheap and safe in event handlers: it only sets the commander
         keys "replanRequested" and "replanReason" (the reason is only for
         the debug log; the first reason since the last cycle is kept). The
         loop clears both at the start of every cycle, so a request made
@@ -33,7 +33,6 @@ params [
 ];
 
 if (!isServer) exitWith { false };
-if (count _cmd == 0) exitWith { false };
 if !(_cmd getOrDefault ["enabled", false]) exitWith { false };
 
 if ((_cmd getOrDefault ["replanRequested", false]) isEqualTo true) exitWith { true };

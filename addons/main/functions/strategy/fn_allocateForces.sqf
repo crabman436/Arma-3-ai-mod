@@ -513,25 +513,6 @@ private _fnc_qrfOk = {
     && {((_info get "qrfPos") distance2D (_target get "pos")) <= AIC_QRF_RANGE}
 };
 
-// side-effect free estimate of AIC_fnc_canLeaveGarrison (feasibility / candidate lists)
-private _fnc_mayLeave = {
-    params ["_info", "_target"];
-    if ((_info get "qrfBase") != "") exitWith {[_info, _target] call _fnc_qrfOk};
-    if ((_info get "outpost") isNotEqualTo []) exitWith {[_info, _target] call _fnc_outpostOk};
-    if (!_manageGarrisons || {!(_info get "garrisoned")}) exitWith {true};
-    if ([_info, _target] call _fnc_isHome) exitWith {true};
-    private _entry = _garrisons getOrDefault [_info get "home", createHashMap];
-    if (count _entry == 0) exitWith {true};
-    private _released = _entry getOrDefault ["released", createHashMap];
-    if !(_released isEqualType createHashMap) then {_released = createHashMap};
-    if ((_info get "hv") in _released) exitWith {true};
-    private _relSum = 0;
-    {_relSum = _relSum + _y} forEach _released;
-    private _surplus = _entry getOrDefault ["surplus", 0];
-    if !(_surplus isEqualType 0) then {_surplus = 0};
-    (_surplus - _relSum) >= (_info get "rawPower")
-};
-
 // the home whose surplus a group draws on when it leaves for this target,
 // or "" when no surplus check applies (same gates as _fnc_mayLeave)
 private _fnc_surplusHome = {
@@ -557,6 +538,15 @@ private _fnc_homeSpare = {
     private _surplus = _entry getOrDefault ["surplus", 0];
     if !(_surplus isEqualType 0) then {_surplus = 0};
     _surplus - _relSum
+};
+
+// side-effect free estimate of AIC_fnc_canLeaveGarrison (feasibility / candidate lists)
+private _fnc_mayLeave = {
+    params ["_info", "_target"];
+    if ((_info get "qrfBase") != "") exitWith {[_info, _target] call _fnc_qrfOk};
+    if ((_info get "outpost") isNotEqualTo []) exitWith {[_info, _target] call _fnc_outpostOk};
+    private _home = [_info, _target] call _fnc_surplusHome;
+    _home == "" || {([_home] call _fnc_homeSpare) >= (_info get "rawPower")}
 };
 
 // commit-time check: asks AIC_fnc_canLeaveGarrison (reserves the surplus)
@@ -1296,7 +1286,7 @@ private _fnc_release = {
     private _committed = _target get "committed";
     // estimate with one shared surplus budget per garrison: groups of one
     // home compete for its surplus, and only as many as it can spare count
-    // (F04; AIC_fnc_canLeaveGarrison applies the same rule at commit time)
+    // (AIC_fnc_canLeaveGarrison applies the same rule at commit time)
     // (most effective first, so a home's budget goes to what helps most)
     private _availEff = 0;
     private _budget = createHashMap; // home id -> surplus still to spare
@@ -1401,10 +1391,11 @@ private _fnc_release = {
 
     // a NEW attack the fill could not staff to its required power is not
     // launched: its members go back to the pool and the garrison surplus
-    // they reserved is freed for the targets after it (F04). Attacks already
+    // they reserved is freed for the targets after it. Attacks already
     // under way keep their hysteresis above.
     if (_task == "ATTACK" && {!_holding} && {(_target get "committed") < _required}
         && {(_target get "members") isNotEqualTo []}) then {
+        private _staffed = _target get "committed";
         [_target, false] call _fnc_release;
         {
             _x params ["_home", "_hv"];
@@ -1412,7 +1403,7 @@ private _fnc_release = {
             if (_rel isEqualType createHashMap) then {_rel deleteAt _hv};
         } forEach _reserved;
         if (!isNil "AIC_ns" && { AIC_ns getOrDefault ["debug", false] isEqualTo true }) then {
-            ["%1 plan: attack on %2 not launched, only %3 of %4 power free", [_side, _target get "name", _target get "committed", _required]] call AIC_fnc_log;
+            ["%1 plan: attack on %2 not launched, only %3 of %4 power free", [_side, _target get "name", _staffed, _required]] call AIC_fnc_log;
         };
         continue;
     };

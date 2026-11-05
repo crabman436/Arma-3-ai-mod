@@ -110,6 +110,14 @@ private _fnc_markerRadius = {
     _radius
 };
 
+// AIC_fnc_updateObjectives finds late markers by name and place ("collectedMarkers",
+// name -> position, recorded below where each marker is collected), not by
+// coverage: a distinct marker inside another objective's radius is collected
+// too, a marker that merged into an existing objective asks no new collection,
+// and one moved or recreated elsewhere is collected again
+private _collected = _cmd getOrDefault ["collectedMarkers", createHashMap];
+_cmd set ["collectedMarkers", _collected];
+
 // ---------------------------------------------------------------- 2. markers
 {
     private _marker = _x;
@@ -122,6 +130,7 @@ private _fnc_markerRadius = {
         private _priority = [_lower, 1.5] call _fnc_markerPriority;
 
         [_cmd, getMarkerPos _marker, _name, _radius, _priority, "MARKER"] call AIC_fnc_addObjective;
+        _collected set [_marker, getMarkerPos _marker];
     };
 } forEach allMapMarkers;
 
@@ -140,6 +149,7 @@ if (_side in [west, east, independent, civilian]) then {
             private _radius = [_marker] call _fnc_markerRadius;
             private _priority = [_lower, 1] call _fnc_markerPriority;
             private _mPos = getMarkerPos _marker;
+            _collected set [_marker, _mPos];
             private _hqPos = _cmd getOrDefault ["hq", []];
             // one base per place: two base records at one spot would each
             // want a garrison and lay out two motor pools on one centre
@@ -165,21 +175,6 @@ if (_side in [west, east, independent, civilian]) then {
         };
     } forEach allMapMarkers;
 };
-
-// ---------------------------------------------------------------- 2c. markers looked at
-// AIC_fnc_updateObjectives finds late markers by name and place, not by
-// coverage: a distinct marker inside another objective's radius is collected
-// too (F13), a marker that merged into an existing objective triggers no new
-// collection, and one moved or recreated elsewhere is collected again
-private _collected = _cmd getOrDefault ["collectedMarkers", createHashMap];
-if !(_collected isEqualType createHashMap) then { _collected = createHashMap; };
-{
-    private _lower = toLowerANSI _x;
-    if ((_lower find AIC_MARKER_OBJ_PREFIX) == 0 || { (_lower find _basePrefix) == 0 }) then {
-        _collected set [_x, getMarkerPos _x];
-    };
-} forEach allMapMarkers;
-_cmd set ["collectedMarkers", _collected];
 
 // ---------------------------------------------------------------- 3. locations
 if (([_cmd, "autoObjectives"] call AIC_fnc_getSetting) isEqualTo true) then {

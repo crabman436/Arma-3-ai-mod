@@ -8,6 +8,8 @@
         MECH or HELI where:
           - the task is IDLE, DEFEND or PATROL, and it is not a base's
             quick-reaction force (record "role" "QRF");
+          - with setting "useMorale", the crew is not broken (record
+            "brokenUntil" in the future), transport-only crews included;
           - not engaged in the last 60 s, and for anything but a transport-only
             crew: its home garrison is not threatened (no threat cluster near
             it, "threat" of its "garrisons" entry is 0), so a town under attack
@@ -262,7 +264,7 @@ private _byGroup = createHashMap;
     if (count _rec == 0 || { !((_rec getOrDefault ["task", "IDLE"]) in ["IDLE", "DEFEND", "PATROL"]) }) then { continue };
     if (!alive _veh || { !canMove _veh }) then { continue };
     // a broken crew stays where it rallied, transport-only crews too (the gate
-    // of AIC_fnc_canLeaveGarrison, whose answer AIC_fnc_orderTransport does not check, F03)
+    // of AIC_fnc_canLeaveGarrison, whose answer AIC_fnc_orderTransport does not check)
     private _brokenUntil = _rec getOrDefault ["brokenUntil", -1];
     if (_useMorale && { _brokenUntil isEqualType 0 } && { _brokenUntil > time }) then { continue };
     if (!_transportOnly && { !([_grp, _rec] call _fnc_mayLeave) }) then { continue };

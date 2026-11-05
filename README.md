@@ -192,7 +192,7 @@ change them live through `(_cmd get "settings") set [key, value]`.
 |---|---|---|
 | `loopInterval` | 30 | Seconds between commander cycles (minimum 5) |
 | `replanOnContact` | true | A group that meets the enemy, or is shot down to `retreatThreshold`, makes the commander run its next cycle early (see "Reacting between cycles") |
-| `replanMinInterval` | 5 | Least seconds between the end of one cycle and an early cycle (minimum 5) |
+| `replanMinInterval` | 10 | Least seconds between the end of one cycle and an early cycle (minimum 5) |
 | `aggression` | 0.5 | 0..1, biases the stance toward attacking |
 | `retreatThreshold` | 0.3 | Group strength below which the group falls back to its rally point (the nearest place its side holds behind it, else the HQ) |
 | `reserveRatio` | 0.2 | Share of combat power kept back as a reserve to defend HQ |

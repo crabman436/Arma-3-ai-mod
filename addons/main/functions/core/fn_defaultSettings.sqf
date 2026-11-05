@@ -38,7 +38,7 @@ createHashMapFromArray [
 
     // --- reaction: early cycles when groups meet the enemy
     ["replanOnContact", true],
-    ["replanMinInterval", 5],
+    ["replanMinInterval", 10],
 
     // --- logistics: dynamic simulation
     ["manageDynSim", true],

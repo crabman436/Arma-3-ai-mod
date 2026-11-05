@@ -73,7 +73,7 @@ private _checkBases = _cmdSide in [west, east, independent, civilian];
 // AIC_fnc_collectObjectives) or it stands somewhere else now (moved or
 // recreated), whatever objective already covers its place: startup and late
 // creation give the same objectives, and a collected marker never asks
-// again (F13). Cheap prefix tests first: almost every marker (player
+// again. Cheap prefix tests first: almost every marker (player
 // drawings, ...) is rejected before the lookup
 private _collected = _cmd getOrDefault ["collectedMarkers", createHashMap];
 if !(_collected isEqualType createHashMap) then { _collected = createHashMap; };

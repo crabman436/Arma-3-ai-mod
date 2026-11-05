@@ -88,21 +88,17 @@ if (_veh isKindOf "Helicopter") then { _veh land "NONE"; };
 _group setCombatMode "RED";
 
 // hand the crew what the ground forces know around the target (the contact's
-// "known" objects, AIC_fnc_gatherIntel: never members nobody saw, F08), and
+// "known" objects, AIC_fnc_gatherIntel: never members nobody saw), and
 // point it at the most valuable of them
 private _prey = objNull;
 private _preyPower = -1;
 {
-    private _enemyGroup = _x getOrDefault ["group", grpNull];
     private _cPos = _x getOrDefault ["pos", []];
-    if (!isNull _enemyGroup && { _cPos isEqualType [] } && { count _cPos >= 2 } && { (_cPos distance2D _target) < 400 }) then {
-        private _known = _x getOrDefault ["known", []];
-        if !(_known isEqualType []) then { _known = []; };
-        _known = _known select { !isNull _x && { alive _x } };
+    if (_cPos isEqualType [] && { count _cPos >= 2 } && { (_cPos distance2D _target) < 400 }) then {
+        private _known = (_x getOrDefault ["known", []]) select { alive _x };
         { _group reveal [_x, 4]; } forEach _known;
         // a known vehicle first, else a known man
-        private _vIdx = _known findIf { !(_x isKindOf "CAManBase") };
-        private _pick = if (_vIdx >= 0) then { _known select _vIdx } else { _known param [0, objNull] };
+        private _pick = _known param [(_known findIf { !(_x isKindOf "CAManBase") }) max 0, objNull];
         private _power = _x getOrDefault ["power", 0];
         if (!isNull _pick && { _power isEqualType 0 } && { _power > _preyPower }) then {
             _preyPower = _power;
@@ -110,7 +106,7 @@ private _preyPower = -1;
         };
     };
 } forEach (_cmd getOrDefault ["knownEnemies", []]);
-if (!isNull _prey && { alive _prey }) then {
+if (alive _prey) then {
     { if (alive _x) then { _x doTarget _prey; }; } forEach (crew _veh);
 };
 

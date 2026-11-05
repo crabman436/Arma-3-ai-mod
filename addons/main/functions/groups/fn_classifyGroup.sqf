@@ -22,7 +22,7 @@
  *     Car / other land vehicles              -> MOTOR
  *
  *   With a list of known objects (an enemy contact, AIC_fnc_gatherIntel)
- *   only known members decide the type (see AIC_fnc_groupPower, F08).
+ *   only known members decide the type (see AIC_fnc_groupPower).
  *
  * Parameters:
  *   0: GROUP - group to classify
@@ -30,7 +30,7 @@
  *
  * Returns:
  *   STRING - one of "INF","MOTOR","MECH","ARMOR","HELI","PLANE","ARTY","STATIC","NAVAL"
- *            ("INF" for null / empty groups)
+ *            ("INF" for null / empty groups, or no known member)
  *
  * Example:
  *   private _type = [group player] call AIC_fnc_classifyGroup; // "INF"
@@ -43,7 +43,7 @@ if (isNull _group) exitWith {"INF"};
 private _filter = _known isNotEqualTo [];
 private _units = (units _group) select {alive _x};
 if (_filter) then {
-    _units = _units select {_x in _known || {(objectParent _x) in _known}};
+    _units = _units select {_x in _known || {!isNull objectParent _x && {(objectParent _x) in _known}}};
 };
 if (_units isEqualTo []) exitWith {"INF"};
 
@@ -83,11 +83,10 @@ private _vehicles = [];
     // Is any alive member of this group a real crew member (not cargo, not FFV)?
     private _crewIdx = (fullCrew [_veh, "", false]) findIf {
         _x params ["_crewUnit", "_role", "", "", ["_isPersonTurret", false]];
-        alive _crewUnit
-        && {group _crewUnit isEqualTo _group}
-        && {_role != "cargo"}
+        _role != "cargo"
         && {!_isPersonTurret}
-        && {!_filter || {_veh in _known} || {_crewUnit in _known}}
+        // a member that counts (alive; known, with a known-objects list)
+        && {_crewUnit in _units}
     };
 
     if (_crewIdx >= 0) then {

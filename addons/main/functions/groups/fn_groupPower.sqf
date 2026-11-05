@@ -25,7 +25,7 @@
  *   With a list of known objects (an enemy contact, AIC_fnc_gatherIntel)
  *   only what is in it counts: a man on foot or a passenger only if he is
  *   in the list, a crewed vehicle if the vehicle or one of its crew is.
- *   Unseen members add nothing (F08: no exposure of unobserved members).
+ *   Unseen members add nothing (no exposure of unobserved members).
  *
  * Parameters:
  *   0: GROUP - group to evaluate
@@ -45,7 +45,7 @@ if (isNull _group) exitWith {0};
 private _filter = _known isNotEqualTo [];
 private _units = (units _group) select {alive _x};
 if (_filter) then {
-    _units = _units select {_x in _known || {(objectParent _x) in _known}};
+    _units = _units select {_x in _known || {!isNull objectParent _x && {(objectParent _x) in _known}}};
 };
 if (_units isEqualTo []) exitWith {0};
 
@@ -67,7 +67,6 @@ private _vehicles = [];
     if (isNull _veh) then {
         _power = _power + (1 - (damage _unit));
     } else {
-        // known: the vehicle (crew value) or the unit itself (a passenger)
         _vehicles pushBackUnique _veh;
     };
 } forEach _units;

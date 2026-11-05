@@ -78,8 +78,9 @@ if (dynamicSimulationEnabled _group || { (_rec getOrDefault ["parked", false]) i
 
 // --- ask for an early commander cycle, so the general reacts in seconds
 // rather than at the end of "loopInterval"
-if (([_cmd, "replanOnContact"] call AIC_fnc_getSetting) isEqualTo true
-    && { !((_cmd getOrDefault ["replanRequested", false]) isEqualTo true) }) then {
+// (the pending test first: during a fight a request is usually pending)
+if (!((_cmd getOrDefault ["replanRequested", false]) isEqualTo true)
+    && { ([_cmd, "replanOnContact"] call AIC_fnc_getSetting) isEqualTo true }) then {
 
     private _reason = "";
     if ((time - _prevEngaged) >= AIC_REPLAN_FRESH_CONTACT) then {

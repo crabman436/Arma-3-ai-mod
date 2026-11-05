@@ -27,7 +27,10 @@
         15 km) with AIC_fnc_tasksAir. An air group is available when its
         task is "IDLE", or "SUPPORT" and it has reached its loiter waypoint
         (or the sortie is older than 600 s), it can move, has fuel > 25 %
-        and real weapons (not only countermeasures). With "useTransport" on,
+        and real weapons (not only countermeasures); a plane done with its
+        sortie and due for its turnaround (fuel below AIC_PLANE_RTB_FUEL or
+        damage above 0.3) is left to AIC_fnc_rearmCycle while a held
+        airfield can take it. With "useTransport" on,
         helicopters armed only with machine guns (AIC_fnc_vehicleArmament
         < 2, i.e. door gunners) are left to the transport system. Clusters
         already being struck by another air group (within 300 m) are skipped.
@@ -272,17 +275,18 @@ if (_useAir && {_flyWeather}) then {
         private _task = _rec getOrDefault ["task", "IDLE"];
         private _taskPos = _rec getOrDefault ["taskPos", []];
 
-        private _free = switch (_task) do {
+        // done with its sortie (the test AIC_fnc_rearmCycle uses), or a
+        // sortie so old it is given up
+        private _done = switch (_task) do {
             case "IDLE": { true };
             case "SUPPORT": {
                 private _loiterIdx = _grp getVariable ["AIC_airLoiterWp", -1];
                 private _cur = currentWaypoint _grp;
-                (_loiterIdx >= 0 && { _cur >= _loiterIdx })
-                || { _cur >= count waypoints _grp }
-                || { (_now - (_rec getOrDefault ["taskTime", 0])) > 600 }
+                (_loiterIdx >= 0 && { _cur >= _loiterIdx }) || { _cur >= count waypoints _grp }
             };
             default { false };
         };
+        private _free = _done || { _task == "SUPPORT" && { (_now - (_rec getOrDefault ["taskTime", 0])) > 600 } };
 
         if (!_free) then {
             if (_task == "SUPPORT" && { _taskPos isEqualType [] } && { count _taskPos >= 2 }) then { _busyTargets pushBack _taskPos; };
@@ -297,10 +301,10 @@ if (_useAir && {_flyWeather}) then {
         private _veh = objectParent leader _grp;
         if (isNull _veh || { !alive _veh } || { !canMove _veh } || { fuel _veh < 0.25 }) then { continue };
         if (!_heliWeather && { _veh isKindOf "Helicopter" }) then { continue };
-        // a plane due for its turnaround (the gate of AIC_fnc_rearmCycle, which
-        // runs after this) is kept for it while a held airfield can take it:
-        // a new sortie would reset its waypoints and postpone it again (F09)
-        if (_veh isKindOf "Plane"
+        // a plane due for its turnaround is kept for AIC_fnc_rearmCycle (runs
+        // after this; same tests) while a held airfield can take it: a new
+        // sortie would reset its waypoints and postpone it again
+        if (_done && { _veh isKindOf "Plane" }
             && { (fuel _veh) < AIC_PLANE_RTB_FUEL || { (damage _veh) > 0.3 } }
             && { ([_cmd, getPosATL _veh] call AIC_fnc_heldAirfield) isNotEqualTo [] }) then { continue };
 
