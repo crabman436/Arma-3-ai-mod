@@ -23,4 +23,6 @@ params [["_veh", objNull, [objNull]]];
 if (isNull _veh) exitWith { false };
 if !(_veh isKindOf "Air") exitWith { (abs (speed _veh)) < 3 };
 
-isTouchingGround _veh || { (((getPos _veh) select 2) < 3.5) && { (abs (speed _veh)) < 15 } }
+// height above terrain: every LZ is on land (the searches reject water), so
+// ATL is the surface height here, at a fraction of getPos' cost
+isTouchingGround _veh || { (((getPosATL _veh) select 2) < 3.5) && { (abs (speed _veh)) < 15 } }

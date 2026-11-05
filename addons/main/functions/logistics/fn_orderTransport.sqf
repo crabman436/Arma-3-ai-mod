@@ -45,6 +45,11 @@
             road-snapped.
         Ground transports drive AWARE / FULL, helicopters fly CARELESS / FULL.
 
+        Garrison: once the ride is set up the transport group's power is
+        reserved in its home's garrison entry (AIC_fnc_canLeaveGarrison,
+        "released"), unless the crew is transport-only. AIC_fnc_findTransport
+        only checks the surplus, so a ride that fails here reserves nothing.
+
         Records:
           transport: task "TRANSPORT", taskPos = drop point, objective "",
                      "transport" = cargo group, "lz", "pickupLz",
@@ -361,6 +366,13 @@ _cRec set ["dropLzMoved", false];
 _cRec set ["hotLzMoved", false];
 _cRec set ["lastPos", _cPos];
 _cRec set ["lastMoveTime", time];
+
+// the ride is set up, so now the transport's garrison surplus is spoken for
+// (AIC_fnc_findTransport only checks it, nothing to undo when a ride fails;
+// a transport-only crew has no power in its garrison, nothing to reserve)
+if !((_tRec getOrDefault ["transportOnly", false]) isEqualTo true) then {
+    [_cmd, _tGroup] call AIC_fnc_canLeaveGarrison;
+};
 
 ["%1: %2 (%3) picks up group %4 (%5 units) at %6, drop %7 (%8 m from target), then %9 obj '%10'", [
     _side, groupId _tGroup, typeOf _veh, groupId _cGroup, _cargoCount,

@@ -15,11 +15,30 @@
  *     "urban"       - the objective is built up
  *     "hasInf"      - infantry is part of the assault
  *     "slots"       - lanes handed out so far
+ *     "nightHold"   - the assault waits at the assembly area for the night
+ *                     (setting "nightAssaults", urban objectives only;
+ *                     AIC_fnc_assaultCycle sets it)
+ *   AIC_fnc_assaultCycle adds "goTime", "escalated", "roles", "goPower",
+ *   "reserveCommitted", "reserveAdvice" (the reserve went in on Jev
+ *   advice), "prepTime" (preparatory fire called during STAGE),
+ *   "contactTime" (first group going in near the objective: the GO clocks
+ *   start) and "stagingReason" (why STAGE still waits).
  *   The assembly area is objective radius / 2 + 600 m out, on the first
  *   group's side (the HQ's side if that group is already close), or up to 90
  *   degrees around if that spot is wet or has an enemy known within 300 m,
  *   moved to the best cover within 200 m of it (AIC_fnc_bestPlace).
- *   An assault that finds no such spot starts in state "GO".
+ *   An assault that finds no such spot starts in state "GO" (with "goTime"
+ *   set to its creation time). A group whose
+ *   leader is already inside the objective radius gets no assault (empty
+ *   HashMap, an existing one is not returned either): it fights where it is
+ *   and is never sent out to stage (AIC_fnc_issueOrder checks the same).
+ *   No new assault is created on an objective whose last assault failed or
+ *   was called off (objective "failedUntil" later than now, or the
+ *   commander's "adviceAbort" [time, id] younger than
+ *   AIC_ADVICE_ABORT_COOLDOWN): the empty HashMap is returned, and a group
+ *   that still gets there attacks directly (AIC_fnc_orderAttack).
+ *   AIC_fnc_drainOrders and AIC_fnc_allocateForces already keep new attacks
+ *   off such an objective; this closes the last way in.
  *   AIC_fnc_orderAssault gives the groups their orders, AIC_fnc_assaultCycle
  *   starts the assault and ends it.
  *
@@ -30,8 +49,9 @@
  *   3: STRING  - objective id
  *
  * Returns:
- *   HASHMAP - the assault, empty for an objective-less attack or with
- *             "stagedAssaults" off
+ *   HASHMAP - the assault, empty for an objective-less attack, for a group
+ *             already inside the objective, during an objective's failure /
+ *             abort cooldown, or with "stagedAssaults" off
  *
  * Example:
  *   private _assault = [_cmd, _group, _pos, _objective] call AIC_fnc_assaultFor;
@@ -49,14 +69,23 @@ params [
 if (!isServer || {_objective isEqualTo ""} || {count _target < 2}) exitWith {createHashMap};
 if !(([_cmd, "stagedAssaults"] call AIC_fnc_getSetting) isEqualTo true) exitWith {createHashMap};
 
-private _assaults = _cmd getOrDefault ["assaults", createHashMap];
-if (_objective in _assaults) exitWith {_assaults get _objective};
-_cmd set ["assaults", _assaults];
-
 private _obj = [_cmd, _objective] call AIC_fnc_getObjective;
 private _radius = _obj getOrDefault ["radius", 300];
 private _pos = [_target select 0, _target select 1, 0];
 private _dist = (leader _group) distance2D _pos;
+// already in there: nothing to stage for
+if (_dist < _radius) exitWith {createHashMap};
+
+private _assaults = _cmd getOrDefault ["assaults", createHashMap];
+if (_objective in _assaults) exitWith {_assaults get _objective};
+// the last assault on it failed or was called off: no new one for a while
+private _failedUntil = _obj getOrDefault ["failedUntil", -1];
+if (_failedUntil isEqualType 0 && {_failedUntil > time}) exitWith {createHashMap};
+private _abort = _cmd getOrDefault ["adviceAbort", []];
+if (_abort isEqualType [] && {count _abort >= 2} && {(_abort select 1) isEqualTo _objective}
+    && {(_abort select 0) isEqualType 0} && {(time - (_abort select 0)) < AIC_ADVICE_ABORT_COOLDOWN}) exitWith {createHashMap};
+_cmd set ["assaults", _assaults];
+
 private _stageDist = (_radius * 0.5) + AIC_ASSAULT_STAGE;
 
 private _urban = _obj getOrDefault ["urban", -1];
@@ -102,8 +131,11 @@ private _assault = createHashMapFromArray [
     ["firstArrive", -1],
     ["urban", _urban],
     ["hasInf", true],
-    ["slots", 0]
+    ["slots", 0],
+    ["nightHold", false]
 ];
+// created straight in GO: the GO clocks (AIC_fnc_assaultCycle) run from now
+if (_stage isEqualTo []) then {_assault set ["goTime", time]};
 _assaults set [_objective, _assault];
 
 ["%1: assault on '%2' planned, %3", [

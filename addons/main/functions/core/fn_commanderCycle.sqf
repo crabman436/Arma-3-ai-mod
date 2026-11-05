@@ -4,9 +4,12 @@
     Description:
         One full think step of a commander, in contract order:
         register groups, update groups, gather intel, cluster threats,
-        update objectives, determine stance, score objectives, garrison
-        homes (AIC_fnc_garrisonCycle homes only), allocate forces and issue
-        orders, garrison distribution, transports, supply trucks,
+        update objectives, determine stance, score objectives, Jev advice
+        (AIC_fnc_jevAdvisor, before the stance), garrison
+        homes (AIC_fnc_garrisonCycle homes only), allocate forces and queue
+        the plan's orders (AIC_fnc_queueOrder: they reach the groups after
+        the "orderDelay"; due orders go out through AIC_fnc_drainOrders at
+        the start of the cycle and right after the plan), garrison distribution, transports, supply trucks,
         monitor orders, assaults, squad merges, garbage cleanup, dynamic simulation (park / wake), support, debug
         markers and player reports.
 
@@ -30,10 +33,19 @@ if !(_cmd getOrDefault ["enabled", false]) exitWith {};
 [_cmd] call AIC_fnc_registerGroups;
 [_cmd] call AIC_fnc_updateGroups;
 
+// 2a. orders of earlier plans that fell due during the sleep (after the
+// group refresh: dead and broken groups are dropped from the queue)
+[_cmd] call AIC_fnc_drainOrders;
+
 // 3-5. picture of the battlefield
 [_cmd] call AIC_fnc_gatherIntel;
 [_cmd] call AIC_fnc_clusterThreats;
 [_cmd] call AIC_fnc_updateObjectives;
+
+// 6. the staff officer first: last cycle's Jev answers become "advice" so the
+// stance, the scores and the planner all act on the same batch; the next batch
+// of questions goes out (answers arrive asynchronously, consumed next cycle)
+[_cmd] call AIC_fnc_jevAdvisor;
 
 // 6-7. strategy
 [_cmd] call AIC_fnc_determineStance;
@@ -70,8 +82,10 @@ private _fnc_planInf = {
     private _objective = _x getOrDefault ["objective", ""];
     if !(_objective isEqualType "") then { _objective = ""; };
 
-    [_cmd, _group, _task, _pos, _objective] call AIC_fnc_issueOrder;
+    // a plan reaches the groups after the staff work ("orderDelay"; 0 = at once)
+    [_cmd, _group, _task, _pos, _objective] call AIC_fnc_queueOrder;
 } forEach ((_plan select _fnc_planInf) + (_plan select {!(call _fnc_planInf)}));
+[_cmd] call AIC_fnc_drainOrders;
 
 // 9. logistics: garrisons between owned objectives / bases, then transports
 [_cmd] call AIC_fnc_garrisonCycle;

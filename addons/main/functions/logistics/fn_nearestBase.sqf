@@ -2,7 +2,8 @@
  * Name: AIC_fnc_nearestBase
  * Description:
  *   The base of a commander closest to a position: objectives with "isBase"
- *   that it owns, plus "BASE_HQ" always. Transport-only crews wait there.
+ *   that it owns ("BASE_HQ" only while the side holds it; a base taken by the
+ *   enemy is no base). Transport-only crews wait there.
  *
  * Parameters:
  *   0: HASHMAP - commander
@@ -33,7 +34,7 @@ private _bestDist = 1e9;
         private _p = _x getOrDefault ["pos", []];
         if (
             (_x getOrDefault ["isBase", false]) isEqualTo true
-            && {_id isEqualTo AIC_BASE_ID || {(_x getOrDefault ["owner", sideUnknown]) isEqualTo _side}}
+            && {(_x getOrDefault ["owner", sideUnknown]) isEqualTo _side}
             && {count _p >= 2}
             && {(_p distance2D _pos) < _bestDist}
         ) then {

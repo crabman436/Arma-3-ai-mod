@@ -13,16 +13,38 @@
  *   Task -> function:
  *     "ATTACK"    -> ground groups at an objective: AIC_fnc_orderAssault
  *                    (a staged assault, AIC_fnc_assaultFor); otherwise
- *                    AIC_fnc_orderAttack (radius = objective radius)
- *     "DEFEND"    -> AIC_fnc_orderDefend    (radius = objective radius, max 200)
+ *                    AIC_fnc_orderAttack (radius = objective radius). A
+ *                    group whose leader is already inside the objective
+ *                    radius fights where it is (AIC_fnc_orderAttack): it
+ *                    is never sent out to an assembly area
+ *     "DEFEND"    -> AIC_fnc_orderDefend    (radius = objective radius, max 200).
+ *                    Infantry gets a sector of the objective
+ *                    ("defendSector"): the slice the other defenders cover
+ *                    least, read from the objective's "sectors" map
+ *                    (hashValue group -> [group, bearing], stale entries
+ *                    dropped on read). The sector is kept while the group
+ *                    goes on defending the same objective, and chosen anew
+ *                    when it comes from another task or another defender
+ *                    holds a sector within AIC_SECTOR_MIN_GAP degrees.
  *     "PATROL"    -> AIC_fnc_orderPatrol    (radius = objective radius, or
  *                                            setting "objectiveRadius")
- *     "RETREAT"   -> AIC_fnc_orderRetreat   (empty pos -> commander "hq")
+ *     "RETREAT"   -> AIC_fnc_orderRetreat   (empty pos -> commander "hq"),
+ *                    away from the nearest known threat first (within
+ *                    AIC_THREAT_RADIUS of the leader) unless the caller
+ *                    handed one over in the group variable "AIC_retreatFrom"
  *     "REINFORCE" -> AIC_fnc_orderReinforce
  *     "SUPPORT"   -> air: SAD over pos then LOITER near HQ;
  *                    ground: AIC_fnc_orderReinforce
  *     "RTB"       -> AIC_fnc_orderRetreat (a transport going home after a
  *                    drop; empty pos -> its "home" objective, then "hq")
+ *     "RECON"     -> AIC_fnc_orderRecon     (radius = objective radius):
+ *                    watch the objective from an overwatch point. Record
+ *                    "reconStart" is the time the job began (kept when the
+ *                    same job is re-issued, e.g. by stuck detection) and
+ *                    "reconLimit" the s after it within which the scout must
+ *                    reach its point (AIC_RECON_TIMEOUT + AIC_RECON_TIME_PER_M
+ *                    per m from the leader to the objective), for
+ *                    AIC_fnc_monitorOrders' timeout
  *     "IDLE"      -> clears waypoints, group holds in place
  *     "TRANSPORT" / "TRANSPORTED" -> only with force: re-runs
  *                    AIC_fnc_orderTransport for the pair stored in the
@@ -30,6 +52,10 @@
  *   Empty/invalid position falls back to: objective position, then (for
  *   RTB) the group's "home" objective, then (for RETREAT/DEFEND/RTB) the
  *   HQ, then the leader's position.
+ *
+ *   A group on "RECON" is not re-ordered while the job runs (like a
+ *   transport ride, it is followed by AIC_fnc_monitorOrders, which ends
+ *   it): any order but a RETREAT is skipped unless _force is true.
  *
  *   Logistics:
  *     - Groups whose current task is "TRANSPORT" or "TRANSPORTED" are
@@ -44,7 +70,8 @@
  *       commanded group (a squad placed in a helicopter, split off by
  *       AIC_fnc_splitPassengers): a far ATTACK / REINFORCE / DEFEND order
  *       becomes a ride with that very vehicle (AIC_fnc_orderTransport, the
- *       ride starts in the vehicle), any other order dismounts the group
+ *       ride starts in the vehicle; never with a quick-reaction force's
+ *       vehicle, record "role" "QRF"), any other order dismounts the group
  *       (AIC_fnc_dismountCarrier, repeated by AIC_fnc_monitorOrders).
  *     - INF groups ordered to ATTACK / REINFORCE / DEFEND farther than
  *       "transportMinDistance" (setting "useTransport" on, group not
@@ -91,7 +118,7 @@ if (count _cmd == 0 || {isNull _group} || {_task isEqualTo ""}) exitWith {false}
 if (({alive _x} count units _group) == 0) exitWith {false};
 
 _task = toUpperANSI _task;
-if !(_task in ["IDLE", "ATTACK", "DEFEND", "PATROL", "RETREAT", "REINFORCE", "SUPPORT", "RTB", "TRANSPORT", "TRANSPORTED"]) exitWith {
+if !(_task in ["IDLE", "ATTACK", "DEFEND", "PATROL", "RETREAT", "REINFORCE", "SUPPORT", "RTB", "TRANSPORT", "TRANSPORTED", "RECON"]) exitWith {
     ["issueOrder: unknown task '%1' for group %2", [_task, groupId _group]] call AIC_fnc_log;
     false
 };
@@ -122,6 +149,14 @@ if !(_curTask isEqualType "") then { _curTask = "IDLE"; };
 if (!_force && {_curTask in ["TRANSPORT", "TRANSPORTED"]}) exitWith {
     if (!isNil "AIC_ns" && { AIC_ns getOrDefault ["debug", false] isEqualTo true }) then {
         ["issueOrder: group %1 is %2, order %3 skipped (transport system owns it)", [groupId _group, _curTask, _task]] call AIC_fnc_log;
+    };
+    false
+};
+// --- Externally managed: a recon job (AIC_fnc_monitorOrders ends it) -----------
+// (a falling-back group may always retreat)
+if (!_force && {_curTask isEqualTo "RECON"} && {_task isNotEqualTo "RETREAT"}) exitWith {
+    if (!isNil "AIC_ns" && { AIC_ns getOrDefault ["debug", false] isEqualTo true }) then {
+        ["issueOrder: group %1 is on RECON, order %2 skipped", [groupId _group, _task]] call AIC_fnc_log;
     };
     false
 };
@@ -228,10 +263,16 @@ if (_curTask isEqualTo "TRANSPORT") then {
     _record set ["transport", grpNull];
 };
 
+// --- Already inside the objective ------------------------------------------------
+// (a garrison whose town became contested, attackers inside a town that
+// flipped back): no assembly area, the group fights where it is
+private _inside = _task == "ATTACK" && {count _objRec > 0}
+    && {((getPosATL (leader _group)) distance2D _pos) < _radius};
+
 // --- Where a ride ends ---------------------------------------------------------
 // an assault's troops are carried to its assembly area, not to the objective
 private _rideDest = +_pos;
-if (_task == "ATTACK" && {_type == "INF"}) then {
+if (_task == "ATTACK" && {_type == "INF"} && {!_inside}) then {
     private _stage = ([_cmd, _group, _pos, _objective] call AIC_fnc_assaultFor) getOrDefault ["stage", []];
     if (_stage isNotEqualTo []) then {_rideDest = +_stage};
 };
@@ -262,6 +303,8 @@ if (_curTask isNotEqualTo "TRANSPORTED") then {
                 && { (time - _rideAbort) >= AIC_RIDE_ABORT_COOLDOWN }
                 && { (_cRec getOrDefault ["type", ""]) in ["MOTOR", "MECH", "HELI"] }
                 && { (_cRec getOrDefault ["task", "IDLE"]) in ["IDLE", "DEFEND", "PATROL"] }
+                // a base's quick-reaction force gives no rides (as AIC_fnc_findTransport)
+                && { (_cRec getOrDefault ["role", ""]) isNotEqualTo "QRF" }
                 && { canMove _carrier };
             if (_rideOk) then {
                 _cGrp setVariable ["AIC_transportVehicle", _carrier];
@@ -313,6 +356,7 @@ if (_task isEqualTo "TRANSPORTED") exitWith {
 // --- Dispatch ----------------------------------------------------------------
 _record set ["staged", false];
 _record set ["overwatch", false];
+_record set ["assaultRole", ""];
 // a new order ends any landing (only AIC_fnc_transportCycle lands at an LZ)
 if (_type == "HELI") then {
     private _air = objectParent (leader _group);
@@ -324,7 +368,7 @@ private _ok = switch (_task) do {
         private _via = _group getVariable ["AIC_attackVia", []];
         _group setVariable ["AIC_attackVia", nil];
         // objectives are taken by a staged assault, everything else directly
-        private _assault = if (_type in ["INF", "MOTOR", "MECH", "ARMOR"]) then {
+        private _assault = if (_type in ["INF", "MOTOR", "MECH", "ARMOR"] && {!_inside}) then {
             [_cmd, _group, _pos, _objective] call AIC_fnc_assaultFor
         } else {
             createHashMap
@@ -346,19 +390,38 @@ private _ok = switch (_task) do {
         // infantry: a sector of its own, the slice of the place the other
         // defenders cover least (kept while it defends this objective)
         private _sector = -1;
-        if (_type == "INF" && {_objective isNotEqualTo ""}) then {
+        if (_type == "INF" && {_objective isNotEqualTo ""} && {count _objRec > 0}) then {
             _sector = _record getOrDefault ["defendSector", -1];
-            if ((_record getOrDefault ["defendSectorObj", ""]) isNotEqualTo _objective || {_sector < 0}) then {
-                private _others = [];
-                {
-                    if (_y isEqualType createHashMap && {(_y getOrDefault ["group", grpNull]) isNotEqualTo _group}
-                        && {(_y getOrDefault ["task", ""]) isEqualTo "DEFEND"}
-                        && {(_y getOrDefault ["objective", ""]) isEqualTo _objective}
-                        && {(_y getOrDefault ["defendSectorObj", ""]) isEqualTo _objective}
-                        && {(_y getOrDefault ["defendSector", -1]) >= 0}) then {
-                        _others pushBack (_y get "defendSector");
-                    };
-                } forEach _groupData;
+            // the sectors the other defenders of this objective hold, from
+            // the objective's own map (no scan over every group record);
+            // entries of groups that no longer defend it are dropped
+            private _sectors = _objRec getOrDefault ["sectors", createHashMap];
+            if !(_sectors isEqualType createHashMap) then {_sectors = createHashMap};
+            _objRec set ["sectors", _sectors];
+            private _others = [];
+            {
+                private _entry = _sectors get _x;
+                private _g = if (_entry isEqualType [] && {count _entry >= 2}) then {_entry select 0} else {grpNull};
+                private _r = if (_g isEqualType grpNull && {!isNull _g}) then {_groupData getOrDefault [hashValue _g, createHashMap]} else {createHashMap};
+                if (
+                    count _r == 0
+                    || {({alive _x} count (units _g)) == 0}
+                    || {(_r getOrDefault ["task", ""]) isNotEqualTo "DEFEND"}
+                    || {(_r getOrDefault ["objective", ""]) isNotEqualTo _objective}
+                    || {(_r getOrDefault ["defendSectorObj", ""]) isNotEqualTo _objective}
+                ) then {
+                    _sectors deleteAt _x;
+                } else {
+                    if (_g isNotEqualTo _group) then {_others pushBack (_entry select 1)};
+                };
+            } forEach (keys _sectors);
+            // keep the sector while defending on; choose again when coming
+            // from another task or when another defender holds the same slice
+            if (
+                (_record getOrDefault ["defendSectorObj", ""]) isNotEqualTo _objective || {_sector < 0}
+                || {_curTask isNotEqualTo "DEFEND"}
+                || {(_others findIf {(abs ((_sector - _x + 540) % 360 - 180)) < AIC_SECTOR_MIN_GAP}) >= 0}
+            ) then {
                 _sector = if (_others isEqualTo []) then {
                     // the first defender takes the threatened side, else any
                     if (_threatPos isNotEqualTo []) then {_pos getDir _threatPos} else {random 360}
@@ -375,6 +438,7 @@ private _ok = switch (_task) do {
                 _record set ["defendSector", _sector];
                 _record set ["defendSectorObj", _objective];
             };
+            _sectors set [hashValue _group, [_group, _sector]];
         };
         // at a quiet base vehicles wait in the motor pool
         private _park = if (!_antiAir && {_threatPos isEqualTo []} && {_type in ["MOTOR", "MECH", "ARMOR"]}) then {
@@ -402,7 +466,16 @@ private _ok = switch (_task) do {
         };
         [_group, _pos, _radius, _type, _link] call AIC_fnc_orderPatrol
     };
-    case "RETREAT":   { [_group, _pos, _type] call AIC_fnc_orderRetreat };
+    case "RETREAT": {
+        // away from the enemy first; a threat the caller handed over
+        // ("AIC_retreatFrom" = [pos, time], set just now) takes precedence
+        private _handed = _group getVariable ["AIC_retreatFrom", []];
+        private _from = [];
+        if !(_handed isEqualType [] && {count _handed == 2} && {(_handed select 1) isEqualType 0} && {(time - (_handed select 1)) < 5}) then {
+            _from = [_cmd, getPosATL (leader _group), AIC_THREAT_RADIUS] call AIC_fnc_nearestThreat;
+        };
+        [_group, _pos, _type, _from] call AIC_fnc_orderRetreat
+    };
     case "RTB":       { [_group, _pos, _type] call AIC_fnc_orderRetreat };
     case "REINFORCE": { [_group, _pos, _type] call AIC_fnc_orderReinforce };
     case "SUPPORT": {
@@ -424,6 +497,15 @@ private _ok = switch (_task) do {
         } else {
             [_group, _pos, _type] call AIC_fnc_orderReinforce
         };
+    };
+    case "RECON": {
+        // a new job (not the same one re-issued) starts the timeout clock
+        // (and its time limit: the way there plus the watch, AIC_fnc_monitorOrders)
+        if (_curTask isNotEqualTo "RECON" || {_curObj isNotEqualTo _objective}) then {
+            _record set ["reconStart", time];
+            _record set ["reconLimit", AIC_RECON_TIMEOUT + AIC_RECON_TIME_PER_M * ((getPosATL (leader _group)) distance2D _pos)];
+        };
+        [_group, _pos, _radius, _type, _record] call AIC_fnc_orderRecon
     };
     case "IDLE": {
         [_group] call AIC_fnc_clearWaypoints;

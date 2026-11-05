@@ -32,7 +32,11 @@
               leader and the transport leader are sent towards each other
               (doMove, every 60 s). Not everybody aboard 180 s after the
               fallback -> with at least half aboard the stragglers become a
-              new group and the ride goes on, otherwise it is aborted.
+              new group and the ride goes on, otherwise it is aborted. The
+              stragglers' group gets its record at once
+              (AIC_fnc_newGroupRecord, event handlers, "groups"), with the
+              squad's "home" and "teamId", no ride for AIC_RIDE_ABORT_COOLDOWN
+              s ("rideAbortTime"), and the squad's final order on foot.
             - A transport past its LOAD waypoint with troops still outside is
               sent back to it, so it never leaves without them.
             - Cargo under fire with nobody aboard and the vehicle not near, or
@@ -79,8 +83,9 @@
         cargo record no longer "TRANSPORTED" with this transport) and no
         cargo unit is left in the vehicle: the helipads ("lz",
         "pickupLz") are deleted and the group returns to its home objective,
-        the nearest base for helicopters and transport-only crews
-        ("BASE_HQ" position / commander "hq" if none) with task "RTB" via
+        the nearest base for helicopters and transport-only crews (a home
+        the side no longer holds is not gone back to; then the commander
+        "hq", which follows the bases) with task "RTB" via
         AIC_fnc_issueOrder (force). Armed vehicles that carried a squad to
         an ATTACK / REINFORCE take that same order instead and stay with it.
         If its vehicle is gone or cannot move
@@ -461,7 +466,30 @@ private _fnc_boardFallback = {
                         private _left = _units select { objectParent _x isNotEqualTo _veh };
                         { unassignVehicle _x; } forEach _left;
                         _left orderGetIn false;
-                        _left joinSilent (createGroup [_side, true]);
+                        private _sGrp = createGroup [_side, true];
+                        if (!isNull _sGrp) then {
+                            _left joinSilent _sGrp;
+                            { _sGrp setVariable [_x, _grp getVariable [_x, false]]; } forEach ["AIC_noDynSim", "AIC_keep"];
+                            // a record at once, so the stragglers follow their
+                            // squad's order instead of idling home-less
+                            private _sRec = [_sGrp] call AIC_fnc_newGroupRecord;
+                            _sRec set ["home", _rec getOrDefault ["home", ""]];
+                            _sRec set ["teamId", _rec getOrDefault ["teamId", 0]];
+                            _sRec set ["teamTime", time];
+                            _sRec set ["rideAbortTime", time];
+                            _groupData set [hashValue _sGrp, _sRec];
+                            [_cmd, _sGrp] call AIC_fnc_attachGroupEHs;
+                            _cmd set ["groups", (_cmd getOrDefault ["groups", []]) + [_sGrp]];
+                            private _sFinal = _rec getOrDefault ["final", createHashMap];
+                            if !(_sFinal isEqualType createHashMap) then { _sFinal = createHashMap; };
+                            private _sTask = _sFinal getOrDefault ["task", "DEFEND"];
+                            if (!(_sTask isEqualType "") || { _sTask in ["", "TRANSPORT", "TRANSPORTED", "IDLE"] }) then { _sTask = "DEFEND"; };
+                            private _sPos = _sFinal getOrDefault ["pos", []];
+                            if !([_sPos] call _fnc_validPos) then { _sPos = []; };
+                            private _sObj = _sFinal getOrDefault ["objective", ""];
+                            if !(_sObj isEqualType "") then { _sObj = ""; };
+                            [_cmd, _sGrp, _sTask, _sPos, _sObj, true] call AIC_fnc_issueOrder;
+                        };
                         ["%1: %2 leaves without %3 of group %4 (%5 aboard)", [
                             _side, groupId _tGroup, count _left, groupId _grp, _aboard
                         ]] call AIC_fnc_log;
@@ -659,8 +687,9 @@ private _fnc_objPos = {
         private _base = [_cmd, getPosATL (leader _grp)] call AIC_fnc_nearestBase;
         if (_base isNotEqualTo "") then { _homeId = _base; };
     };
+    // a home the side no longer holds is no home (the HQ follows the bases)
+    if (((([_cmd, _homeId] call AIC_fnc_getObjective) getOrDefault ["owner", sideUnknown])) isNotEqualTo _side) then { _homeId = ""; };
     private _homePos = [_homeId] call _fnc_objPos;
-    if (_homePos isEqualTo []) then { _homePos = [AIC_BASE_ID] call _fnc_objPos; };
     if (_homePos isEqualTo []) then {
         private _hq = _cmd getOrDefault ["hq", []];
         _homePos = if ([_hq] call _fnc_validPos) then { _hq } else { getPosATL (leader _grp) };

@@ -1,0 +1,89 @@
+name: build-extension
+
+on:
+  push:
+    paths:
+      - "extension/**"
+      - ".github/workflows/build-extension.yml"
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  CRATE_DIR: extension/aic_jev
+
+jobs:
+  windows:
+    name: Windows (aic_jev_x64.dll)
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: extension/aic_jev
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: extension/aic_jev
+      - name: Test
+        run: cargo test --release --target x86_64-pc-windows-msvc
+      - name: Build
+        run: cargo build --release --target x86_64-pc-windows-msvc
+      - name: Collect
+        shell: bash
+        run: |
+          mkdir -p out
+          cp target/x86_64-pc-windows-msvc/release/aic_jev.dll out/aic_jev_x64.dll
+          ls -l out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aic_jev-windows
+          path: extension/aic_jev/out/aic_jev_x64.dll
+          if-no-files-found: error
+
+  linux:
+    name: Linux (aic_jev_x64.so)
+    runs-on: ubuntu-latest
+    # built inside Ubuntu 20.04 so the .so links against glibc 2.31 and loads
+    # on older dedicated servers (Ubuntu 20.04, Debian 11); a build on
+    # ubuntu-latest would need glibc >= 2.34
+    container: ubuntu:20.04
+    env:
+      DEBIAN_FRONTEND: noninteractive
+    defaults:
+      run:
+        working-directory: extension/aic_jev
+    steps:
+      - name: Install build tools
+        working-directory: /
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates curl build-essential pkg-config git
+      - name: Install Rust
+        working-directory: /
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable --target x86_64-unknown-linux-gnu
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: extension/aic_jev
+      - name: Test
+        run: cargo test --release --target x86_64-unknown-linux-gnu
+      - name: Build
+        run: cargo build --release --target x86_64-unknown-linux-gnu
+      - name: Check glibc requirement
+        run: |
+          objdump -T target/x86_64-unknown-linux-gnu/release/libaic_jev.so | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -n 1
+      - name: Collect
+        run: |
+          mkdir -p out
+          cp target/x86_64-unknown-linux-gnu/release/libaic_jev.so out/aic_jev_x64.so
+          chmod +x out/aic_jev_x64.so
+          ls -l out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aic_jev-linux
+          path: extension/aic_jev/out/aic_jev_x64.so
+          if-no-files-found: error

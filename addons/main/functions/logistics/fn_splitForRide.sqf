@@ -7,6 +7,12 @@
  *   whole, it is never left half on foot. The new teams are ordered here, so
  *   each gets its ride through the normal AIC_fnc_issueOrder path. The caller
  *   then looks for a ride for the original group, now small enough.
+ *   The probes (AIC_fnc_findTransport with a seat count and the vehicles
+ *   already taken) pick from the candidate list the caller's first call
+ *   built (commander key "transportPool"), so trying 2 + 3 teams costs no
+ *   further scan of "groupData". The probes reserve nothing: the vehicles
+ *   already taken count against their home's garrison surplus together, and
+ *   AIC_fnc_orderTransport reserves each ride once it is set up.
  *
  * Parameters:
  *   0: HASHMAP - commander

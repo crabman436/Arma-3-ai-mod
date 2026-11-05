@@ -21,6 +21,15 @@
  *                    (record "overwatch"). Open ground, or
  *                    no infantry: to the line of departure, then seek and
  *                    destroy at a walk, so they do not race ahead.
+ *   Roles (realism F, assault "roles" from AIC_fnc_assaultCycle; written to
+ *   the group record as "assaultRole", "" without one):
+ *     "SBF"        : the overwatch position above, vehicles and infantry
+ *                    alike, built-up objective or not, while the assault
+ *                    has infantry going in (assault "hasInf")
+ *     "ASSAULT"    : in, as above (vehicles with a role ASSAULT go in too)
+ *     "RESERVE"    : held at its place near the assembly area (as in
+ *                    "STAGE": MOVE, then HOLD, AWARE; record "staged")
+ *   A group without a role is ordered as before.
  *
  * Parameters:
  *   0: GROUP   - group
@@ -55,6 +64,10 @@ private _leader = leader _group;
 if (isNull _leader || {!alive _leader}) exitWith {false};
 
 private _target = [_pos select 0, _pos select 1, 0];
+// its part in a phased assault (AIC_fnc_assaultCycle), "" = none
+private _roles = _assault getOrDefault ["roles", createHashMap];
+private _role = if (_roles isEqualType createHashMap) then {_roles getOrDefault [hashValue _group, ""]} else {""};
+_record set ["assaultRole", _role];
 private _isInf = _type isEqualTo "INF";
 private _formation = ["WEDGE", "STAG COLUMN"] select _isInf;
 
@@ -109,8 +122,8 @@ private _fnc_wp = {
     _wp
 };
 
-// --- gather ------------------------------------------------------------------
-if ((_assault get "state") isEqualTo "STAGE") exitWith {
+// --- gather (and the reserve waits at the assembly area) ----------------------
+if ((_assault get "state") isEqualTo "STAGE" || {_role isEqualTo "RESERVE"}) exitWith {
     private _p = (_target getPos [_stageDist + _row * 150, _dir]) getPos [_lane * AIC_ASSAULT_FRONT, _dir + 90];
     if !(_isInf) then {
         _p = _p getPos [120, _dir];
@@ -143,7 +156,8 @@ private _lanePos = {
 };
 
 // --- vehicles watch over a built-up objective from outside --------------------
-if (!_isInf && {_assault get "urban"} && {_assault get "hasInf"}) exitWith {
+// (support by fire: wherever the objective is, infantry included)
+if ((_role isEqualTo "SBF" || {_role isEqualTo "" && {!_isInf} && {_assault get "urban"}}) && {_assault get "hasInf"}) exitWith {
     // never into the town: a wet overwatch spot falls back to the assembly area
     private _p = [_radius + AIC_ASSAULT_OVERWATCH, 20, [_stage, _target getPos [_radius + AIC_ASSAULT_OVERWATCH, _assault get "dir"]] select (_stage isEqualTo [])] call _lanePos;
     // high ground near it that can actually see the town (terrain line of sight, 2 m up)
