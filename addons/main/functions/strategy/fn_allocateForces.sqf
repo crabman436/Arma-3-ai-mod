@@ -532,6 +532,33 @@ private _fnc_mayLeave = {
     (_surplus - _relSum) >= (_info get "rawPower")
 };
 
+// the home whose surplus a group draws on when it leaves for this target,
+// or "" when no surplus check applies (same gates as _fnc_mayLeave)
+private _fnc_surplusHome = {
+    params ["_info", "_target"];
+    if ((_info get "qrfBase") != "") exitWith {""};
+    if ((_info get "outpost") isNotEqualTo []) exitWith {""};
+    if (!_manageGarrisons || {!(_info get "garrisoned")}) exitWith {""};
+    if ([_info, _target] call _fnc_isHome) exitWith {""};
+    private _entry = _garrisons getOrDefault [_info get "home", createHashMap];
+    if (count _entry == 0) exitWith {""};
+    private _released = _entry getOrDefault ["released", createHashMap];
+    if (_released isEqualType createHashMap && {(_info get "hv") in _released}) exitWith {""};
+    _info get "home"
+};
+
+// surplus a garrison can still spare this cycle (surplus minus released)
+private _fnc_homeSpare = {
+    params ["_home"];
+    private _entry = _garrisons getOrDefault [_home, createHashMap];
+    private _released = _entry getOrDefault ["released", createHashMap];
+    private _relSum = 0;
+    if (_released isEqualType createHashMap) then {{_relSum = _relSum + _y} forEach _released};
+    private _surplus = _entry getOrDefault ["surplus", 0];
+    if !(_surplus isEqualType 0) then {_surplus = 0};
+    _surplus - _relSum
+};
+
 // commit-time check: asks AIC_fnc_canLeaveGarrison (reserves the surplus)
 private _fnc_takeFromGarrison = {
     params ["_info", "_target"];
@@ -1267,9 +1294,26 @@ private _fnc_release = {
     };
 
     private _committed = _target get "committed";
+    // estimate with one shared surplus budget per garrison: groups of one
+    // home compete for its surplus, and only as many as it can spare count
+    // (F04; AIC_fnc_canLeaveGarrison applies the same rule at commit time)
     private _availEff = 0;
+    private _budget = createHashMap; // home id -> surplus still to spare
     {
-        _availEff = _availEff + (_x get "power") * ([_x get "type", _task, _target get "urban"] call _fnc_suit);
+        private _home = [_x, _target] call _fnc_surplusHome;
+        private _counts = true;
+        if (_home != "") then {
+            if !(_home in _budget) then {_budget set [_home, [_home] call _fnc_homeSpare]};
+            private _left = _budget get _home;
+            if (_left >= (_x get "rawPower")) then {
+                _budget set [_home, _left - (_x get "rawPower")];
+            } else {
+                _counts = false;
+            };
+        };
+        if (_counts) then {
+            _availEff = _availEff + (_x get "power") * ([_x get "type", _task, _target get "urban"] call _fnc_suit);
+        };
     } forEach _cands;
 
     // feasibility
@@ -1307,6 +1351,7 @@ private _fnc_release = {
     // infantry joins. Whether a garrison may still let a group go changes
     // as groups are taken, so that is checked per pick.
     private _blocked = createHashMap; // hashValue -> true: garrison refused to let it go
+    private _reserved = []; // [home id, hv] newly released by a garrison in this fill
     private _urbanWait = _task == "ATTACK" && {_target get "urban"}
         && {((_target get "members") findIf {((_x select 0) get "type") == "INF"}) < 0};
     private _list = [];
@@ -1324,10 +1369,13 @@ private _fnc_release = {
         _i = _i + 1;
         if ((_best get "hv") in _handled) then {continue};
         if !([_best, _target] call _fnc_mayLeave) then {continue};
+        // a reservation made here is undone if the attack cannot be staffed
+        private _resHome = [_best, _target] call _fnc_surplusHome;
         if !([_best, _target] call _fnc_takeFromGarrison) then {
             _blocked set [_best get "hv", true];
             continue;
         };
+        if (_resHome != "") then {_reserved pushBack [_resHome, _best get "hv"]};
 
         private _gTask = _task;
         if (_task == "DEFEND" && {(_target get "threat") > 0}) then {
@@ -1345,6 +1393,24 @@ private _fnc_release = {
             call _fnc_sortCands;
             _i = 0;
         };
+    };
+
+    // a NEW attack the fill could not staff to its required power is not
+    // launched: its members go back to the pool and the garrison surplus
+    // they reserved is freed for the targets after it (F04). Attacks already
+    // under way keep their hysteresis above.
+    if (_task == "ATTACK" && {!_holding} && {(_target get "committed") < _required}
+        && {(_target get "members") isNotEqualTo []}) then {
+        [_target, false] call _fnc_release;
+        {
+            _x params ["_home", "_hv"];
+            private _rel = (_garrisons getOrDefault [_home, createHashMap]) getOrDefault ["released", createHashMap];
+            if (_rel isEqualType createHashMap) then {_rel deleteAt _hv};
+        } forEach _reserved;
+        if (!isNil "AIC_ns" && { AIC_ns getOrDefault ["debug", false] isEqualTo true }) then {
+            ["%1 plan: attack on %2 not launched, only %3 of %4 power free", [_side, _target get "name", _target get "committed", _required]] call AIC_fnc_log;
+        };
+        continue;
     };
 
     // a wave riding there or still in the queue counts toward the cap too

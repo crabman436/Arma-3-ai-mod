@@ -174,10 +174,18 @@ if (_useMorale) then {
             private _unitRatio = ((count _alive) / _initial) min 1;
 
             private _vehicles = [];
+            // vehicles the group crews as its own: a garrison member manning a
+            // town's static gun ("AIC_gunnerOf", AIC_fnc_garrisonBuildings) stays
+            // infantry (AIC_fnc_classifyGroup) and is dismounted by
+            // AIC_fnc_clearWaypoints on the next order, so it does not count (F07)
+            private _crewed = [];
             {
                 private _veh = objectParent _x;
                 if (!isNull _veh && {(_veh getCargoIndex _x) < 0}) then {
                     _vehicles pushBackUnique _veh;
+                    if (isNull (_x getVariable ["AIC_gunnerOf", objNull])) then {
+                        _crewed pushBackUnique _veh;
+                    };
                 };
             } forEach _alive;
 
@@ -227,7 +235,7 @@ if (_useMorale) then {
                 && {(_driven findIf {([_x] call AIC_fnc_vehicleArmament) > 0}) < 0};
             _record set ["transportOnly", _transportOnly];
             // anti-air crews protect what they stand next to: never sent to fight on the ground
-            _record set ["antiAir", _vehicles isNotEqualTo [] && {(_vehicles findIf {!([_x] call AIC_fnc_isAntiAir)}) < 0}];
+            _record set ["antiAir", _crewed isNotEqualTo [] && {(_crewed findIf {!([_x] call AIC_fnc_isAntiAir)}) < 0}];
 
             // a transport crew on foot climbs back in once things are calm
             private _engaged = _record getOrDefault ["lastEngaged", -1e6];
