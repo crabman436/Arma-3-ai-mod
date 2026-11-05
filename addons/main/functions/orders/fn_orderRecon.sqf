@@ -89,13 +89,15 @@ if (_spot isEqualTo []) then {_spot = _cover};
 if (_spot isEqualTo []) then {
     private _c = _target getPos [_dMid, _dir];
     _spot = [_c select 0, _c select 1, 0];
+    // all water around (a coast): watch from where the group stands
+    if (surfaceIsWater _spot) then {_spot = getPosATL (leader _group)};
 };
 
 [_group] call AIC_fnc_clearWaypoints;
-_group allowFleeing 0;
-_group setBehaviour "AWARE";
-_group setCombatMode "GREEN";
-_group setSpeedMode "NORMAL";
+[_group, "allowFleeing", 0] call AIC_fnc_do;
+[_group, "setBehaviour", "AWARE"] call AIC_fnc_do;
+[_group, "setCombatMode", "GREEN"] call AIC_fnc_do;
+[_group, "setSpeedMode", "NORMAL"] call AIC_fnc_do;
 
 private _fnc_wp = {
     params ["_p", "_wpType", "_beh", "_speed", "_done"];
@@ -147,7 +149,7 @@ if ((_from distance2D _spot) > 800) then {
 private _wpAt = [_spot, "MOVE", "STEALTH", "LIMITED", 30] call _fnc_wp;
 if (_carries) then {[_spot, "UNLOAD", "STEALTH", "LIMITED", 30] call _fnc_wp};
 [_spot, "HOLD", "STEALTH", "LIMITED", 30] call _fnc_wp;
-_group setCurrentWaypoint ([_wpAt, _wps select 0] select (_wps isNotEqualTo []));
+[_group, "setCurrentWaypoint", ([_wpAt, _wps select 0] select (_wps isNotEqualTo []))] call AIC_fnc_do;
 
 if (count _record > 0) then {
     _record set ["reconPos", _spot];

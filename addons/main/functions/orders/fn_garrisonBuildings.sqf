@@ -114,7 +114,7 @@ private _fnc_freePositions = {
 };
 private _fnc_claim = {
     params ["_unit", "_b", "_bp", "_stance"];
-    _unit doMove _bp;
+    [_unit, "doMove", _bp] call AIC_fnc_do;
     _unit setVariable ["AIC_garrisonPos", _bp];
     _unit setVariable ["AIC_buildingPos", _bp];
     _unit setVariable ["AIC_garrisonStance", _stance];
@@ -147,9 +147,9 @@ if (_manStatics && {!_sentriesOnly}) then {
             && {!alive _owner || {(_owner getVariable ["AIC_gunnerOf", objNull]) isNotEqualTo _static}}
         ) then {
             private _unit = _free deleteAt 0;
-            _unit assignAsGunner _static;
-            [_unit] allowGetIn true;
-            [_unit] orderGetIn true;
+            [_unit, "assignAsGunner", _static] call AIC_fnc_do;
+            [[_unit], "allowGetIn", true] call AIC_fnc_do;
+            [[_unit], "orderGetIn", true] call AIC_fnc_do;
             _unit setVariable ["AIC_gunnerOf", _static];
             _unit setVariable ["AIC_garrisonPos", getPosATL _static];
             _static setVariable ["AIC_gunner", _unit];
@@ -226,7 +226,7 @@ if (_wanted > 0) then {
             };
             // a man leaving a building for the post gives his place there up
             _unit setVariable ["AIC_buildingPos", nil];
-            _unit doMove _p;
+            [_unit, "doMove", _p] call AIC_fnc_do;
             _unit setVariable ["AIC_garrisonPos", _p];
             _unit setVariable ["AIC_garrisonStance", "MIDDLE"];
         };
@@ -296,7 +296,7 @@ if (_ring > 0) then {
         if (_cover isNotEqualTo []) then {_p = (getPosATL (_cover select 0)) getPos [1.5, _dir + 180]};
         if (surfaceIsWater _p) then {_p = _c};
         _p = [_p select 0, _p select 1, 0];
-        _x doMove _p;
+        [_x, "doMove", _p] call AIC_fnc_do;
         _x setVariable ["AIC_garrisonPos", _p];
         _x setVariable ["AIC_garrisonStance", "MIDDLE"];
     } forEach _free;

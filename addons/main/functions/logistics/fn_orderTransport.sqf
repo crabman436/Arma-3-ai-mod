@@ -161,7 +161,7 @@ private _isHeli = (_veh isKindOf "Air") && { !_isPlane };
 // LOAD waypoint while the vehicle stays put, so the driver / pilot leads.
 private _drv = driver _veh;
 if ((leader _tGroup) isNotEqualTo _drv && { !((objectParent (leader _tGroup)) isEqualTo _veh) }) then {
-    _tGroup selectLeader _drv;
+    [_tGroup, "selectLeader", _drv] call AIC_fnc_do;
     ["orderTransport: %1 leader was not aboard %2, the driver now leads the group", [groupId _tGroup, typeOf _veh]] call AIC_fnc_log;
 };
 
@@ -283,18 +283,18 @@ _dropPos = [_dropPos select 0, _dropPos select 1, 0];
 [_cGroup] call AIC_fnc_clearWaypoints;
 
 private _tBeh = if (_isHeli || _isPlane) then { "CARELESS" } else { "AWARE" };
-_tGroup setBehaviour _tBeh;
-_tGroup setCombatMode "YELLOW";
-_tGroup setSpeedMode "FULL";
+[_tGroup, "setBehaviour", _tBeh] call AIC_fnc_do;
+[_tGroup, "setCombatMode", "YELLOW"] call AIC_fnc_do;
+[_tGroup, "setSpeedMode", "FULL"] call AIC_fnc_do;
 [_tGroup, !_isHeli && { !_isPlane }] call AIC_fnc_setMarch;
-if (_isHeli) then { _veh land "NONE"; };
+if (_isHeli) then { [_veh, "land", "NONE"] call AIC_fnc_do; };
 
 // own members on foot climb back in
 {
     if (alive _x && { isNull objectParent _x }) then {
         private _av = assignedVehicle _x;
-        if (isNull _av || { !alive _av }) then { _x assignAsCargo _veh; };
-        [_x] orderGetIn true;
+        if (isNull _av || { !alive _av }) then { [_x, "assignAsCargo", _veh] call AIC_fnc_do; };
+        [[_x], "orderGetIn", true] call AIC_fnc_do;
     };
 } forEach (units _tGroup);
 
@@ -332,9 +332,9 @@ if (!_isPlane) then {
     _wpUnload setWaypointCompletionRadius (if (_isHeli) then { 30 } else { 40 });
 };
 
-_cGroup setBehaviour "AWARE";
-_cGroup setSpeedMode "FULL";
-(units _cGroup) allowGetIn true;
+[_cGroup, "setBehaviour", "AWARE"] call AIC_fnc_do;
+[_cGroup, "setSpeedMode", "FULL"] call AIC_fnc_do;
+[(units _cGroup), "allowGetIn", true] call AIC_fnc_do;
 // TR UNLOAD only unloads groups the vehicle was added to (a squad placed aboard)
 _cGroup addVehicle _veh;
 
@@ -348,9 +348,9 @@ _wpGetIn waypointAttachVehicle _veh;
 if (!_isPlane) then {
     _wpGetIn synchronizeWaypoint [_wpLoad];
     _wpLoad synchronizeWaypoint [_wpGetIn];
-    _tGroup setCurrentWaypoint _wpLoad;
+    [_tGroup, "setCurrentWaypoint", _wpLoad] call AIC_fnc_do;
 };
-_cGroup setCurrentWaypoint _wpGetIn;
+[_cGroup, "setCurrentWaypoint", _wpGetIn] call AIC_fnc_do;
 
 // ---------------------------------------------------------------- records
 private _tLeader = leader _tGroup;

@@ -49,6 +49,10 @@ Keys of `AIC_ns`:
 | `"aaLauncherClasses"` | HashMap: launcher weapon class -> bool (fires `airLock` 2 ammunition) | `AIC_fnc_airDefence` cache, never cleared |
 | `"airfields"`, `"airfieldsRead"` | array `[[id, [x,y,0]], ...]` from the world config, bool (read once, also when the world has none) | `AIC_fnc_airfields` cache, never cleared |
 | `"mgClasses"` | HashMap: weapon class -> bool (`BIS_fnc_itemType` says `"MachineGun"`) | `AIC_fnc_assaultCycle` cache (support-by-fire team at GO), never cleared |
+| `"cmds"` | HashMap: command name -> code, `AIC_fnc_cmdTable` built by `AIC_fnc_preInit` on every machine | `AIC_fnc_do` / `AIC_fnc_execCmd` (also their whitelist) |
+| `"hcIntel"`, `"hcStats"` | HashMap: headless-client owner id -> `[time, HashMap group hash -> [rows, nearest enemy]]` / `[time, fps, groups, units]` | written by `AIC_fnc_hcReport` (server), read by `AIC_fnc_hcKnown` |
+| `"hcOwnersCache"`, `"hcKnownCache"` | `[frame, ids]` / `[time, HashMap]` | one-frame / one-second caches of `AIC_fnc_hcOwners` / `AIC_fnc_hcKnown` |
+| `"profile"` | bool, default unset (false) | `AIC_fnc_commanderCycle` times every step and logs the slowest (commander key `"profile"`) |
 
 The per-class caches are created lazily by the function that owns them
 (`getOrDefault` + `set`), so they exist only once that function ran.
@@ -210,6 +214,7 @@ when, repeated only after `AIC_REPORT_HOLD_REPEAT` s, and `"reserves"`),
 | `"objectiveRadius"` | 300 | default capture radius |
 | `"maxAutoObjectives"` | 12 | cap for auto-generated objectives (nearest to HQ) |
 | `"excludePlayerGroups"` | true | never command groups that contain players |
+| `"useHeadlessClients"` | true | hand ground groups to connected headless clients (`AIC_fnc_hcBalance`) |
 | `"debugMarkers"` | false | draw map markers of commander's view |
 | `"reportToPlayers"` | true | side-chat reports to players on the side |
 | `"artyCooldown"` | 120 | seconds between fire missions |
@@ -321,15 +326,15 @@ HashMap: `"group"`, `"task"`, `"pos"`, `"objective"` (id or `""`).
 ## Function list (CfgFunctions — exact names, category = folder)
 
 ### core (`functions/core`)
-- `AIC_fnc_createCommander` — `[side, settingsHashMap(optional)] call` → commander HashMap. Server only. Merges settings with defaults, stores in `AIC_ns get "commanders"`, collects groups/objectives (calls `AIC_fnc_registerGroups`, `AIC_fnc_collectObjectives`), sets `"hq"`, starts `AIC_fnc_commanderLoop` via `spawn`, returns commander. If a commander for that side exists, returns it.
+- `AIC_fnc_createCommander` — `[side, settingsHashMap(optional)] call` → commander HashMap. Server only. Merges settings with defaults, stores in `AIC_ns get "commanders"`, collects groups/objectives (calls `AIC_fnc_registerGroups`, `AIC_fnc_collectObjectives`), sets `"hq"`, starts `AIC_fnc_commanderLoop` via `spawn`, returns commander. If a commander for that side exists, returns it (and restarts its loop when it is still `"enabled"` but the loop script has ended).
 - `AIC_fnc_removeCommander` — `[side] call` → bool. Stops loop, wakes and releases groups (clears waypoints not required), deletes markers, deletes the transport helipads (`"heliPads"`) and removes the motor-pool keys of the objective records (`deleteAt` of `"parkSlots"`, `"heliSlots"` and their `"...Claims"`).
 - `AIC_fnc_getCommander` — `[side] call` → commander HashMap, or an empty HashMap if none (callers check `count _cmd == 0`).
 - `AIC_fnc_getSetting` — `[commander, key] call` → value (falls back to the default when the key is missing or the value has the wrong type; an empty commander reads the defaults).
 - `AIC_fnc_defaultSettings` — `[] call` → new HashMap of default settings.
-- `AIC_fnc_commanderLoop` — `[commander] spawn`. While `"enabled"`: clear `"replanRequested"` / `"replanReason"`, call `AIC_fnc_commanderCycle`, then wait for the rest of `loopInterval`, or less when a replan is requested (see the replan-on-contact extension).
+- `AIC_fnc_commanderLoop` — `[commander] spawn`. While `"enabled"`: clear `"replanRequested"` / `"replanReason"`, call `AIC_fnc_commanderCycle`, then wait for the rest of `loopInterval` (game time: the cycle's own game-time length is subtracted), or less when a replan is requested (see the replan-on-contact extension).
 - `AIC_fnc_requestReplan` — `[commander, reason(optional string)] call` → bool. Asks for an early cycle (see the replan-on-contact extension).
 - `AIC_fnc_commanderCycle` — `[commander] call`. One full think step, in order (the numbers are the comments in `fn_commanderCycle.sqf`):
-  1. `AIC_fnc_registerGroups` (pick up new groups, drop dead)
+  1. `AIC_fnc_registerGroups` (pick up new groups, drop dead); 1a. `AIC_fnc_hcBalance` (ground groups to headless clients)
   2. `AIC_fnc_updateGroups` (strength/power refresh); 2a. `AIC_fnc_drainOrders` (queued orders that fell due during the sleep)
   3. `AIC_fnc_gatherIntel`
   4. `AIC_fnc_clusterThreats`
@@ -353,7 +358,7 @@ HashMap: `"group"`, `"task"`, `"pos"`, `"objective"` (id or `""`).
 - `AIC_fnc_moduleAttr` — `[logic, name, default] call` → the module attribute normalised to the default's type (number: strings parsed, bools 0/1; bool: numbers > 0, "true"/"1"; string: `str`). The one attribute rule used by `moduleCommander`, `moduleObjective` and `collectObjectives`.
 
 ### groups (`functions/groups`)
-- `AIC_fnc_registerGroups` — `[commander] call`. Adds all groups of the side with alive units, `!isPlayer` leaders (always; `excludePlayerGroups` additionally excludes groups that contain any player), not `group getVariable ["AIC_exclude", false]`, and **local to the server** (groups owned by a headless client are not commanded: AIC's argument-local commands such as `doMove`, `doStop`, `land`, `orderGetIn`, `doArtilleryFire` and the unit `Hit` / `FiredNear` handlers only work where the group is local; a group that moves to a headless client is released by the sweep). Removes empty/dead groups. Creates group records.
+- `AIC_fnc_registerGroups` — `[commander] call`. Adds all groups of the side with alive units, `!isPlayer` leaders (always; `excludePlayerGroups` additionally excludes groups that contain any player), not `group getVariable ["AIC_exclude", false]`, and local to the server **or to a connected headless client** (`groupOwner` in `AIC_fnc_hcOwners`; a group local to a player's machine is not commanded and is released by the sweep). Sets the public group variable `"AIC_hc"` (`[record key, side]`) on a commanded group that is not local. Removes empty/dead groups. Creates group records.
 - `AIC_fnc_classifyGroup` — `[group, known(optional array)] call` → type string (with known objects: only those count).
 - `AIC_fnc_newGroupRecord` — `[group] call` → a complete group record (type, power, `initialSize`, task `"IDLE"`, and every logistics key). The one record constructor, used by `registerGroups`, `updateGroups` and `issueOrder`.
 - `AIC_fnc_splitPassengers` — `[commander, groups(optional, default all groups of the side)] call` → array of new groups. Runs only if `splitPassengers`. For every commandable group of the side whose members crew a transport-class vehicle (any air vehicle, or a ground vehicle without real weapons) and that has at least two other alive members (cargo / FFV seats or on foot), those members `joinSilent` a new group of the side. Groups crewing an armed ground vehicle, player groups, `AIC_exclude` and `AIC_noSplit` groups are left alone. Called by `registerGroups` before its sweep.
@@ -1016,7 +1021,7 @@ by `AIC_fnc_moduleCommander` into `"replanOnContact"`.
 
 ## Changes to existing functions
 
-- `AIC_fnc_commanderLoop`: at the start of every iteration sets `"replanRequested"` false and `"replanReason"` `""`, then calls the cycle. Instead of one `sleep`, it waits with `waitUntil { sleep AIC_REPLAN_POLL; ... }` until the first of: the commander is disabled; `time` reaches the cycle's end + `(loopInterval - elapsed) max 1` (the old wait); `"replanRequested"` is true **and** `time` ≥ the cycle's end + `replanMinInterval max 5`. Both settings are read live. In debug mode the cycle-time log line of an early cycle ends with `(early: <reason>)`.
+- `AIC_fnc_commanderLoop`: at the start of every iteration sets `"replanRequested"` false and `"replanReason"` `""`, then calls the cycle. Instead of one `sleep`, it waits with `waitUntil { sleep AIC_REPLAN_POLL; ... }` until the first of: the commander is disabled; `time` reaches the cycle's end + `(loopInterval - the cycle's game-time length) max 5`; `"replanRequested"` is true **and** `time` ≥ the cycle's end + `replanMinInterval max 5`. Both settings are read live. In debug mode the cycle-time log line of an early cycle ends with `(early: <reason>)`.
 - `AIC_fnc_groupEngaged`: reads the record's `"lastEngaged"` before stamping it. Then, if `"replanOnContact"` is true and no request is pending, calls `AIC_fnc_requestReplan` with reason `"contact of <groupId>"` when `time - previous lastEngaged ≥ AIC_REPLAN_FRESH_CONTACT`, else with `"losses of <groupId>"` when all of these hold: type not STATIC / ARTY / NAVAL; task not RETREAT / SUPPORT / TRANSPORT / TRANSPORTED / RTB; the record's `"strength"` (last cycle) is above `"retreatThreshold"`; alive units / `"initialSize"` is at or below it. Vehicle damage is not part of this estimate.
 - `AIC_fnc_createCommander`: initial keys `"replanRequested"` (false) and `"replanReason"` (`""`); clamps `"replanMinInterval"` to ≥ 5.
 
@@ -1043,3 +1048,25 @@ by `AIC_fnc_moduleCommander` into `"replanOnContact"`.
 
 `AIC_PARA_CHUTE` "NonSteerable_Parachute_F", `AIC_PARA_BACKPACK` "B_Parachute", `AIC_PARA_SPACING` 0.6, `AIC_PARA_CLEANUP` 10, `AIC_PARA_TIMEOUT` 180, `AIC_PARA_HEIGHT` 300, `AIC_PARA_MIN_HEIGHT` 150, `AIC_PARA_DROP_RANGE` 350, `AIC_PARA_PICKUP_RANGE` 1200, `AIC_PARA_DZ_OFFSET` 600, `AIC_PARA_DZ_OFFSET_SAFE` 250, `AIC_PARA_RUN_IN` 3000; `AIC_FORT_INTERVAL` 45, `AIC_FORT_HOLD` 120, `AIC_FORT_SAFE` 600, `AIC_FORT_PER_CYCLE` 6, `AIC_FORT_SERVICE_RADIUS` 25, `AIC_FORT_PLAYER_NEAR` 300, `AIC_FORT_RUNWAY_LEN` 1600, `AIC_FORT_RUNWAY_CLEAR` 70, `AIC_FORT_TOWER`, `AIC_FORT_BARRIER`, `AIC_FORT_FUEL`, `AIC_FORT_AMMO`, `AIC_FORT_REPAIR` (class lists, the first existing class is used).
 
+# Headless-client extension
+
+The commander stays on the server; ground groups run on headless clients.
+
+- `AIC_fnc_hcBalance` (hc) — `[commander] call` → groups handed over. Commander cycle step 1a (after `registerGroups`). With setting `"useHeadlessClients"` (default true) and at least one headless client: groups local to the server, record type INF / MOTOR / MECH / ARMOR, not `"transportOnly"`, record `"transport"` null, task not TRANSPORT / TRANSPORTED / SUPPORT / SUPPLY / RTB, no player, no group variable `AIC_noHC`, go (`setGroupOwner`) to the client with the fewest units (all groups counted), at most `AIC_HC_MOVES` per call. Sets the public group variable `"AIC_hc"` = `[record key (hashValue on the server), side]`.
+- `AIC_fnc_do` (hc) — `[target, command, argument(optional)] call`. Target: object, group or array of units. Local: runs the command at once; remote: `remoteExecCall AIC_fnc_execCmd` to `owner` / `groupOwner` (arrays split per owner). Every argument-local AI command AIC gives a commanded group goes through it; `landAt` (its result is used) and waypoint commands (global) do not. Server only for remote targets.
+- `AIC_fnc_execCmd` (hc) — remote end of `AIC_fnc_do`. Headless clients accept it only from the server (`remoteExecutedOwner` 2), the server only through `AIC_fnc_fromHC`.
+- `AIC_fnc_fromHC` (hc) — `[isRemoteExecuted, remoteExecutedOwner] call` → bool (server). Measured in Arma 3 2.22: a `remoteExecCall` from a headless client arrives with `isRemoteExecuted` false and `remoteExecutedOwner` 0, like the server's own call; a player's is remote executed with the player's id. Refuses a call that is remote executed by an id that is neither 0 nor a connected headless client. The callers read both values at their own top level and pass them. Runs only `AIC_fnc_cmdTable` entries; a target no longer local goes back to the server and on to its new owner, at most `AIC_HC_HOPS` times.
+- `AIC_fnc_cmdTable` (hc) — `[] call` → HashMap command name -> code `[target, argument]`. The whitelist.
+- `AIC_fnc_hcOwners` (hc) — `[] call` → owner ids of connected headless clients (`allPlayers` of kind `HeadlessClient_F`, owner > 2; `[]` in singleplayer), cached per frame.
+- `AIC_fnc_hcInit` (hc, postInit) — on a headless client spawns `AIC_fnc_hcLoop`.
+- `AIC_fnc_hcLoop` (hc) — headless client, every `AIC_HC_REPORT` s: for local groups with `"AIC_hc"` attaches `AIC_fnc_hcAttach` once and sends `[fps, groups, units, [[group, rows, nearest enemy], ...]]` to `AIC_fnc_hcReport`. Rows: the leader's hostile `nearTargets AIC_INTEL_RANGE` in nearTargets form plus the `targetKnowledge` last-seen time as element 6, at most `AIC_HC_ROWS` (nearest first).
+- `AIC_fnc_hcAttach` (hc) — headless client: group `EnemyDetected` / `UnitKilled` / `Empty` / `VehicleAdded` and unit `Hit` / hostile `FiredNear` and the `Hit` of the group's vehicles forward `[group, argument, record key, side]` to `AIC_fnc_groupEvent` on the server (`"engaged"` throttled by `AIC_EH_THROTTLE` per group while awake); `UnitJoined` attaches the new unit. Guarded by the local variable `"AIC_hcEH"`.
+- `AIC_fnc_hcReport` (hc) — `[clientOwner, fps, groups, units, report] remoteExecCall` (the client names itself; the server checks it against `AIC_fnc_hcOwners` and `AIC_fnc_fromHC`): stores `AIC_ns` `"hcIntel"` and `"hcStats"`; the first report of a client and the first refused one are logged.
+- `AIC_fnc_hcKnown` (hc) — `[] call` → HashMap group hash -> `[rows, nearest enemy]` from reports younger than `AIC_HC_STALE` s (merged oldest first: a group that changed client keeps its newest report).
+- `AIC_fnc_nearestEnemy` (hc) — `[unit, from] call` → `findNearestEnemy` for a local unit, the reported nearest enemy otherwise. Used by `monitorOrders` and `orderDefend`.
+- `AIC_fnc_groupEvent` (hc) — `[kind, args] call`. Server: `"engaged"` [group, underFire], `"UnitKilled"` [group, unit], `"Empty"` [group], `"VehicleAdded"` [group, vehicle] — the bodies of the former `attachGroupEHs` group handlers, which now call it; remote calls only from headless clients. With the group already deleted (an emptied group of a headless client) the record is found by the key and the commander by the side. `"Empty"` logs no `"G"` loss for a record with `"merged"` true.
+- `AIC_fnc_gatherIntel`: a remote observer leader's rows come from `AIC_fnc_hcKnown` (last-seen time from element 6, not `targetKnowledge`). `AIC_fnc_sentryWatch`: a remote group's reported rows within `AIC_SENTRY_RANGE` of the sentry. `AIC_fnc_monitorGarrison`: a remote unit counts as ready (`unitReady`) when its speed is below 0.5.
+- `AIC_fnc_teamCycle`: merges only groups with the same `groupOwner`; sets the source record's `"merged"` true before the units join (a merged record is never merged again) and gives the newcomers the target's AUTOCOMBAT state directly. `AIC_fnc_splitGroup` (and `splitForAttack`, `splitPassengers`) split only groups local to the server: a squad on a headless client does not split into teams.
+- `AIC_fnc_paradrop`: a jumper on a headless client is waited for (up to 1.5 s each) until he is out of the aircraft and in his parachute, before the backpack fallback is judged; `allowDamage` goes through `AIC_fnc_do`.
+- Mod `CfgRemoteExec` allows `AIC_fnc_execCmd` (any target), `AIC_fnc_groupEvent` and `AIC_fnc_hcReport` (server).
+- Constants: `AIC_INTEL_RANGE` 1500, `AIC_HC_MOVES` 16, `AIC_HC_HOPS` 3, `AIC_HC_REPORT` 10, `AIC_HC_STALE` 60, `AIC_HC_ROWS` 80.

@@ -50,6 +50,12 @@ private _enemy = 0;
 } forEach (_cmd getOrDefault ["threats", []]);
 if (_enemy > 0.75 * (_rec getOrDefault ["power", 0])) exitWith {false};
 
+// what AIC_fnc_splitGroup refuses anyway, before the cover search (a group
+// on a headless client is never split)
+if (!local _group || {_group getVariable ["AIC_noSplit", false]} || {(_rec getOrDefault ["teamId", 0]) > 0}) exitWith {false};
+private _alive = (units _group) select {alive _x};
+if (count _alive < 2 * AIC_TEAM_MIN_SIZE || {(_alive findIf {isPlayer _x || {!isNull objectParent _x}}) >= 0}) exitWith {false};
+
 // a flanking point on dry land, on either side of the line of advance
 private _dir = _target getDir (leader _group);
 private _reach = ((((leader _group) distance2D _target) * 0.8) min 450) max 200;

@@ -102,26 +102,30 @@ private _fnc_man = {
         private _tp = _x getOrDefault ["taskPos", []];
         if (!([_tp] call _fnc_valid) || { (_tp distance2D _c) > _reach }) then { continue };
         private _all = (units _grp) select { alive _x };
-        private _guns = { !isNull (_x getVariable ["AIC_gunnerOf", objNull]) } count _all;
+        // (a gunner whose gun is gone is a rifleman again)
+        private _guns = { alive (_x getVariable ["AIC_gunnerOf", objNull]) } count _all;
         if (_guns >= floor ((count _all) / 2)) then { continue };
         private _free = _all select {
             isNull objectParent _x && { !isPlayer _x } && { _x isNotEqualTo leader _grp }
-            && { !(_x getVariable ["AIC_sentry", false]) } && { isNull (_x getVariable ["AIC_gunnerOf", objNull]) }
+            && { !(_x getVariable ["AIC_sentry", false]) } && { !alive (_x getVariable ["AIC_gunnerOf", objNull]) }
         };
         if (_free isEqualTo []) then { continue };
-        private _byDist = _free apply { [_x distance _static, _x] };
+        // the nearest man ([distance, index]: two at the same distance must
+        // never make sort compare the units)
+        private _byDist = [];
+        { _byDist pushBack [_x distance _static, _forEachIndex]; } forEach _free;
         _byDist sort true;
-        private _u = (_byDist select 0) select 1;
+        private _u = _free select ((_byDist select 0) select 1);
         _u setVariable ["AIC_gunnerOf", _static];
         _u setVariable ["AIC_garrisonPos", getPosATL _static];
         _static setVariable ["AIC_gunner", _u];
         if (dynamicSimulationEnabled _grp) then {
             // parked, nobody near: straight onto the gun
-            _u moveInGunner _static;
+            [_u, "moveInGunner", _static] call AIC_fnc_do;
         } else {
-            _u assignAsGunner _static;
-            [_u] allowGetIn true;
-            [_u] orderGetIn true;
+            [_u, "assignAsGunner", _static] call AIC_fnc_do;
+            [[_u], "allowGetIn", true] call AIC_fnc_do;
+            [[_u], "orderGetIn", true] call AIC_fnc_do;
         };
         break;
     } forEach _records;
@@ -250,9 +254,9 @@ _cmd set ["fortifyCount", _count]; // (standing objects, for the debug log / mis
                 private _v = _x;
                 if (alive _v && { (abs (speed _v)) < 1 } && { isTouchingGround _v } && { !(_v isKindOf "StaticWeapon") }
                     && { (crew _v) isEqualTo [] || { (side (group (effectiveCommander _v))) isEqualTo _side } }) then {
-                    if ("FUEL" in _has && { (fuel _v) < 1 }) then { _v setFuel (((fuel _v) + 0.25) min 1); };
+                    if ("FUEL" in _has && { (fuel _v) < 1 }) then { [_v, "setFuel", (((fuel _v) + 0.25) min 1)] call AIC_fnc_do; };
                     if ("REPAIR" in _has && { (damage _v) > 0 }) then { _v setDamage (((damage _v) - 0.25) max 0); };
-                    if ("AMMO" in _has) then { _v setVehicleAmmo 1; };
+                    if ("AMMO" in _has) then { [_v, "setVehicleAmmo", 1] call AIC_fnc_do; };
                 };
             } forEach (_sp nearEntities [["LandVehicle", "Air"], AIC_FORT_SERVICE_RADIUS]);
         };
@@ -270,8 +274,9 @@ _cmd set ["fortifyCount", _count]; // (standing objects, for the debug log / mis
                     && { (abs (((getDir _v) - _pDir + 540) % 360 - 180)) > 10 }
                     && { (allPlayers findIf { (_x distance _v) < AIC_FORT_PLAYER_NEAR }) < 0 }
                     && { (side (group (effectiveCommander _v))) isEqualTo _side || { (crew _v) isEqualTo [] } }) then {
-                    _v setDir _pDir;
-                    _v setPosATL [(getPosATL _v) select 0, (getPosATL _v) select 1, 0];
+                    // (on its owner, in this order: a parked vehicle may belong to a headless client's group)
+                    [_v, "setDir", _pDir] call AIC_fnc_do;
+                    [_v, "setPosATL", [(getPosATL _v) select 0, (getPosATL _v) select 1, 0]] call AIC_fnc_do;
                 };
             } forEach (_slot nearEntities [["LandVehicle"], 4]);
         } forEach _slots;

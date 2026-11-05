@@ -8,8 +8,10 @@
  *     - has a non-player leader,
  *     - contains no players at all if setting "excludePlayerGroups" is true,
  *     - is not flagged with group variable "AIC_exclude" = true,
- *     - is local to the server (groups moved to a headless client are not
- *       commanded: AIC's argument-local commands would do nothing there).
+ *     - is local to the server or to a connected headless client (groups
+ *       of a player's machine, e.g. made by a Zeus curator, are not
+ *       commanded). AIC_fnc_hcBalance hands groups to headless clients;
+ *       commands reach them through AIC_fnc_do.
  *   Before the sweep AIC_fnc_splitPassengers moves passengers that share
  *   a group with a transport crew into a group of their own.
  *   New groups get a fresh, complete group record from
@@ -58,6 +60,7 @@ private _unregistered = (groups _side) select { !((hashValue _x) in _groupData) 
 if (_unregistered isNotEqualTo []) then { [_commander, _unregistered] call AIC_fnc_splitPassengers; };
 
 // --- Collect currently eligible groups -----------------------------------
+private _hcs = [] call AIC_fnc_hcOwners;
 private _eligible = (groups _side) select {
     private _grp = _x;
     private _alive = (units _grp) select {alive _x};
@@ -66,10 +69,8 @@ private _eligible = (groups _side) select {
     && {!(_grp getVariable ["AIC_exclude", false])}
     && {!isPlayer (leader _grp)}
     && {!_excludePlayers || {(_alive findIf {isPlayer _x}) < 0}}
-    // server-local only: waypoint helpers (doMove, doStop, land, orderGetIn,
-    // doArtilleryFire, ...) and the unit Hit / FiredNear handlers need local
-    // units, so groups moved to a headless client are left alone
-    && {local _grp}
+    // the server's or a headless client's (AIC_fnc_do reaches both)
+    && {local _grp || {(groupOwner _grp) in _hcs}}
 };
 
 // --- Build new record set ---------------------------------------------------
@@ -91,6 +92,11 @@ private _newData = createHashMap;
     if !(_grp getVariable ["AIC_ehAttached", false]) then {
         [_commander, _grp] call AIC_fnc_attachGroupEHs;
     };
+    // a headless client's group (also one put there by the mission): its
+    // client forwards events and reports intel for it (AIC_fnc_hcLoop)
+    if (!local _grp && {(_grp getVariable ["AIC_hc", []]) isEqualTo []}) then {
+        _grp setVariable ["AIC_hc", [_key, side _grp], true];
+    };
 
     _newData set [_key, _record];
 } forEach _eligible;
@@ -98,7 +104,7 @@ private _newData = createHashMap;
 // --- Drop records of groups no longer under command (in place) --------------
 // Records of dead groups ("Empty" handler marked them "removed" and deleted
 // the group), and of groups that left command for other reasons
-// (AIC_exclude, a player joined, side change, moved to a headless client).
+// (AIC_exclude, a player joined, side change, now local to a player's machine).
 // keys snapshot: deleting while iterating the HashMap itself is unsafe.
 private _staleKeys = (keys _groupData) select {!(_x in _newData)};
 {
@@ -115,8 +121,7 @@ private _staleKeys = (keys _groupData) select {!(_x in _newData)};
         [_oldRec] call AIC_fnc_deleteHelipads;
     };
     // a released group gets its automatic combat and free driving back
-    // (no-op unless it marches; argument-local commands: a group already
-    // moved to a headless client keeps them until its new owner changes them)
+    // (no-op unless it marches; sent to its owner through AIC_fnc_do)
     [_oldGrp, false] call AIC_fnc_setMarch;
     if (!isNil "AIC_ns" && { AIC_ns getOrDefault ["debug", false] isEqualTo true }) then {
         ["Commander %1 released group %2", [_side, if (isNull _oldGrp) then {"<dead>"} else {groupId _oldGrp}]] call AIC_fnc_log;

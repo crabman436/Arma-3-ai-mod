@@ -46,10 +46,13 @@ if (_units isEqualTo []) exitWith { scriptNull };
         if (!alive _u || { (objectParent _u) isNotEqualTo _veh }) then { continue };
 
         // leaves the aircraft for good (no automatic get-in again)
-        unassignVehicle _u;
-        [_u] allowGetIn false;
-        _u allowDamage false;
-        moveOut _u;
+        [_u, "unassignVehicle"] call AIC_fnc_do;
+        [[_u], "allowGetIn", false] call AIC_fnc_do;
+        [_u, "allowDamage", false] call AIC_fnc_do;
+        [_u, "moveOut"] call AIC_fnc_do;
+        // a jumper on a headless client gets the commands a moment later
+        private _remote = !local _u;
+        if (_remote) then { private _w = time + 1.5; waitUntil { sleep 0.1; isNull objectParent _u || { time > _w } }; };
 
         // just behind and below the aircraft, clear of the airframe
         private _exit = (getPosASL _veh) vectorAdd ((vectorDir _veh) vectorMultiply -12) vectorAdd [0, 0, -4];
@@ -60,7 +63,8 @@ if (_units isEqualTo []) exitWith { scriptNull };
         if (!isNull _chute) then {
             _chute setPosASL _exit;
             _chute setDir (getDir _veh);
-            _u moveInDriver _chute;
+            [_u, "moveInDriver", _chute] call AIC_fnc_do;
+            if (_remote) then { private _w = time + 1.5; waitUntil { sleep 0.1; (objectParent _u) isEqualTo _chute || { time > _w } }; };
         };
         if (isNull _chute || { (objectParent _u) isNotEqualTo _chute }) then {
             // no parachute vehicle: a parachute backpack for the jump, his own back later
@@ -71,10 +75,10 @@ if (_units isEqualTo []) exitWith { scriptNull };
             if (_bp isNotEqualTo "" && { _bp isNotEqualTo AIC_PARA_BACKPACK }) then { removeBackpackGlobal _u; };
             if ((backpack _u) isNotEqualTo AIC_PARA_BACKPACK) then { _u addBackpackGlobal AIC_PARA_BACKPACK; };
         } else {
-            _chute setVelocity ((velocity _veh) vectorMultiply 0.3);
+            [_chute, "setVelocity", ((velocity _veh) vectorMultiply 0.3)] call AIC_fnc_do;
         };
         _jumped pushBack [_u, _chute, _saved];
-        [_u] spawn { sleep 3; (_this select 0) allowDamage true; };
+        [_u] spawn { sleep 3; [_this select 0, "allowDamage", true] call AIC_fnc_do; };
         sleep AIC_PARA_SPACING;
     } forEach _units;
 

@@ -49,8 +49,8 @@ private _target = [_pos select 0, _pos select 1, 0];
 
 // Static / artillery cannot attack by moving
 if (_type in ["STATIC", "ARTY"]) exitWith {
-    _group setCombatMode "RED";
-    _group setBehaviour "AWARE";
+    [_group, "setCombatMode", "RED"] call AIC_fnc_do;
+    [_group, "setBehaviour", "AWARE"] call AIC_fnc_do;
     false
 };
 
@@ -66,7 +66,7 @@ if (_type == "NAVAL" && {!surfaceIsWater _target}) exitWith {
     _wp setWaypointCombatMode "RED";
     _wp setWaypointSpeed "NORMAL";
     _wp setWaypointCompletionRadius 100;
-    _group setCurrentWaypoint _wp;
+    [_group, "setCurrentWaypoint", _wp] call AIC_fnc_do;
     true
 };
 
@@ -88,9 +88,9 @@ private _formation = switch (_type) do {
 private _isGroundVeh = _type in ["MOTOR", "MECH", "ARMOR"];
 private _isAir = _type in ["HELI", "PLANE"];
 
-_group setFormation _formation;
-_group setCombatMode "YELLOW";
-_group allowFleeing 0;
+[_group, "setFormation", _formation] call AIC_fnc_do;
+[_group, "setCombatMode", "YELLOW"] call AIC_fnc_do;
+[_group, "allowFleeing", 0] call AIC_fnc_do;
 
 private _leaderPos = getPosATL _leader;
 private _dist = _leaderPos distance2D _target;
@@ -141,5 +141,5 @@ _wpS setWaypointFormation (if (_type == "INF") then {"LINE"} else {_formation});
 _wpS setWaypointCompletionRadius ((_radius * 0.5) max 30);
 
 if (_first isEqualTo []) then { _first = _wpS; };
-_group setCurrentWaypoint _first;
+[_group, "setCurrentWaypoint", _first] call AIC_fnc_do;
 true

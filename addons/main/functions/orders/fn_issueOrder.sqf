@@ -259,7 +259,7 @@ if (_curTask isEqualTo "TRANSPORTED") then {
 if (_curTask isEqualTo "TRANSPORT") then {
     [_record] call AIC_fnc_deleteHelipads;
     private _veh = _record getOrDefault ["transportVeh", objNull];
-    if (_veh isEqualType objNull && {!isNull _veh} && {alive _veh} && {_veh isKindOf "Air"}) then { _veh land "NONE"; };
+    if (_veh isEqualType objNull && {!isNull _veh} && {alive _veh} && {_veh isKindOf "Air"}) then { [_veh, "land", "NONE"] call AIC_fnc_do; };
     _record set ["transport", grpNull];
 };
 
@@ -360,7 +360,7 @@ _record set ["assaultRole", ""];
 // a new order ends any landing (only AIC_fnc_transportCycle lands at an LZ)
 if (_type == "HELI") then {
     private _air = objectParent (leader _group);
-    if (!isNull _air && {_air isKindOf "Air"}) then {_air land "NONE"};
+    if (!isNull _air && {_air isKindOf "Air"}) then {[_air, "land", "NONE"] call AIC_fnc_do};
 };
 private _ok = switch (_task) do {
     case "ATTACK": {

@@ -3,7 +3,9 @@
  * Description:
  *   The alarm. Each cycle the sentries of a garrisoned infantry group (unit
  *   variable "AIC_sentry", posted by AIC_fnc_garrisonBuildings) are asked
- *   what they know within AIC_SENTRY_RANGE (nearTargets). The first target
+ *   what they know within AIC_SENTRY_RANGE (nearTargets; for a group on a
+ *   headless client its leader's reported targets within that range of the
+ *   sentry, AIC_fnc_hcKnown). The first target
  *   a sentry has recognised as a hostile side raises the alarm for the
  *   place the group defends:
  *     - the objective record gets "alarmTime" (time) and "alarmPos" (the
@@ -46,6 +48,9 @@ if (count _obj == 0) exitWith {false};
 if ((time - (_obj getOrDefault ["alarmTime", -1e6])) < AIC_ALARM_REPEAT) exitWith {false};
 
 private _side = _cmd getOrDefault ["side", sideUnknown];
+// a group on a headless client: its leader's reported targets near each
+// sentry stand in for the sentry's own (AI knowledge exists only there)
+private _reported = if (local _group) then {[]} else {(([] call AIC_fnc_hcKnown) getOrDefault [hashValue _group, [[]]]) select 0};
 private _spotted = objNull;
 private _where = [];
 {
@@ -61,7 +66,7 @@ private _where = [];
             _spotted = _target;
             _where = [_tPos select 0, _tPos select 1, 0];
         };
-    } forEach (_sentry nearTargets AIC_SENTRY_RANGE);
+    } forEach (if (local _sentry) then {_sentry nearTargets AIC_SENTRY_RANGE} else {_reported select {((_x select 0) distance2D _sentry) <= AIC_SENTRY_RANGE}});
     if (!isNull _spotted) exitWith {};
 } forEach _sentries;
 if (isNull _spotted) exitWith {false};
@@ -78,7 +83,7 @@ private _told = 0;
         private _g = _r getOrDefault ["group", grpNull];
         if (!isNull _g) then {
             [_cmd, _g, false] call AIC_fnc_setGroupSim;
-            _g reveal [_spotted, 2.5];
+            [_g, "reveal", [_spotted, 2.5]] call AIC_fnc_do;
             _told = _told + 1;
         };
     };

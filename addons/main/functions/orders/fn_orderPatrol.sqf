@@ -47,8 +47,8 @@ private _center = [_pos select 0, _pos select 1, 0];
 
 if (_type in ["STATIC", "ARTY"]) exitWith {
     [_group] call AIC_fnc_clearWaypoints;
-    _group setBehaviour "AWARE";
-    _group setCombatMode "YELLOW";
+    [_group, "setBehaviour", "AWARE"] call AIC_fnc_do;
+    [_group, "setCombatMode", "YELLOW"] call AIC_fnc_do;
     false
 };
 
@@ -62,7 +62,7 @@ if (_type == "PLANE") exitWith {
     _wp setWaypointBehaviour "AWARE";
     _wp setWaypointCombatMode "YELLOW";
     _wp setWaypointSpeed "NORMAL";
-    _group setCurrentWaypoint _wp;
+    [_group, "setCurrentWaypoint", _wp] call AIC_fnc_do;
     true
 };
 
@@ -123,7 +123,7 @@ if (_points isEqualTo []) exitWith {
     _wp setWaypointCompletionRadius 30;
     private _wpH = _group addWaypoint [_center, 0];
     _wpH setWaypointType "HOLD";
-    _group setCurrentWaypoint _wp;
+    [_group, "setCurrentWaypoint", _wp] call AIC_fnc_do;
     false
 };
 
@@ -152,5 +152,5 @@ private _wpC = _group addWaypoint [_points select 0, 0];
 _wpC setWaypointType "CYCLE";
 _wpC setWaypointCompletionRadius 50;
 
-_group setCurrentWaypoint _first;
+[_group, "setCurrentWaypoint", _first] call AIC_fnc_do;
 true

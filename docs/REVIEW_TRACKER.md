@@ -579,15 +579,15 @@ The planner header describes a 1.5× attack ratio, smaller force floors, and poo
 | Field | Value |
 |---|---|
 | Type | IMPROVEMENT |
-| Status | OPEN |
+| Status | IN_REVIEW |
 | Found on / reported by | 2026-11-03 / Codex |
-| Last updated | 2026-11-03 |
-| Confidence | Review recommendation; implementation not started |
+| Last updated | 2026-11-05 |
+| Confidence | Measured on a dedicated server (Altis stress mission) |
 | Owner / claim token | Unassigned / — |
 | Claimed at / expires at (UTC) | — / — |
 | Target branch | `claude/arma3-ai-coordination-qilgd4` |
 | Last assessed code | [`01e0eeda58fbc5e109cd4d31025ac5013d8b14bb`](https://github.com/crabman436/Arma-3-ai-mod/commit/01e0eeda58fbc5e109cd4d31025ac5013d8b14bb) |
-| Work branch / PR | — |
+| Work branch / PR | `claude/scale-review` |
 | Fixed on / by | — / — |
 | Fix commit / PR | — |
 | Verified on / by | — / — |
@@ -609,6 +609,7 @@ Every commander rebuilds hostile positions from all units and checks them agains
 | Date/time | Actor | Change | Reference / result |
 |---|---|---|---|
 | 2026-11-03 | Codex | Created → OPEN | Imported as a proposed improvement. Baseline `01e0eed`; [historical review](reviews/2026-11-03-initial-review.md). |
+| 2026-11-05 | Claude (Opus 5.5) | OPEN → IN_REVIEW | Workload: `tests/missions/aic_stress.Altis` (154 groups, ~880 units, 600 s) with per-step profiling (`AIC_ns` `"profile"`). Baseline: one cycle 70–100 ms CPU per side, server FPS 19 bound by unit AI. Changes: known-enemy grid in `dynSimCycle` (hostile-unit grid already there), lazy per-group tests in `monitorOrders`, `garrisonCycle`, `updateGroups`, `splitForAttack`, `supplyCycle`; headless-client offload: server FPS 19 → 27 with one headless client. Debug-marker traffic left as is (debug only). |
 
 <a id="i05"></a>
 

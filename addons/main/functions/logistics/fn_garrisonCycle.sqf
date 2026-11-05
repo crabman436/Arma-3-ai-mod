@@ -670,14 +670,18 @@ private _standTo = 0;
         };
         // armed vehicles move to the side the attack comes from
         private _holdDir = _grp getVariable ["AIC_holdDir", -1];
-        private _threatPos = [_cmd, _homePos] call AIC_fnc_nearestThreat;
-        if (_threatPos isEqualTo []) then { _threatPos = [_cmd, _home] call AIC_fnc_alarmPos; };
+        // (the threat side only for the groups that can use it)
+        private _threatPos = [];
         if (
             _task isEqualTo "DEFEND"
             && { _type isNotEqualTo "INF" }
             && { !((_rec getOrDefault ["antiAir", false]) isEqualTo true) }
-            && { _threatPos isNotEqualTo [] }
             && { (time - (_rec getOrDefault ["standToTime", -1e6])) > 120 }
+            && {
+                _threatPos = [_cmd, _homePos] call AIC_fnc_nearestThreat;
+                if (_threatPos isEqualTo []) then { _threatPos = [_cmd, _home] call AIC_fnc_alarmPos; };
+                _threatPos isNotEqualTo []
+            }
             // parked, or holding the wrong side of the town
             && { _holdDir < 0 || { (abs (((_homePos getDir _threatPos) - _holdDir + 540) % 360 - 180)) > 60 } }
         ) then {

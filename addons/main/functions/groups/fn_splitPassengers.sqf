@@ -90,7 +90,7 @@ if (_groups isEqualTo []) then { _groups = groups _side; };
 
     private _new = createGroup [_side, true];
     if (isNull _new) then {continue};
-    _passengers joinSilent _new;
+    [_passengers, "joinSilent", _new] call AIC_fnc_do;
     // the new group inherits the mission's opt-outs (as AIC_fnc_splitGroup)
     {_new setVariable [_x, _grp getVariable [_x, false]]} forEach ["AIC_noDynSim", "AIC_keep"];
     _created pushBack _new;
@@ -125,7 +125,7 @@ if (_groups isEqualTo []) then { _groups = groups _side; };
             private _veh = _x;
             private _new = createGroup [_side, true];
             if (!isNull _new) then {
-                (_alive select {(objectParent _x) isEqualTo _veh}) joinSilent _new;
+                [(_alive select {(objectParent _x) isEqualTo _veh}), "joinSilent", _new] call AIC_fnc_do;
                 {_new setVariable [_x, _grp getVariable [_x, false]]} forEach ["AIC_noDynSim", "AIC_keep"];
                 _created pushBack _new;
             };

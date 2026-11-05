@@ -168,6 +168,8 @@ private _grp = createHashMap;
 // handlers cap it at AIC_LOSS_LOG_MAX entries
 private _log = _cmd getOrDefault ["lossLog", []];
 if !(_log isEqualType []) then { _log = []; };
+// the whole log (up to AIC_LOSS_LOG_MAX) for an assault's losses since it was planned
+private _logAll = _log;
 private _firstFresh = _log findIf { _x isEqualType [] && { count _x >= 2 } && { (_now - (_x select 0)) <= AIC_LOSS_WINDOW } };
 _log = if (_firstFresh < 0) then { [] } else { _log select [_firstFresh] };
 private _lost = createHashMapFromArray [["u", 0], ["v", 0], ["g", 0]];
@@ -325,7 +327,7 @@ private _bestKey = -1;
             if ((_x select 1) isEqualTo "U") then { _lostU = _lostU + 1; };
             if ((_x select 1) isEqualTo "G") then { _lostG = _lostG + 1; };
         };
-    } forEach _log;
+    } forEach _logAll;
     private _state = _assault getOrDefault ["state", "?"];
     private _nightHold = (_assault getOrDefault ["nightHold", false]) isEqualTo true;
     private _riding = { (_x getOrDefault ["task", ""]) isEqualTo "TRANSPORTED" } count _members;

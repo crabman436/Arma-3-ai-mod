@@ -44,7 +44,7 @@ private _flying = _isAir && { !_landed } && { alive _carrier } && { alive (drive
 if (_flying) exitWith {
     if (_land && { (time - (_carrier getVariable ["AIC_landOrderTime", -1e6])) > 45 }) then {
         _carrier setVariable ["AIC_landOrderTime", time];
-        _carrier land "GET OUT";
+        [_carrier, "land", "GET OUT"] call AIC_fnc_do;
     };
     false
 };
@@ -52,13 +52,13 @@ if (!_landed && { !_force }) exitWith { false };
 
 private _aboard = (units _group) select { alive _x && { objectParent _x isEqualTo _carrier } };
 {
-    unassignVehicle _x;
-    doGetOut _x;
+    [_x, "unassignVehicle"] call AIC_fnc_do;
+    [_x, "doGetOut"] call AIC_fnc_do;
 } forEach _aboard;
 if (_aboard isNotEqualTo []) then {
-    _aboard orderGetIn false;
+    [_aboard, "orderGetIn", false] call AIC_fnc_do;
     ["%1: group %2 dismounts %3", [side _group, groupId _group, typeOf _carrier]] call AIC_fnc_log;
 };
-_group leaveVehicle _carrier;
+[_group, "leaveVehicle", _carrier] call AIC_fnc_do;
 
 _aboard isNotEqualTo []

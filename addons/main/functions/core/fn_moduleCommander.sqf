@@ -59,6 +59,7 @@ private _settings = createHashMapFromArray [
     ["manageGarrisons", [_logic, "ManageGarrisons", true] call AIC_fnc_moduleAttr],
     ["useTransport", [_logic, "UseTransport", true] call AIC_fnc_moduleAttr],
     ["useParadrop", [_logic, "UseParadrop", true] call AIC_fnc_moduleAttr],
+    ["useHeadlessClients", [_logic, "UseHeadlessClients", true] call AIC_fnc_moduleAttr],
     ["splitPassengers", [_logic, "SplitPassengers", true] call AIC_fnc_moduleAttr],
     ["dynamicSquads", [_logic, "DynamicSquads", true] call AIC_fnc_moduleAttr],
     ["stagedAssaults", [_logic, "StagedAssaults", true] call AIC_fnc_moduleAttr],

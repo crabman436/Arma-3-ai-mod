@@ -194,6 +194,9 @@ if (_fresh) then {
                 };
             };
         } forEach _units;
+        // the air gates apply to every vehicle, also a helicopter of a group
+        // the trucks around it make MOTOR
+        if (!_useAir || { !_heliWeather }) then { _vehicles = _vehicles select { !(_x isKindOf "Helicopter") }; };
         if (_vehicles isEqualTo []) then { continue };
 
         // prefer base vehicles over the ones of a town garrison

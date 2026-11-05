@@ -59,6 +59,16 @@ AIC_T_cleanup = {
     sleep 1;
 };
 
+// headless clients this run started (AIC_T_HC, set by the runner's HC=N):
+// waits up to 240 s until they are all connected; returns how many are
+AIC_T_waitHC = {
+    private _need = missionNamespace getVariable ["AIC_T_HC", 0];
+    if (_need < 1) exitWith { 0 };
+    private _t0 = time;
+    waitUntil { sleep 1; count ([] call AIC_fnc_hcOwners) >= _need || { time - _t0 > 240 } };
+    count ([] call AIC_fnc_hcOwners)
+};
+
 // a check that cannot run here (missing DLC class, no airfield on the map)
 AIC_T_skip = {
     params ["_id", "_msg"];
@@ -73,6 +83,9 @@ AIC_T_run = { params ["_tests"]; [_tests] spawn {
         ["BOOT", false, "AIC functions not loaded (mod missing?)"] call AIC_T_check;
         diag_log text "AIC_TEST|DONE";
     };
+    // AIC_T_ONLY (runner ONLY=<text>): only the test files whose name has it
+    private _only = missionNamespace getVariable ["AIC_T_ONLY", ""];
+    if (_only isNotEqualTo "") then { _tests = _tests select { (_x find _only) >= 0 }; };
     {
         private _file = _x;
         diag_log text format ["AIC_TEST|RUN|%1", _file];

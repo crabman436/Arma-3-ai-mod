@@ -44,6 +44,7 @@ private _cycle = 0;
 private _earlyReason = "";
 while { _cmd getOrDefault ["enabled", false] } do {
     private _start = diag_tickTime;
+    private _startTime = time;
 
     // cleared before the cycle reads the battlefield: a group that meets the
     // enemy while this cycle runs asks for the next one
@@ -61,7 +62,10 @@ while { _cmd getOrDefault ["enabled", false] } do {
     };
 
     private _interval = ([_cmd, "loopInterval"] call AIC_fnc_getSetting) max 5;
-    private _nextCycle = _cycleEnd + ((_interval - _elapsed) max 1);
+    // the schedule is game time: subtract the cycle's game-time length (wall
+    // time is only for the log; it differs under setTimeMultiplier)
+    // (at least 5 s between cycles, also after one that ran over the interval)
+    private _nextCycle = _cycleEnd + ((_interval - (_cycleEnd - _startTime)) max 5);
 
     waitUntil {
         sleep AIC_REPLAN_POLL;

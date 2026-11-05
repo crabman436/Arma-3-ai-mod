@@ -50,6 +50,12 @@ if !(_side in [west, east, independent, civilian]) exitWith {
 private _existing = _commanders getOrDefault [_side, createHashMap];
 if (count _existing > 0) exitWith {
     ["createCommander: commander for %1 already exists", [_side]] call AIC_fnc_log;
+    // its loop ended (a script error aborted it) while it is still enabled:
+    // it thinks again
+    if ((_existing getOrDefault ["enabled", false]) isEqualTo true && { scriptDone (_existing getOrDefault ["loopHandle", scriptNull]) }) then {
+        _existing set ["loopHandle", [_existing] spawn AIC_fnc_commanderLoop];
+        ["createCommander: loop of %1 had stopped, restarted", [_side]] call AIC_fnc_log;
+    };
     _existing
 };
 

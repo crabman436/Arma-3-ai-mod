@@ -36,8 +36,8 @@ if (_name isEqualTo "") then {
     _name = format ["Objective %1", count _objectiveModules + 1];
 };
 
-private _radius = [_logic, "Radius", 300] call AIC_fnc_moduleAttr;
-if (_radius <= 0) then { _radius = 300; };
+// 0 (or less) = the commander's "objectiveRadius" (AIC_fnc_addObjective)
+private _radius = ([_logic, "Radius", 300] call AIC_fnc_moduleAttr) max 0;
 
 private _priority = [_logic, "Priority", 2] call AIC_fnc_moduleAttr;
 if (_priority <= 0) then { _priority = 1; };
@@ -59,9 +59,12 @@ private _pos = getPosATL _logic;
 {
     if (count _y > 0) then {
         private _rec = [_y, _pos, _name, _radius, _priority, "MODULE", _isBase, _garrison] call AIC_fnc_addObjective;
+        // the merge rule of AIC_fnc_addObjective: another module on the
+        // same record keeps its garrison unless this one asks for one, and
+        // a base stays a base
         if (count _rec > 0) then {
-            _rec set ["garrison", _garrison];
-            _rec set ["isBase", _isBase];
+            if (_garrison > 0) then { _rec set ["garrison", _garrison]; };
+            if (_isBase) then { _rec set ["isBase", true]; };
         };
     };
 } forEach (AIC_ns get "commanders");

@@ -73,9 +73,12 @@ private _friendlyIdx = _near findIf {
     }
 };
 if (_friendlyIdx >= 0) exitWith {
+    // (debug only: the refusal repeats every cycle while the friendlies stay)
+    if (!isNil "AIC_ns" && { AIC_ns getOrDefault ["debug", false] isEqualTo true }) then {
     ["fireMission (%1): danger close - friendly %2 within %3 m of %4, mission refused", [
         _side, _near select _friendlyIdx, _dangerRadius, mapGridPosition _target
     ]] call AIC_fnc_log;
+    };
     false
 };
 
@@ -123,7 +126,7 @@ private _usedMag = "";
     } forEach _scored;
     if (_chosen isEqualTo "") then { continue };
 
-    _veh doArtilleryFire [_target, _chosen, _rounds];
+    [_veh, "doArtilleryFire", [_target, _chosen, _rounds]] call AIC_fnc_do;
     _fired = _fired + 1;
     _usedMag = _chosen;
 

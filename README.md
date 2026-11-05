@@ -102,9 +102,10 @@ To keep a group out of the general's hands, put this in the leader's init:
 Groups led by a player are never commanded. With `excludePlayerGroups`
 (default true), groups that contain any player are left alone too.
 
-AIC commands only groups that are local to the server. Groups you move to a
-headless client are left alone: AIC's waypoint helpers and unit event
-handlers only work where a group is local.
+AIC commands groups that are local to the server or to a connected headless
+client, and hands ground groups to headless clients itself (see "Headless
+clients"). Groups local to a player's machine (for example spawned by a Zeus
+curator) are left alone.
 
 ## Using it from script
 
@@ -202,6 +203,7 @@ change them live through `(_cmd get "settings") set [key, value]`.
 | `objectiveRadius` | 300 | Default capture radius (m) |
 | `maxAutoObjectives` | 12 | Maximum number of automatic objectives (the ones nearest HQ) |
 | `excludePlayerGroups` | true | Never command groups that contain players |
+| `useHeadlessClients` | true | Hand ground groups to connected headless clients, so their AI runs on other CPU cores (see "Headless clients") |
 | `debugMarkers` | false | Draw the commander's view on the map |
 | `reportToPlayers` | true | Send HQ side-chat reports to players on the side |
 | `artyCooldown` | 120 | Seconds between fire missions |
@@ -267,7 +269,7 @@ taskings wake the artillery or helicopter group first as well. Parked groups
 are never treated as "stuck" by the order monitor. Helicopters in the air
 are never parked. `AIC_fnc_removeCommander` wakes all its groups again, and a
 group that leaves the general's command (excluded, joined by a player, changed
-side, moved to a headless client) is woken when it is released.
+side, now local to a player's machine) is woken when it is released.
 
 To keep a group out of this, for example a group whose dynamic simulation you
 set yourself, set this variable on it:
@@ -669,7 +671,7 @@ attack. The rest of the army stays parked and costs nothing.
 | `fortifyMaxObjects` | 400 | Most objects one commander builds in a mission |
 
 The commander module has `ManageDynSim`, `ManageGarrisons`, `UseTransport`,
-`UseParadrop` and `FortifyObjectives` checkboxes. The objective module has `Garrison` (power, 0 = automatic) and
+`UseParadrop`, `FortifyObjectives` and `UseHeadlessClients` checkboxes. The objective module has `Garrison` (power, 0 = automatic) and
 `IsBase`.
 
 ### Performance and cleanup
@@ -711,6 +713,54 @@ group (a set piece, an intel item on a corpse), set `AIC_keep`:
 ```sqf
 _wreck setVariable ["AIC_keep", true];
 ```
+
+### Headless clients
+
+Arma runs every script and most of a unit's AI (pathfinding, combat, driving)
+on one main thread of the machine the unit is local to. A headless client is
+an extra Arma process without graphics; groups local to it are simulated
+there, on its own core. With headless clients connected, AIC hands its ground
+groups to them and keeps the planning on the server:
+
+- `AIC_fnc_hcBalance` (each cycle, right after the groups are registered)
+  moves INF, MOTOR, MECH and ARMOR groups that are local to the server to the
+  headless client running the fewest units, at most 16 groups per side and
+  cycle. Air, artillery, statics, boats, transport crews, supply trucks and
+  groups on a ride stay on the server. A group with `AIC_noHC` set stays too.
+  When a headless client leaves, the engine gives its groups back to the
+  server and AIC hands them out again.
+- Orders still come from the server. Every argument-local command AIC gives
+  (`setBehaviour`, `doMove`, `orderGetIn`, `land`, ...) goes through
+  `AIC_fnc_do`: run at once when the group is local, otherwise sent to its
+  owner. Only the commands in `AIC_fnc_cmdTable` can be sent, and a headless
+  client accepts them only from the server.
+- AI knowledge exists only where a unit is local, so every 10 s each headless
+  client reports what its groups' leaders know (their hostile `nearTargets`,
+  the last-seen time, the nearest enemy) and the server's intel uses that for
+  them. Their engine events (contact, hits, losses, an emptied group) are
+  forwarded to the server the same way.
+- Squads on a headless client are not split into fire teams or merged
+  with squads on another machine (the server's squads still are).
+
+To use it, place playable Headless Client entities (Eden: Systems > Logic
+Entities > Virtual Entities > Headless Client), allow them in the server
+config (headless clients count toward `maxPlayers`), and start one Arma
+process per slot with the mod loaded, one after the other (a client that
+connects while another still loads the map can give up):
+
+```
+headlessClients[] = {"127.0.0.1"};
+localClient[] = {"127.0.0.1"};
+```
+
+```bash
+arma3server_x64.exe -client -connect=127.0.0.1 -port=2302 -password=<server password> -mod=@aic
+```
+
+A mission whose `CfgRemoteExec` is in whitelist mode must also allow
+`AIC_fnc_execCmd`, `AIC_fnc_groupEvent` and `AIC_fnc_hcReport` (the mod allows
+them itself otherwise). Without headless clients, and in singleplayer,
+everything runs on the server as before.
 
 ### Morale, rally points and reaction times
 
@@ -1077,11 +1127,26 @@ and reports from the RPT:
   in (placement rules, manning, service point, reuse by the next owner), and a
   whole paradrop ride (the plane at the airfield, boarding, the jump, landing
   and the plane's turnaround), driven with 20 s cycles.
+- `tests/missions/aic_stress.Altis` (load test, not in the default run): two
+  armies of `GROUPS_PER_SIDE` groups each (default 80), server FPS without
+  and with the commanders for `SOAK` seconds, the commanders' per-step cost,
+  and one cycle per side measured unscheduled.
+
+`HC=N` also starts N headless clients on the same PC (every mission has three
+slots), and `ONLY=<text>` runs only the test files whose name contains it. The VR mission then checks that a squad is handed over, that commands,
+events and intel cross between the machines, and the stress test reports how
+many groups run on the headless clients and their FPS.
 
 ```bash
 ARMA="/d/SteamLibrary/steamapps/common/Arma 3" SOAK=240 tests/run-arma-tests.sh
 MISSIONS=aic_scenarios.Stratis tests/run-arma-tests.sh
+MISSIONS=aic_stress.Altis SOAK=600 GROUPS_PER_SIDE=80 tests/run-arma-tests.sh
+HC=2 MISSIONS=aic_stress.Altis tests/run-arma-tests.sh
 ```
+
+To see where a commander's time goes in your own mission, set
+`AIC_ns set ["profile", true]`: every cycle logs its slowest steps, and the
+commander key `"profile"` sums each step's calls, total and worst time.
 
 It copies each mission (plus `tests/missions/common/harness.sqf`) to
 `<ARMA>/MPMissions/` and keeps the staged mod, server profiles and RPTs in

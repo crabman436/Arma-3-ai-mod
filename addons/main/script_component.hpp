@@ -518,3 +518,17 @@
 #define AIC_FORT_FUEL ["B_Slingload_01_Fuel_F", "Land_Pod_Heli_Transport_04_fuel_F", "Land_FuelStation_Feed_F"]
 #define AIC_FORT_AMMO ["Box_NATO_AmmoVeh_F", "Box_East_AmmoVeh_F", "Box_IND_AmmoVeh_F"]
 #define AIC_FORT_REPAIR ["B_Slingload_01_Repair_F", "Land_Pod_Heli_Transport_04_repair_F", "Land_ToolTrolley_02_F"]
+
+// ---------------------------------------------------------------- headless clients
+// m within which a leader's knowledge counts as intel (AIC_fnc_gatherIntel,
+// and the reports of AIC_fnc_hcLoop)
+#define AIC_INTEL_RANGE 1500
+// groups AIC_fnc_hcBalance hands over per call (per side and cycle)
+#define AIC_HC_MOVES 16
+// times a command may be re-sent after its target changed owner on the way
+#define AIC_HC_HOPS 3
+// s between two reports of a headless client; a report older than
+// AIC_HC_STALE s counts as nothing; at most AIC_HC_ROWS targets per group
+#define AIC_HC_REPORT 10
+#define AIC_HC_STALE 60
+#define AIC_HC_ROWS 80

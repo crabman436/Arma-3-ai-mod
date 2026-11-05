@@ -7,9 +7,12 @@
 
         Algorithm (one engine target query per observer):
           - collect the leaders of all commanded groups once ([pos, group, leader]);
-          - every observer leader lists what it knows within 1500 m
+          - every observer leader lists what it knows within AIC_INTEL_RANGE
             (nearTargets: perceived position, perceived side, position
-            error, the object). A target counts once the observer has
+            error, the object). A leader on a headless client cannot be
+            asked here (AI knowledge exists only where it is local): its
+            client's last report is used instead (AIC_fnc_hcKnown, the same
+            rows plus the last-seen time; none when older than AIC_HC_STALE). A target counts once the observer has
             recognised it as a hostile side, and the group it belongs to
             (its own group, or its commander's for a vehicle) is a contact;
           - perceived position = the observer's with the smallest position
@@ -56,8 +59,10 @@ private _side = _cmd getOrDefault ["side", sideUnknown];
 if !(_side in [west, east, independent, civilian]) exitWith { [] };
 
 private _now = time;
-private _detectRange = 1500;
 private _forgetAfter = 300;
+// leaders on a headless client: AI knowledge exists only there, so their
+// client's last report stands in for nearTargets / targetKnowledge
+private _hcKnown = [] call AIC_fnc_hcKnown;
 
 // ------------------------------------------------------------ own observers
 private _observers = ((_cmd getOrDefault ["groups", []]) select { !isNull _x && { alive leader _x } }) apply {
@@ -95,7 +100,7 @@ if (_groupData isEqualType createHashMap) then {
 // one target query per observer leader: every target it knows about with the
 // perceived position, perceived side and position error, in one engine call
 if (_observers isNotEqualTo []) then {
-    private _best = createHashMap; // hashValue enemy group -> [error, pos, observer leader, probe, group]
+    private _best = createHashMap; // hashValue enemy group -> [error, pos, observer leader, probe, group, lastSeen (remote) or -1]
     private _observed = createHashMap; // hashValue enemy group -> objects of it some observer knows
     {
         _x params ["", "_ownGroup", "_ownLeader"];
@@ -103,8 +108,13 @@ if (_observers isNotEqualTo []) then {
         private _reconKeys = _job select 1;
         private _reconStart = _job select 2;
         private _isRecon = (hashValue _ownGroup) in _reconJobs;
+        private _local = local _ownLeader;
+        // remote rows carry the last-seen time as a 7th element
+        private _rows = if (_local) then { _ownLeader nearTargets AIC_INTEL_RANGE } else {
+            (_hcKnown getOrDefault [hashValue _ownGroup, [[]]]) select 0
+        };
         {
-            _x params ["_tPos", "", "_tSide", "", "_obj", "_err"];
+            _x params ["_tPos", "", "_tSide", "", "_obj", "_err", ["_rSeen", -1]];
             // side only comes with enough knowledge: that is the detection threshold
             if (
                 isNull _obj
@@ -118,8 +128,10 @@ if (_observers isNotEqualTo []) then {
             // a scout confirms only what it saw itself on this job, lately
             // (not knowledge its group had before it set out)
             if (_isRecon) then {
-                private _tk = _ownLeader targetKnowledge _obj;
-                private _seenAt = if (count _tk >= 3) then { _tk select 2 } else { -1 };
+                private _seenAt = if (_local) then {
+                    private _tk = _ownLeader targetKnowledge _obj;
+                    if (count _tk >= 3) then { _tk select 2 } else { -1 }
+                } else { _rSeen };
                 if (_seenAt isEqualType 0 && { _seenAt > _reconStart } && { (_now - _seenAt) <= AIC_EST_FRESH }) then {
                     _reconKeys set [_key, true];
                 };
@@ -129,13 +141,13 @@ if (_observers isNotEqualTo []) then {
             _observed set [_key, _objs];
             private _cur = _best getOrDefault [_key, []];
             if (_cur isEqualTo [] || { _err < (_cur select 0) }) then {
-                _best set [_key, [_err, [_tPos select 0, _tPos select 1, 0], _ownLeader, _obj, _eg]];
+                _best set [_key, [_err, [_tPos select 0, _tPos select 1, 0], _ownLeader, _obj, _eg, [-1, _rSeen] select !_local]];
             };
-        } forEach (_ownLeader nearTargets _detectRange);
+        } forEach _rows;
     } forEach _observers;
 
     {
-        _y params ["_err", "_bestPos", "_ownLeader", "_probe", "_eg"];
+        _y params ["_err", "_bestPos", "_ownLeader", "_probe", "_eg", "_rSeen"];
         // a misread side is no contact
         private _eSide = side _eg;
         if (!(_eSide in [west, east, independent, civilian]) || { _eSide == _side } || { (_side getFriend _eSide) >= AIC_HOSTILE_FRIEND }) then { continue };
@@ -143,11 +155,13 @@ if (_observers isNotEqualTo []) then {
         if (_alive isEqualTo []) then { continue };
 
         // [knownByGroup, knownByUnit, lastSeen, lastThreat, side, errorMargin, position]
-        private _lastSeen = -1;
-        private _tk = _ownLeader targetKnowledge _probe;
-        if (count _tk >= 7) then {
-            private _seenAt = _tk select 2;
-            if (_seenAt isEqualType 0) then { _lastSeen = _seenAt; };
+        private _lastSeen = _rSeen;
+        if (local _ownLeader) then {
+            private _tk = _ownLeader targetKnowledge _probe;
+            if (count _tk >= 7) then {
+                private _seenAt = _tk select 2;
+                if (_seenAt isEqualType 0) then { _lastSeen = _seenAt; };
+            };
         };
         // reported-only targets may have no valid sighting time
         if (_lastSeen <= 0) then { _lastSeen = _now; };
