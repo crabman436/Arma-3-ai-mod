@@ -67,24 +67,21 @@ if !(_objectives isEqualType []) then {
 
 // ------------------------------------------------------------ late markers
 private _cmdSide = _cmd getOrDefault ["side", sideUnknown];
-private _markerObjs = _objectives select { (_x getOrDefault ["source", ""]) isEqualTo "MARKER" };
-private _baseObjs = _objectives select { (_x getOrDefault ["source", ""]) isEqualTo "BASE" };
 private _basePrefix = AIC_MARKER_BASE_PREFIX + toLowerANSI str _cmdSide;
 private _checkBases = _cmdSide in [west, east, independent, civilian];
-// cheap prefix tests first: almost every marker (player drawings, ...) is
-// rejected before its position is read
+// a marker is new when its NAME was never collected ("collectedMarkers",
+// AIC_fnc_collectObjectives), whatever objective already covers its place:
+// startup and late creation give the same objectives, and a collected
+// marker never asks again (F13). Cheap prefix tests first: almost every
+// marker (player drawings, ...) is rejected before the lookup
+private _collected = _cmd getOrDefault ["collectedMarkers", createHashMap];
+if !(_collected isEqualType createHashMap) then { _collected = createHashMap; };
 private _newMarker = allMapMarkers findIf {
-    private _m = _x;
-    private _lower = toLowerANSI _m;
-    (((_lower find AIC_MARKER_OBJ_PREFIX) == 0) && {
-        private _mPos = getMarkerPos _m;
-        (_markerObjs findIf { ((_x getOrDefault ["pos", [0, 0, 0]]) distance2D _mPos) <= ((_x getOrDefault ["radius", 0]) max 1) }) < 0
-    }) || {
-        _checkBases && { (_lower find _basePrefix) == 0 } && {
-            private _mPos = getMarkerPos _m;
-            (_baseObjs findIf { ((_x getOrDefault ["pos", [0, 0, 0]]) distance2D _mPos) <= ((_x getOrDefault ["radius", 0]) max 1) }) < 0
-        }
-    }
+    private _lower = toLowerANSI _x;
+    (
+        (_lower find AIC_MARKER_OBJ_PREFIX) == 0
+        || { _checkBases && { (_lower find _basePrefix) == 0 } }
+    ) && { !(_x in _collected) }
 };
 private _hqMissing = count ([_cmd, AIC_BASE_ID] call AIC_fnc_getObjective) == 0;
 if (_newMarker > -1 || _hqMissing) then {

@@ -297,6 +297,12 @@ if (_useAir && {_flyWeather}) then {
         private _veh = objectParent leader _grp;
         if (isNull _veh || { !alive _veh } || { !canMove _veh } || { fuel _veh < 0.25 }) then { continue };
         if (!_heliWeather && { _veh isKindOf "Helicopter" }) then { continue };
+        // a plane due for its turnaround (the gate of AIC_fnc_rearmCycle, which
+        // runs after this) is kept for it while a held airfield can take it:
+        // a new sortie would reset its waypoints and postpone it again (F09)
+        if (_veh isKindOf "Plane"
+            && { (fuel _veh) < AIC_PLANE_RTB_FUEL || { (damage _veh) > 0.3 } }
+            && { ([_cmd, getPosATL _veh] call AIC_fnc_heldAirfield) isNotEqualTo [] }) then { continue };
 
         // armed? every turret incl. driver/pilot turret [-1]
         private _armed = ([_veh, false] call AIC_fnc_vehicleWeapons) isNotEqualTo [];

@@ -7,9 +7,10 @@
  *   vehicles ("parkSlots") and up to 6 for helicopters ("heliSlots"), each
  *   helicopter place with an invisible helipad so the pilot lands there
  *   (base key "heliPads", deleted by AIC_fnc_removeCommander).
- *   A group keeps its place while its record "home" is this base, also
- *   while it is away on a ride or an attack; a group that moves home gives
- *   it up.
+ *   A group keeps its place while its record "home" or "parkBase" (set
+ *   here: the base it was last given a place at; helicopters have no home)
+ *   is this base, also while it is away on a ride or an attack; a group
+ *   that parks at another base gives it up.
  *
  * Parameters:
  *   0: HASHMAP - commander
@@ -94,7 +95,10 @@ private _own = -1;
         if (
             isNull _holder
             || {({alive _x} count (units _holder)) == 0}
-            || {(_hRec getOrDefault ["home", ""]) isNotEqualTo _id}
+            // the holder still parks here: its home, or the base it was
+            // given this place at (helicopters have no home, F02)
+            || {(_hRec getOrDefault ["home", ""]) isNotEqualTo _id
+                && {(_hRec getOrDefault ["parkBase", ""]) isNotEqualTo _id}}
         ) then {_free = _forEachIndex};
     };
 } forEach _slots;
@@ -103,6 +107,9 @@ private _index = if (_own >= 0) then {_own} else {_free};
 if (_index < 0) exitWith {[]};
 
 _claims set [_index, _group];
+// keeps the claim while the group is away (a sortie, a ride); a place at
+// another base frees this one
+_rec set ["parkBase", _id];
 // a helicopter is told to land on its own pad (AIC_fnc_monitorOrders, RTB)
 if (_isHeli) then {
     _rec set ["parkPad", (_obj getOrDefault ["heliPads", []]) param [_index, objNull]];

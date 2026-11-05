@@ -139,6 +139,10 @@ private _taken = [];
         case (isNull _truck): {"truck lost"};
         case (_todo isEqualTo []): {"nothing left to do"};
         case ((time - (_rec getOrDefault ["taskTime", time])) > AIC_SUPPLY_TIMEOUT): {"not reached in time"};
+        // the same eligibility as when the job was given (F12): a player took
+        // the vehicle over, or a helicopter is not on the ground any more
+        case (isPlayer (effectiveCommander _target)): {"a player commands the vehicle"};
+        case (_target isKindOf "Air" && {!isTouchingGround _target}): {"the helicopter took off"};
         case (([_cmd, getPosATL _target, AIC_SUPPLY_DANGER_RADIUS] call AIC_fnc_nearestThreat) isNotEqualTo []): {"enemies near the vehicle"};
         default {""};
     };
@@ -149,7 +153,7 @@ private _taken = [];
     };
     _taken pushBack _target;
 
-    if ((_truck distance2D _target) > AIC_SUPPLY_REACH) then {
+    if ((_truck distance _target) > AIC_SUPPLY_REACH) then {
         _rec set ["supplyArrive", -1];
         // the vehicle moved on: follow it
         private _p = getPosATL _target;
@@ -169,6 +173,12 @@ private _taken = [];
         continue;
     };
     if ((time - _arrive) < AIC_SUPPLY_WORK_TIME) then {continue};
+    // recheck right before the service: the vehicle may have lifted off or
+    // been taken over since the checks above in this same pass (F12)
+    if (isPlayer (effectiveCommander _target) || {_target isKindOf "Air" && {!isTouchingGround _target}}) then {
+        _rec set ["supplyArrive", -1];
+        continue;
+    };
 
     if ("repair" in _todo) then {
         _target setDamage 0;

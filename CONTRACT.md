@@ -167,6 +167,7 @@ Created by `AIC_fnc_createCommander`. Keys (all strings):
 | `"objectiveIndex"` | HashMap: objective id -> the same record as in `"objectives"`. Maintained by `AIC_fnc_addObjective`; read with `AIC_fnc_getObjective`. | intel |
 | `"deadQueue"` | array of dead units / destroyed vehicles of the side in kill order, appended by the event handlers of `AIC_fnc_attachGroupEHs`, consumed by `AIC_fnc_cleanupCycle` | groups / logistics |
 | `"knownEnemies"` | array of enemy contact records | intel |
+| `"collectedMarkers"` | HashMap marker name -> true: every `aic_obj` / own `aic_base_<side>` marker `AIC_fnc_collectObjectives` has seen; `AIC_fnc_updateObjectives` re-collects only for a name not in it (F13) | intel |
 | `"threats"` | array of threat cluster records | intel |
 | `"stance"` | `"OFFENSIVE"` / `"BALANCED"` / `"DEFENSIVE"` | strategy |
 | `"plan"` | array of assignment records (last plan) | strategy |
@@ -252,6 +253,7 @@ HashMap with keys:
 - `"removed"` (groups): set to true by the `"Empty"` handler; the record is dropped by the next `AIC_fnc_registerGroups` sweep.
 - `"ownVehicles"` (groups): array of the vehicles the group drove last, written by `AIC_fnc_updateGroups`; a crew that bailed out keeps its trucks while they stand within 300 m (`"transportOnly"` test).
 - `"parkPad"` (logistics): the invisible helipad of the group's place in a base's helicopter park (`AIC_fnc_parkSlot`), objNull if none; `AIC_fnc_monitorOrders` lands a returning helicopter on it.
+- `"parkBase"` (logistics): id of the base the group was last given a park place at (`AIC_fnc_parkSlot`); the place stays its own while this or `"home"` is that base, also while it is away (F02: helicopters have no home).
 - `"standToFrom"` (logistics): `"PATROL"` or `"DEFEND"`, what a stood-to group (`"standTo"`) goes back to once the threat is gone, written by `AIC_fnc_garrisonCycle`.
 - `"assaultId"`, `"assaultLane"`, `"assaultAxis"`, `"assaultRow"` (orders): the group's place in a staged assault (`AIC_fnc_orderAssault`): the assault key, its lane across the front, its approach axis (0 straight in, 1 / 2 the sides) and its row behind the first wave. `"staged"` / `"stagePos"` (at the assembly area) and `"overwatch"` are reset to false by every `issueOrder` dispatch.
 - Transport bookkeeping (logistics, owned by `AIC_fnc_orderTransport` and `AIC_fnc_transportCycle`, valid only while the task is `TRANSPORT` / `TRANSPORTED`): `"transportVeh"`, `"pickupPos"`, `"dropPos"`, `"wpLoad"`, `"wpUnload"`, `"wpGetIn"`, `"cargoOutTime"`, `"transportPhase"` (`"PICKUP"`, `"RIDE"`, `"RALLY"`, `""`), `"phaseTime"`, `"rideLimit"`, `"getInFallback"`, `"getInFallbackTime"`, `"nearPickupTime"`, `"nearDropTime"`, `"hoverTime"`, `"landOrderTime"`, `"approachTime"`, `"pickupLzMoved"`, `"dropLzMoved"`, `"hotLzMoved"`, `"statusTime"`; each is described in the header of `fn_orderTransport.sqf` (set up) and `fn_transportCycle.sqf` (phases).
