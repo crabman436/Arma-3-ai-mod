@@ -8,6 +8,8 @@ Each record's metadata below is authoritative for its current status and owner. 
 
 **Second review (2026-11-03):** Added F10–F13 and I06–I07 from [the follow-up snapshot](reviews/2026-11-03-second-review.md), assessed at `564dd8ce56e7ca1840fde15871d0ccb9cc415985`. The tracker now contains 13 bugs, 7 improvements, and 2 unconfirmed investigations at this review checkpoint. All six new entries are OPEN; no fixes or verification results were added.
 
+**2026-11-05 update:** [PR #7](https://github.com/crabman436/Arma-3-ai-mod/pull/7) (`claude/conform-branches`) merges the PR #4/#6 line into the default branch and moves all thirteen bug records F01–F13 to IN_REVIEW; regression harness `tests/run-arma-tests.sh`. See each record's history.
+
 ## Index
 
 | ID | Type | Priority | Finding |
@@ -54,15 +56,15 @@ Each record's metadata below is authoritative for its current status and owner. 
 | Field | Value |
 |---|---|
 | Type | BUG |
-| Status | OPEN |
+| Status | IN_REVIEW |
 | Found on / reported by | 2026-11-03 / Codex |
-| Last updated | 2026-11-03 |
+| Last updated | 2026-11-05 |
 | Confidence | Source-supported; gameplay reproduction pending |
-| Owner / claim token | Unassigned / — |
+| Owner / claim token | Claude (Opus 5.5) / `claude/conform-branches` (claim released on hand-off to review) |
 | Claimed at / expires at (UTC) | — / — |
 | Target branch | `claude/arma3-ai-coordination-qilgd4` |
-| Last assessed code | [`01e0eeda58fbc5e109cd4d31025ac5013d8b14bb`](https://github.com/crabman436/Arma-3-ai-mod/commit/01e0eeda58fbc5e109cd4d31025ac5013d8b14bb) |
-| Work branch / PR | — |
+| Last assessed code | [`46b04d8`](https://github.com/crabman436/Arma-3-ai-mod/commit/46b04d84420984649fa903539271f5aa0434c39f) |
+| Work branch / PR | `claude/conform-branches` / [PR #7](https://github.com/crabman436/Arma-3-ai-mod/pull/7) — fixed on the PR #4 line at [`34f48fd`](https://github.com/crabman436/Arma-3-ai-mod/commit/34f48fd) |
 | Fixed on / by | — / — |
 | Fix commit / PR | — |
 | Verified on / by | — / — |
@@ -90,6 +92,7 @@ The exclusion list contains only leaders of this commander's registered groups. 
 | Date/time | Actor | Change | Reference / result |
 |---|---|---|---|
 | 2026-11-03 | Codex | Created → OPEN | Imported from the source review; no implementation or engine run. Baseline `01e0eed`; [historical review](reviews/2026-11-03-initial-review.md). |
+| 2026-11-05 | Claude (Opus 5.5) | → IN_REVIEW | Revalidated: already fixed on the PR #4 line at `34f48fd` (danger close scans every alive unit and vehicle crew of own and allied sides, fn_supportCycle.sqf). Reaches the target branch with this PR. No Arma scenario run. |
 
 <a id="f02"></a>
 
@@ -98,15 +101,15 @@ The exclusion list contains only leaders of this commander's registered groups. 
 | Field | Value |
 |---|---|
 | Type | BUG |
-| Status | IN_PROGRESS |
+| Status | IN_REVIEW |
 | Found on / reported by | 2026-11-03 / Codex |
-| Last updated | 2026-11-04 |
+| Last updated | 2026-11-05 |
 | Confidence | Source-supported; gameplay reproduction pending |
-| Owner / claim token | luna_group_lifecycle / codex-2026-11-04/luna_group_lifecycle |
-| Claimed at / expires at (UTC) | 2026-11-05T05:15:40Z / 2026-11-05T09:15:40Z |
+| Owner / claim token | Claude (Opus 5.5) / `claude/conform-branches` (claim released on hand-off to review) |
+| Claimed at / expires at (UTC) | — / — |
 | Target branch | `claude/arma3-ai-coordination-qilgd4` |
-| Last assessed code | [`01e0eeda58fbc5e109cd4d31025ac5013d8b14bb`](https://github.com/crabman436/Arma-3-ai-mod/commit/01e0eeda58fbc5e109cd4d31025ac5013d8b14bb) |
-| Work branch / PR | `codex/ai-reliability-luna-2026-11-04`, follow-up to PR #4 |
+| Last assessed code | [`46b04d8`](https://github.com/crabman436/Arma-3-ai-mod/commit/46b04d84420984649fa903539271f5aa0434c39f) |
+| Work branch / PR | `claude/conform-branches` / [PR #7](https://github.com/crabman436/Arma-3-ai-mod/pull/7) — fix [`9540f93`](https://github.com/crabman436/Arma-3-ai-mod/commit/9540f93c9ace7babee10effbb09a1d25dd727de3) |
 | Fixed on / by | — / — |
 | Fix commit / PR | — |
 | Verified on / by | — / — |
@@ -136,6 +139,7 @@ A claim is reusable when its holder's record `home` differs from the base ID. He
 | 2026-11-03 | Codex | Created → OPEN | Imported from the source review; no implementation or engine run. Baseline `01e0eed`; [historical review](reviews/2026-11-03-initial-review.md). |
 
 | 2026-11-04 | Codex / luna_group_lifecycle | OPEN → IN_PROGRESS | User authorized implementation; [plan](plans/2026-11-04-ai-reliability.md). Revalidate against PR #4 head 73f2339; target default after dependency PR #4. |
+| 2026-11-05 | Claude (Opus 5.5) | → IN_REVIEW | Taken over from Luna package B on the owner's instruction (no implementation had been pushed). parkSlot stores `"parkBase"`; it holds the place only for a group without a home (follow-up `a399943`). Arma 3 2.22.154089 dedicated server, VR, `tests/run-arma-tests.sh`: the record's checks pass; the same checks fail on `34f48fd`. |
 
 <a id="f03"></a>
 
@@ -144,15 +148,15 @@ A claim is reusable when its holder's record `home` differs from the base ID. He
 | Field | Value |
 |---|---|
 | Type | BUG |
-| Status | OPEN |
+| Status | IN_REVIEW |
 | Found on / reported by | 2026-11-03 / Codex |
-| Last updated | 2026-11-03 |
+| Last updated | 2026-11-05 |
 | Confidence | Source-supported; gameplay reproduction pending |
-| Owner / claim token | Unassigned / — |
+| Owner / claim token | Claude (Opus 5.5) / `claude/conform-branches` (claim released on hand-off to review) |
 | Claimed at / expires at (UTC) | — / — |
 | Target branch | `claude/arma3-ai-coordination-qilgd4` |
-| Last assessed code | [`01e0eeda58fbc5e109cd4d31025ac5013d8b14bb`](https://github.com/crabman436/Arma-3-ai-mod/commit/01e0eeda58fbc5e109cd4d31025ac5013d8b14bb) |
-| Work branch / PR | — |
+| Last assessed code | [`46b04d8`](https://github.com/crabman436/Arma-3-ai-mod/commit/46b04d84420984649fa903539271f5aa0434c39f) |
+| Work branch / PR | `claude/conform-branches` / [PR #7](https://github.com/crabman436/Arma-3-ai-mod/pull/7) — fix [`77f05bb`](https://github.com/crabman436/Arma-3-ai-mod/commit/77f05bbe7721c8f344eb0504809c9b2facc7a8e4) |
 | Fixed on / by | — / — |
 | Fix commit / PR | — |
 | Verified on / by | — / — |
@@ -180,6 +184,7 @@ The selector calls `canLeaveGarrison` but discards its Boolean result and return
 | Date/time | Actor | Change | Reference / result |
 |---|---|---|---|
 | 2026-11-03 | Codex | Created → OPEN | Imported from the source review; no implementation or engine run. Baseline `01e0eed`; [historical review](reviews/2026-11-03-initial-review.md). |
+| 2026-11-05 | Claude (Opus 5.5) | → IN_REVIEW | Revalidated at `34f48fd`: the selector already uses the shared budget; residual: the broken-crew gate of canLeaveGarrison was missing, now applied to every candidate incl. transport-only (`a399943`). No dedicated Arma scenario yet (soak ran without script errors). |
 
 <a id="f04"></a>
 
@@ -188,15 +193,15 @@ The selector calls `canLeaveGarrison` but discards its Boolean result and return
 | Field | Value |
 |---|---|
 | Type | BUG |
-| Status | OPEN |
+| Status | IN_REVIEW |
 | Found on / reported by | 2026-11-03 / Codex |
-| Last updated | 2026-11-03 |
+| Last updated | 2026-11-05 |
 | Confidence | Source-supported; gameplay reproduction pending |
-| Owner / claim token | Unassigned / — |
+| Owner / claim token | Claude (Opus 5.5) / `claude/conform-branches` (claim released on hand-off to review) |
 | Claimed at / expires at (UTC) | — / — |
 | Target branch | `claude/arma3-ai-coordination-qilgd4` |
-| Last assessed code | [`01e0eeda58fbc5e109cd4d31025ac5013d8b14bb`](https://github.com/crabman436/Arma-3-ai-mod/commit/01e0eeda58fbc5e109cd4d31025ac5013d8b14bb) |
-| Work branch / PR | — |
+| Last assessed code | [`46b04d8`](https://github.com/crabman436/Arma-3-ai-mod/commit/46b04d84420984649fa903539271f5aa0434c39f) |
+| Work branch / PR | `claude/conform-branches` / [PR #7](https://github.com/crabman436/Arma-3-ai-mod/pull/7) — fix [`05ca169`](https://github.com/crabman436/Arma-3-ai-mod/commit/05ca16905339f28cfaae2f034c702c53017d5bd5) |
 | Fixed on / by | — / — |
 | Fix commit / PR | — |
 | Verified on / by | — / — |
@@ -224,6 +229,7 @@ Feasibility sums all individually eligible groups, including groups competing fo
 | Date/time | Actor | Change | Reference / result |
 |---|---|---|---|
 | 2026-11-03 | Codex | Created → OPEN | Imported from the source review; no implementation or engine run. Baseline `01e0eed`; [historical review](reviews/2026-11-03-initial-review.md). |
+| 2026-11-05 | Claude (Opus 5.5) | → IN_REVIEW | Shared per-home surplus budget in the feasibility estimate (most effective first, `a399943`); a NEW attack the fill cannot staff is rolled back with its garrison reservations. No dedicated Arma scenario yet (soak ran without script errors). |
 
 <a id="f05"></a>
 
@@ -232,15 +238,15 @@ Feasibility sums all individually eligible groups, including groups competing fo
 | Field | Value |
 |---|---|
 | Type | BUG |
-| Status | OPEN |
+| Status | IN_REVIEW |
 | Found on / reported by | 2026-11-03 / Codex |
-| Last updated | 2026-11-03 |
+| Last updated | 2026-11-05 |
 | Confidence | Source-supported; gameplay reproduction pending |
-| Owner / claim token | Unassigned / — |
+| Owner / claim token | Claude (Opus 5.5) / `claude/conform-branches` (claim released on hand-off to review) |
 | Claimed at / expires at (UTC) | — / — |
 | Target branch | `claude/arma3-ai-coordination-qilgd4` |
-| Last assessed code | [`01e0eeda58fbc5e109cd4d31025ac5013d8b14bb`](https://github.com/crabman436/Arma-3-ai-mod/commit/01e0eeda58fbc5e109cd4d31025ac5013d8b14bb) |
-| Work branch / PR | — |
+| Last assessed code | [`46b04d8`](https://github.com/crabman436/Arma-3-ai-mod/commit/46b04d84420984649fa903539271f5aa0434c39f) |
+| Work branch / PR | `claude/conform-branches` / [PR #7](https://github.com/crabman436/Arma-3-ai-mod/pull/7) — fixed on the PR #4 line at [`34f48fd`](https://github.com/crabman436/Arma-3-ai-mod/commit/34f48fd) |
 | Fixed on / by | — / — |
 | Fix commit / PR | — |
 | Verified on / by | — / — |
@@ -268,6 +274,7 @@ When no assembly area is found, the assault starts in GO without `goTime`. Only 
 | Date/time | Actor | Change | Reference / result |
 |---|---|---|---|
 | 2026-11-03 | Codex | Created → OPEN | Imported from the source review; no implementation or engine run. Baseline `01e0eed`; [historical review](reviews/2026-11-03-initial-review.md). |
+| 2026-11-05 | Claude (Opus 5.5) | → IN_REVIEW | Revalidated: already fixed on the PR #4 line at `34f48fd` (direct-GO assaults set goTime at creation, fn_assaultFor.sqf). Reaches the target branch with this PR. No Arma scenario run. |
 
 <a id="f06"></a>
 
@@ -276,15 +283,15 @@ When no assembly area is found, the assault starts in GO without `goTime`. Only 
 | Field | Value |
 |---|---|
 | Type | BUG |
-| Status | OPEN |
+| Status | IN_REVIEW |
 | Found on / reported by | 2026-11-03 / Codex |
-| Last updated | 2026-11-03 |
+| Last updated | 2026-11-05 |
 | Confidence | Source-supported; gameplay reproduction pending |
-| Owner / claim token | Unassigned / — |
+| Owner / claim token | Claude (Opus 5.5) / `claude/conform-branches` (claim released on hand-off to review) |
 | Claimed at / expires at (UTC) | — / — |
 | Target branch | `claude/arma3-ai-coordination-qilgd4` |
-| Last assessed code | [`01e0eeda58fbc5e109cd4d31025ac5013d8b14bb`](https://github.com/crabman436/Arma-3-ai-mod/commit/01e0eeda58fbc5e109cd4d31025ac5013d8b14bb) |
-| Work branch / PR | — |
+| Last assessed code | [`46b04d8`](https://github.com/crabman436/Arma-3-ai-mod/commit/46b04d84420984649fa903539271f5aa0434c39f) |
+| Work branch / PR | `claude/conform-branches` / [PR #7](https://github.com/crabman436/Arma-3-ai-mod/pull/7) — fixed on the PR #4 line at [`34f48fd`](https://github.com/crabman436/Arma-3-ai-mod/commit/34f48fd) |
 | Fixed on / by | — / — |
 | Fix commit / PR | — |
 | Verified on / by | — / — |
@@ -312,6 +319,7 @@ The ownership logic allows an enemy to capture HQ: [fn_updateObjectives.sqf:127�
 | Date/time | Actor | Change | Reference / result |
 |---|---|---|---|
 | 2026-11-03 | Codex | Created → OPEN | Imported from the source review; no implementation or engine run. Baseline `01e0eed`; [historical review](reviews/2026-11-03-initial-review.md). |
+| 2026-11-05 | Claude (Opus 5.5) | → IN_REVIEW | Revalidated: already fixed on the PR #4 line at `34f48fd` (bases, garrisons and held airfields require ownership; HQ moves to an owned base). Reaches the target branch with this PR. No Arma scenario run. |
 
 <a id="f07"></a>
 
@@ -320,15 +328,15 @@ The ownership logic allows an enemy to capture HQ: [fn_updateObjectives.sqf:127�
 | Field | Value |
 |---|---|
 | Type | BUG |
-| Status | OPEN |
+| Status | IN_REVIEW |
 | Found on / reported by | 2026-11-03 / Codex |
-| Last updated | 2026-11-03 |
+| Last updated | 2026-11-05 |
 | Confidence | Source-supported; gameplay reproduction pending |
-| Owner / claim token | Unassigned / — |
+| Owner / claim token | Claude (Opus 5.5) / `claude/conform-branches` (claim released on hand-off to review) |
 | Claimed at / expires at (UTC) | — / — |
 | Target branch | `claude/arma3-ai-coordination-qilgd4` |
-| Last assessed code | [`01e0eeda58fbc5e109cd4d31025ac5013d8b14bb`](https://github.com/crabman436/Arma-3-ai-mod/commit/01e0eeda58fbc5e109cd4d31025ac5013d8b14bb) |
-| Work branch / PR | — |
+| Last assessed code | [`46b04d8`](https://github.com/crabman436/Arma-3-ai-mod/commit/46b04d84420984649fa903539271f5aa0434c39f) |
+| Work branch / PR | `claude/conform-branches` / [PR #7](https://github.com/crabman436/Arma-3-ai-mod/pull/7) — fix [`05ca169`](https://github.com/crabman436/Arma-3-ai-mod/commit/05ca16905339f28cfaae2f034c702c53017d5bd5) |
 | Fixed on / by | — / — |
 | Fix commit / PR | — |
 | Verified on / by | — / — |
@@ -356,6 +364,7 @@ The `antiAir` flag becomes true whenever all vehicles crewed by a group are AA v
 | Date/time | Actor | Change | Reference / result |
 |---|---|---|---|
 | 2026-11-03 | Codex | Created → OPEN | Imported from the source review; no implementation or engine run. Baseline `01e0eed`; [historical review](reviews/2026-11-03-initial-review.md). |
+| 2026-11-05 | Claude (Opus 5.5) | → IN_REVIEW | antiAir and vehicle health ignore the gun a garrison gunner was posted on (`a399943`, `28b756a`). Arma 3 2.22.154089 dedicated server, VR, `tests/run-arma-tests.sh`: the record's checks pass; the same checks fail on `34f48fd`. |
 
 <a id="f08"></a>
 
@@ -364,15 +373,15 @@ The `antiAir` flag becomes true whenever all vehicles crewed by a group are AA v
 | Field | Value |
 |---|---|
 | Type | BUG |
-| Status | OPEN |
+| Status | IN_REVIEW |
 | Found on / reported by | 2026-11-03 / Codex |
-| Last updated | 2026-11-03 |
+| Last updated | 2026-11-05 |
 | Confidence | Source-supported; gameplay reproduction pending |
-| Owner / claim token | Unassigned / — |
+| Owner / claim token | Claude (Opus 5.5) / `claude/conform-branches` (claim released on hand-off to review) |
 | Claimed at / expires at (UTC) | — / — |
 | Target branch | `claude/arma3-ai-coordination-qilgd4` |
-| Last assessed code | [`01e0eeda58fbc5e109cd4d31025ac5013d8b14bb`](https://github.com/crabman436/Arma-3-ai-mod/commit/01e0eeda58fbc5e109cd4d31025ac5013d8b14bb) |
-| Work branch / PR | — |
+| Last assessed code | [`46b04d8`](https://github.com/crabman436/Arma-3-ai-mod/commit/46b04d84420984649fa903539271f5aa0434c39f) |
+| Work branch / PR | `claude/conform-branches` / [PR #7](https://github.com/crabman436/Arma-3-ai-mod/pull/7) — fix [`77f05bb`](https://github.com/crabman436/Arma-3-ai-mod/commit/77f05bbe7721c8f344eb0504809c9b2facc7a8e4) |
 | Fixed on / by | — / — |
 | Fix commit / PR | — |
 | Verified on / by | — / — |
@@ -400,6 +409,7 @@ Intel uses the real enemy group behind a detected entity, then classifies and ev
 | Date/time | Actor | Change | Reference / result |
 |---|---|---|---|
 | 2026-11-03 | Codex | Created → OPEN | Imported from the source review; no implementation or engine run. Baseline `01e0eed`; [historical review](reviews/2026-11-03-initial-review.md). |
+| 2026-11-05 | Claude (Opus 5.5) | → IN_REVIEW | Contacts carry `"known"` (observed objects); classifyGroup / groupPower take an optional known-objects list (objNull-safe, `28b756a`); tasksAir hands CAS only those. Arma 3 2.22.154089 dedicated server, VR, `tests/run-arma-tests.sh`: the record's checks pass; the same checks fail on `34f48fd`. |
 
 <a id="f09"></a>
 
@@ -408,15 +418,15 @@ Intel uses the real enemy group behind a detected entity, then classifies and ev
 | Field | Value |
 |---|---|
 | Type | BUG |
-| Status | IN_PROGRESS |
+| Status | IN_REVIEW |
 | Found on / reported by | 2026-11-03 / Codex |
-| Last updated | 2026-11-04 |
+| Last updated | 2026-11-05 |
 | Confidence | Source-supported; gameplay reproduction pending |
-| Owner / claim token | luna_air_supply / codex-2026-11-04/luna_air_supply |
-| Claimed at / expires at (UTC) | 2026-11-05T05:15:40Z / 2026-11-05T09:15:40Z |
+| Owner / claim token | Claude (Opus 5.5) / `claude/conform-branches` (claim released on hand-off to review) |
+| Claimed at / expires at (UTC) | — / — |
 | Target branch | `claude/arma3-ai-coordination-qilgd4` |
-| Last assessed code | [`01e0eeda58fbc5e109cd4d31025ac5013d8b14bb`](https://github.com/crabman436/Arma-3-ai-mod/commit/01e0eeda58fbc5e109cd4d31025ac5013d8b14bb) |
-| Work branch / PR | `codex/ai-reliability-luna-2026-11-04`, follow-up to PR #4 |
+| Last assessed code | [`46b04d8`](https://github.com/crabman436/Arma-3-ai-mod/commit/46b04d84420984649fa903539271f5aa0434c39f) |
+| Work branch / PR | `claude/conform-branches` / [PR #7](https://github.com/crabman436/Arma-3-ai-mod/pull/7) — fix [`9540f93`](https://github.com/crabman436/Arma-3-ai-mod/commit/9540f93c9ace7babee10effbb09a1d25dd727de3) |
 | Fixed on / by | — / — |
 | Fix commit / PR | — |
 | Verified on / by | — / — |
@@ -446,6 +456,7 @@ Support runs before rearming. A plane at its loiter waypoint is available for an
 | 2026-11-03 | Codex | Created → OPEN | Imported from the source review; no implementation or engine run. Baseline `01e0eed`; [historical review](reviews/2026-11-03-initial-review.md). |
 
 | 2026-11-04 | Codex / luna_air_supply | OPEN → IN_PROGRESS | User authorized implementation; [plan](plans/2026-11-04-ai-reliability.md). Revalidate against PR #4 head 73f2339; target default after dependency PR #4. |
+| 2026-11-05 | Claude (Opus 5.5) | → IN_REVIEW | Taken over from Luna package A on the owner's instruction. A plane done with its sortie and due for turnaround is left to rearmCycle while a held airfield can take it (gate aligned with rearmCycle in `28b756a`). No dedicated Arma scenario yet (soak ran without script errors). |
 
 <a id="i01"></a>
 
@@ -720,15 +731,15 @@ Intel substitutes current time for a nonpositive last-seen timestamp. Fire-suppo
 | Field | Value |
 |---|---|
 | Type | BUG |
-| Status | IN_PROGRESS |
+| Status | IN_REVIEW |
 | Found on / reported by | 2026-11-03 / Codex (second review) |
-| Last updated | 2026-11-04 |
+| Last updated | 2026-11-05 |
 | Confidence | Source-supported; gameplay reproduction pending |
-| Owner / claim token | luna_group_lifecycle / codex-2026-11-04/luna_group_lifecycle |
-| Claimed at / expires at (UTC) | 2026-11-05T05:15:40Z / 2026-11-05T09:15:40Z |
+| Owner / claim token | Claude (Opus 5.5) / `claude/conform-branches` (claim released on hand-off to review) |
+| Claimed at / expires at (UTC) | — / — |
 | Target branch | `claude/arma3-ai-coordination-qilgd4` |
-| Last assessed code | [`564dd8ce56e7ca1840fde15871d0ccb9cc415985`](https://github.com/crabman436/Arma-3-ai-mod/commit/564dd8ce56e7ca1840fde15871d0ccb9cc415985) |
-| Work branch / PR | `codex/ai-reliability-luna-2026-11-04`, follow-up to PR #4 |
+| Last assessed code | [`46b04d8`](https://github.com/crabman436/Arma-3-ai-mod/commit/46b04d84420984649fa903539271f5aa0434c39f) |
+| Work branch / PR | `claude/conform-branches` / [PR #7](https://github.com/crabman436/Arma-3-ai-mod/pull/7) — fix [`9540f93`](https://github.com/crabman436/Arma-3-ai-mod/commit/9540f93c9ace7babee10effbb09a1d25dd727de3) |
 | Fixed on / by | — / — |
 | Fix commit / PR | — |
 | Verified on / by | — / — |
@@ -758,6 +769,7 @@ The registration sweep releases groups when a player joins, AIC_exclude is set, 
 | 2026-11-03 | Codex | Created → OPEN | [Second review](reviews/2026-11-03-second-review.md), assessed `564dd8c`; no implementation or engine run. |
 
 | 2026-11-04 | Codex / luna_group_lifecycle | OPEN → IN_PROGRESS | User authorized implementation; [plan](plans/2026-11-04-ai-reliability.md). Revalidate against PR #4 head 73f2339; target default after dependency PR #4. |
+| 2026-11-05 | Claude (Opus 5.5) | → IN_REVIEW | Taken over from Luna package B. registerGroups takes a released group off the march; setMarch off also resets a vehicle whose driver died (`a399943`). Arma 3 2.22.154089 dedicated server, VR, `tests/run-arma-tests.sh`: the record's checks pass; the same checks fail on `34f48fd`. |
 
 <a id="f11"></a>
 
@@ -766,15 +778,15 @@ The registration sweep releases groups when a player joins, AIC_exclude is set, 
 | Field | Value |
 |---|---|
 | Type | BUG |
-| Status | IN_PROGRESS |
+| Status | IN_REVIEW |
 | Found on / reported by | 2026-11-03 / Codex (second review) |
-| Last updated | 2026-11-04 |
+| Last updated | 2026-11-05 |
 | Confidence | Source-supported; gameplay reproduction pending |
-| Owner / claim token | luna_group_lifecycle / codex-2026-11-04/luna_group_lifecycle |
-| Claimed at / expires at (UTC) | 2026-11-05T05:15:40Z / 2026-11-05T09:15:40Z |
+| Owner / claim token | Claude (Opus 5.5) / `claude/conform-branches` (claim released on hand-off to review) |
+| Claimed at / expires at (UTC) | — / — |
 | Target branch | `claude/arma3-ai-coordination-qilgd4` |
-| Last assessed code | [`564dd8ce56e7ca1840fde15871d0ccb9cc415985`](https://github.com/crabman436/Arma-3-ai-mod/commit/564dd8ce56e7ca1840fde15871d0ccb9cc415985) |
-| Work branch / PR | `codex/ai-reliability-luna-2026-11-04`, follow-up to PR #4 |
+| Last assessed code | [`46b04d8`](https://github.com/crabman436/Arma-3-ai-mod/commit/46b04d84420984649fa903539271f5aa0434c39f) |
+| Work branch / PR | `claude/conform-branches` / [PR #7](https://github.com/crabman436/Arma-3-ai-mod/pull/7) — fix [`9540f93`](https://github.com/crabman436/Arma-3-ai-mod/commit/9540f93c9ace7babee10effbb09a1d25dd727de3) |
 | Fixed on / by | — / — |
 | Fix commit / PR | — |
 | Verified on / by | — / — |
@@ -804,6 +816,7 @@ Both createGroup paths in splitPassengers move units into fresh groups without c
 | 2026-11-03 | Codex | Created → OPEN | [Second review](reviews/2026-11-03-second-review.md), assessed `564dd8c`; no implementation or engine run. |
 
 | 2026-11-04 | Codex / luna_group_lifecycle | OPEN → IN_PROGRESS | User authorized implementation; [plan](plans/2026-11-04-ai-reliability.md). Revalidate against PR #4 head 73f2339; target default after dependency PR #4. |
+| 2026-11-05 | Claude (Opus 5.5) | → IN_REVIEW | Taken over from Luna package B. Both splitPassengers paths copy AIC_noDynSim / AIC_keep. Arma 3 2.22.154089 dedicated server, VR, `tests/run-arma-tests.sh`: the record's checks pass; the same checks fail on `34f48fd`. |
 
 <a id="f12"></a>
 
@@ -812,15 +825,15 @@ Both createGroup paths in splitPassengers move units into fresh groups without c
 | Field | Value |
 |---|---|
 | Type | BUG |
-| Status | IN_PROGRESS |
+| Status | IN_REVIEW |
 | Found on / reported by | 2026-11-03 / Codex (second review) |
-| Last updated | 2026-11-04 |
+| Last updated | 2026-11-05 |
 | Confidence | Source-supported; gameplay reproduction pending |
-| Owner / claim token | luna_air_supply / codex-2026-11-04/luna_air_supply |
-| Claimed at / expires at (UTC) | 2026-11-05T05:15:40Z / 2026-11-05T09:15:40Z |
+| Owner / claim token | Claude (Opus 5.5) / `claude/conform-branches` (claim released on hand-off to review) |
+| Claimed at / expires at (UTC) | — / — |
 | Target branch | `claude/arma3-ai-coordination-qilgd4` |
-| Last assessed code | [`564dd8ce56e7ca1840fde15871d0ccb9cc415985`](https://github.com/crabman436/Arma-3-ai-mod/commit/564dd8ce56e7ca1840fde15871d0ccb9cc415985) |
-| Work branch / PR | `codex/ai-reliability-luna-2026-11-04`, follow-up to PR #4 |
+| Last assessed code | [`46b04d8`](https://github.com/crabman436/Arma-3-ai-mod/commit/46b04d84420984649fa903539271f5aa0434c39f) |
+| Work branch / PR | `claude/conform-branches` / [PR #7](https://github.com/crabman436/Arma-3-ai-mod/pull/7) — fix [`9540f93`](https://github.com/crabman436/Arma-3-ai-mod/commit/9540f93c9ace7babee10effbb09a1d25dd727de3) |
 | Fixed on / by | — / — |
 | Fix commit / PR | — |
 | Verified on / by | — / — |
@@ -850,6 +863,7 @@ The new-target filter requires a helicopter to touch the ground and rejects a pl
 | 2026-11-03 | Codex | Created → OPEN | [Second review](reviews/2026-11-03-second-review.md), assessed `564dd8c`; no implementation or engine run. |
 
 | 2026-11-04 | Codex / luna_air_supply | OPEN → IN_PROGRESS | User authorized implementation; [plan](plans/2026-11-04-ai-reliability.md). Revalidate against PR #4 head 73f2339; target default after dependency PR #4. |
+| 2026-11-05 | Claude (Opus 5.5) | → IN_REVIEW | Taken over from Luna package A. Running supply jobs stop when a player commands the vehicle or a helicopter is not landed (AIC_fnc_isLanded, `a399943`). No dedicated Arma scenario yet (soak ran without script errors). |
 
 <a id="f13"></a>
 
@@ -858,15 +872,15 @@ The new-target filter requires a helicopter to touch the ground and rejects a pl
 | Field | Value |
 |---|---|
 | Type | BUG |
-| Status | IN_PROGRESS |
+| Status | IN_REVIEW |
 | Found on / reported by | 2026-11-03 / Codex (second review) |
-| Last updated | 2026-11-04 |
+| Last updated | 2026-11-05 |
 | Confidence | Source-supported; gameplay reproduction pending |
-| Owner / claim token | luna_objectives / codex-2026-11-04/luna_objectives |
-| Claimed at / expires at (UTC) | 2026-11-05T05:15:40Z / 2026-11-05T09:15:40Z |
+| Owner / claim token | Claude (Opus 5.5) / `claude/conform-branches` (claim released on hand-off to review) |
+| Claimed at / expires at (UTC) | — / — |
 | Target branch | `claude/arma3-ai-coordination-qilgd4` |
-| Last assessed code | [`564dd8ce56e7ca1840fde15871d0ccb9cc415985`](https://github.com/crabman436/Arma-3-ai-mod/commit/564dd8ce56e7ca1840fde15871d0ccb9cc415985) |
-| Work branch / PR | `codex/ai-reliability-luna-2026-11-04`, follow-up to PR #4 |
+| Last assessed code | [`46b04d8`](https://github.com/crabman436/Arma-3-ai-mod/commit/46b04d84420984649fa903539271f5aa0434c39f) |
+| Work branch / PR | `claude/conform-branches` / [PR #7](https://github.com/crabman436/Arma-3-ai-mod/pull/7) — fix [`9540f93`](https://github.com/crabman436/Arma-3-ai-mod/commit/9540f93c9ace7babee10effbb09a1d25dd727de3) |
 | Fixed on / by | — / — |
 | Fix commit / PR | — |
 | Verified on / by | — / — |
@@ -896,6 +910,7 @@ Late-marker detection tests whether any existing objective of the same source co
 | 2026-11-03 | Codex | Created → OPEN | [Second review](reviews/2026-11-03-second-review.md), assessed `564dd8c`; no implementation or engine run. |
 
 | 2026-11-04 | Codex / luna_objectives | OPEN → IN_PROGRESS | User authorized implementation; [plan](plans/2026-11-04-ai-reliability.md). Revalidate against PR #4 head 73f2339; target default after dependency PR #4. |
+| 2026-11-05 | Claude (Opus 5.5) | → IN_REVIEW | Taken over from Luna package C. Late markers are detected by name and position (`"collectedMarkers"`, recorded where markers are collected, `28b756a`). Arma 3 2.22.154089 dedicated server, VR, `tests/run-arma-tests.sh`: the record's checks pass; the same checks fail on `34f48fd`. |
 
 <a id="i06"></a>
 
