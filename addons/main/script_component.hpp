@@ -186,6 +186,45 @@
 #define AIC_DROP_OFFSET_GROUND 250
 #define AIC_DROP_OFFSET_GROUND_THREAT 400
 
+// ---------------------------------------------------------------- helicopter insertions
+// fast landing under fire (AIC_fnc_heliInsert): a known threat this close to
+// the LZ makes it hot; m out it goes low, at this height; m out it is told to
+// land; s after touchdown the last men are moved out; m it flies off after
+#define AIC_HOT_INSERT_RADIUS 900
+#define AIC_HOT_LOW_DIST 3000
+#define AIC_HOT_LOW_HEIGHT 40
+#define AIC_HOT_LAND_DIST 900
+#define AIC_HOT_UNLOAD_MAX 8
+#define AIC_EGRESS_DIST 1500
+// fast rope (AIC_fnc_fastRope, AIC_fnc_ropePoint, AIC_fnc_heliInsert):
+// longest rope (m); highest door for ACE3's 34.5 m rope; lower than this they
+// just get out; forced hover height on the way in; m/s down the rope; s
+// between two men on one rope; m from the rope point the hover is held; s
+// near it before the rope is given up; s one rope run may take; m around a
+// rope point the rotor turns, nothing there higher than AIC_ROPE_CLEAR m; no
+// known threat this close to a rope point; an LZ farther than this from
+// where the squad should be put down makes it a rope insertion
+#define AIC_ROPE_MAX 40
+#define AIC_ROPE_ACE_MAX 32
+#define AIC_ROPE_MIN 4
+#define AIC_ROPE_ALT 18
+#define AIC_ROPE_SPEED 6
+#define AIC_ROPE_GAP 1.2
+// the last stretch is flown by the watcher (an AI helicopter takes a
+// waypoint as reached far from it): from this far out, at most this fast
+// (m/s), down to this height (m above the ground) over the spot, there
+// within this many m
+#define AIC_ROPE_GUIDE_RANGE 200
+#define AIC_ROPE_GUIDE_SPEED 8
+#define AIC_ROPE_HOVER 20
+#define AIC_ROPE_HOLD_RANGE 3
+#define AIC_ROPE_TIMEOUT 240
+#define AIC_ROPE_RUN_MAX 120
+#define AIC_ROPE_ROTOR 8
+#define AIC_ROPE_CLEAR 14
+#define AIC_ROPE_SAFE_RADIUS 350
+#define AIC_ROPE_LZ_FAR 200
+
 // ---------------------------------------------------------------- event handlers / ui
 // min seconds between two groupEngaged calls of an awake group from unit / vehicle EHs
 #define AIC_EH_THROTTLE 10

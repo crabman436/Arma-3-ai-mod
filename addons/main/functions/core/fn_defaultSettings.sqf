@@ -73,6 +73,11 @@ createHashMapFromArray [
     ["useSupplyTrucks", true],
     ["transportMinDistance", 1200],
     ["heliTransportDistance", 3000],
+    // helicopters land fast under fire and fast-rope squads in where they
+    // cannot land (AIC_fnc_heliInsert); ACE3's fast rope when it is loaded
+    ["heliHotLanding", true],
+    ["useFastRope", true],
+    ["fastRopeUseAce", true],
     ["useParadrop", true],
     ["paradropDistance", 3000],
     // squads fly between two held airfields when the trip is longer than

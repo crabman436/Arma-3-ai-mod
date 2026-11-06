@@ -35,11 +35,27 @@
           - Helicopter: LZ 300-600 m short of destPos (450 m on the side the
             helicopter comes from). Only at the destination if no known enemy
             contact / threat cluster is within 800 m of it and there is no
-            objective, or destPos is an assault's assembly area. A detour
-            (AIC_fnc_flightPath) is flown between pickup and LZ when something
-            known to be hostile lies on the way. Flat spot via
-            BIS_fnc_findSafePos (fallback findEmptyPosition), invisible
-            helipad created there and stored in the transport record "lz".
+            objective, or destPos is an assault's assembly area, or it is a
+            place the side holds that the squad is to DEFEND / REINFORCE (no
+            contact near it). A detour (AIC_fnc_flightPath) is flown between
+            pickup and LZ when something known to be hostile lies on the way.
+            Flat spot via AIC_fnc_bestPlace / BIS_fnc_findSafePos (fallback
+            findEmptyPosition), invisible helipad created there and stored in
+            the transport record "lz".
+            How the squad comes down (cargo record "insert", flown by
+            AIC_fnc_heliInsert, started here for every helicopter ride):
+            ROPE (setting "useFastRope") when there is no good LZ near where
+            the squad should be (only a spot farther out than 2.5 x the search
+            radius or AIC_ROPE_LZ_FAR m away), the helicopter has rope points
+            (AIC_fnc_ropeOrigins) and a rope spot with a clear drop
+            (AIC_fnc_ropePoint) has no known threat within
+            AIC_ROPE_SAFE_RADIUS m: the drop is that spot, the unload
+            waypoint a MOVE, no helipad. A held place with neither: short of
+            it as before. HOT (setting "heliHotLanding") when a known threat
+            is within AIC_HOT_INSERT_RADIUS m of the LZ, the squad goes into an
+            ATTACK, or it was under fire in the last 60 s. Else LAND. A pickup
+            is "pickupHot" by the same threat / fire rule. Parameter 7 forces
+            the choice.
           - Ground vehicle: 200-400 m short (400 m if threatened, else
             250 m, same rule as above; never more than 40 % of the trip),
             road-snapped.
@@ -61,13 +77,15 @@
 
         Records:
           transport: task "TRANSPORT", taskPos = drop point, objective "",
-                     "transport" = cargo group, "lz", "pickupLz",
+                     "transport" = cargo group, "lz", "pickupLz", "rideId",
                      "transportVeh", "pickupPos", "dropPos", "wpLoad",
                      "wpUnload" (waypoint indices), "cargoOutTime" -1.
           cargo:     task "TRANSPORTED", taskPos = finalPos, objective =
                      objectiveId, "transport" = transport group, "final" =
                      {"task","pos","objective"}, "transportVeh", "pickupPos",
                      "dropPos", "wpGetIn", "transportPhase" "PICKUP",
+                     "insert" (LAND / HOT / ROPE), "pickupHot", "ropeBusy",
+                     "ropeDone", "ropeFailed" (false),
                      "phaseTime", "rideLimit" (s), "getInFallback" false,
                      "getInFallbackTime", "nearPickupTime", "nearDropTime", "hoverTime",
                      "landOrderTime", "approachTime".
@@ -81,6 +99,10 @@
         4: STRING  - task to execute after dismount ("ATTACK", "DEFEND", ...)
         5: ARRAY   - position of that final task
         6: STRING  - objective id of the final task ("" = none)
+        7: STRING  - (optional) how a helicopter puts the squad down: "" picks
+                     (default), "LAND", "HOT" (fast landing), "ROPE" (fast rope;
+                     falls back to the pick when the helicopter has no rope
+                     points or no rope point is found near the drop)
 
     Returns:
         BOOL - true if the transport was ordered
@@ -98,8 +120,10 @@ params [
     ["_dest", [], [[]]],
     ["_finalTask", "", [""]],
     ["_finalPos", [], [[]]],
-    ["_objective", "", [""]]
+    ["_objective", "", [""]],
+    ["_insertWanted", "", [""]]
 ];
+_insertWanted = toUpperANSI _insertWanted;
 
 if (!isServer) exitWith { false };
 if (count _cmd == 0 || { isNull _tGroup } || { isNull _cGroup } || { _tGroup isEqualTo _cGroup }) exitWith { false };
@@ -169,7 +193,9 @@ if ((leader _tGroup) isNotEqualTo _drv && { !((objectParent (leader _tGroup)) is
 // flat, open spot for a helicopter near _c: within _r m first, then a wider
 // search (2.5 x _r, stricter gradient) for towns and cluttered bases, else
 // findEmptyPosition, else _c itself (AIC_fnc_transportCycle moves an LZ the
-// helicopter cannot land at)
+// helicopter cannot land at). Returns [pos, quality]: 0 open ground by the
+// terrain scoring, 1 a flat spot within _r, 2 one farther out, 3 only an
+// empty spot, 4 nothing (the centre)
 private _fnc_lzPos = {
     params ["_c", "_r"];
     _c = [_c select 0, _c select 1, 0];
@@ -183,14 +209,16 @@ private _fnc_lzPos = {
         _p
     };
     // open ground by the engine's own terrain scoring first, flat enough to land on
+    private _q = 0;
     private _p = [_c, _r, "meadow - forest - 2*trees - 3*houses - 10*sea - hills", 12] call AIC_fnc_bestPlace;
-    if (_p isEqualTo []) then { _p = [_r, 12, 0.25] call _fnc_try; };
-    if (_p isEqualTo []) then { _p = [_r * 2.5, 15, 0.2] call _fnc_try; };
+    if (_p isEqualTo []) then { _q = 1; _p = [_r, 12, 0.25] call _fnc_try; };
+    if (_p isEqualTo []) then { _q = 2; _p = [_r * 2.5, 15, 0.2] call _fnc_try; };
     if (_p isEqualTo []) then {
         private _e = _c findEmptyPosition [0, _r, typeOf _veh];
-        _p = if (_e isEqualType [] && { count _e >= 2 }) then { [_e select 0, _e select 1, 0] } else { _c };
+        _q = 3;
+        _p = if (_e isEqualType [] && { count _e >= 2 }) then { [_e select 0, _e select 1, 0] } else { _q = 4; _c };
     };
-    _p
+    [_p, _q]
 };
 
 // old helipads of a previous transport order
@@ -210,7 +238,7 @@ if (_isPlane) then {
     private _vp = getPosATL _veh;
     _pickupPos = [_vp select 0, _vp select 1, 0];
 } else { if (_isHeli) then {
-    _pickupPos = [_cPos, 150] call _fnc_lzPos;
+    _pickupPos = ([_cPos, 150] call _fnc_lzPos) select 0;
     _pickupLz = createVehicle ["Land_HelipadEmpty_F", _pickupPos, [], 0, "CAN_COLLIDE"];
 } else {
     _pickupPos = [_cPos, 80] call AIC_fnc_roadPos;
@@ -226,14 +254,23 @@ private _threatened = (((_cmd getOrDefault ["knownEnemies", []]) + (_cmd getOrDe
 }) >= 0;
 // nobody lands on an objective that is not ours, contacts known or not, and
 // helicopters land outside every objective: the troops walk the last stretch
-// (an assembly area is already well short of it)
+// (an assembly area is already well short of it). A place of our own with no
+// contact near it, to hold or reinforce, is the exception: a helicopter puts
+// the squad down at it (open ground there, else down the ropes, else short
+// of it as before)
+private _ownSafe = false;
 if (!_threatened && { (_dest distance2D _finalPos) < 300 }) then {
     private _objRec = if (_objective isEqualTo "") then { createHashMap } else { [_cmd, _objective] call AIC_fnc_getObjective };
+    _ownSafe = _isHeli && { count _objRec > 0 }
+        && { (_objRec getOrDefault ["owner", sideUnknown]) isEqualTo _side }
+        && { _finalTask in ["DEFEND", "REINFORCE"] };
     _threatened = _finalTask isEqualTo "ATTACK"
-        || { count _objRec > 0 && { _isHeli || { (_objRec getOrDefault ["owner", sideUnknown]) isNotEqualTo _side } } };
+        || { count _objRec > 0 && { (_isHeli && { !_ownSafe }) || { (_objRec getOrDefault ["owner", sideUnknown]) isNotEqualTo _side } } };
 };
 
 private _trip = _pickupPos distance2D _dest;
+// how a helicopter puts the squad down: LAND, HOT (fast, under fire), ROPE
+private _insert = "LAND";
 private _dirBack = _dest getDir _pickupPos;
 private _dropPos = +_dest;
 private _lz = objNull;
@@ -255,10 +292,36 @@ if (_isPlane) then {
     } else {
         +_dest
     };
-    _dropPos = [_center, 150] call _fnc_lzPos;
+    ([_center, 150] call _fnc_lzPos) params ["_p", "_q"];
+    _dropPos = _p;
     // the wide fallback search may come back close to the target: keep the stand-off
     if (_threatened && { (_dropPos distance2D _dest) < (AIC_LZ_OFFSET_HELI * 0.6) }) then { _dropPos = [_center select 0, _center select 1, 0]; };
-    _lz = createVehicle ["Land_HelipadEmpty_F", _dropPos, [], 0, "CAN_COLLIDE"];
+    // no landing spot near where the squad should be (a town, forest): down
+    // the ropes there, at a spot with a clear drop and no threat near it
+    private _poor = _q >= 2 || { (_dropPos distance2D _center) > AIC_ROPE_LZ_FAR };
+    if ((_insertWanted isEqualTo "ROPE" || { _insertWanted isEqualTo "" && { _poor } && { ([_cmd, "useFastRope"] call AIC_fnc_getSetting) isEqualTo true } })
+        && { ([_veh] call AIC_fnc_ropeOrigins) isNotEqualTo [] }) then {
+        private _rp = [_center, 120] call AIC_fnc_ropePoint;
+        if (_rp isNotEqualTo [] && { ([_cmd, _rp, AIC_ROPE_SAFE_RADIUS] call AIC_fnc_nearestThreat) isEqualTo [] }) then {
+            _dropPos = _rp;
+            _insert = "ROPE";
+        };
+    };
+    // a held place with no landing spot and no rope: short of it as before
+    if (_insert isEqualTo "LAND" && { _ownSafe } && { _poor }) then {
+        _dropPos = ([_dest getPos [(AIC_LZ_OFFSET_HELI min (_trip * 0.5)), _dirBack], 150] call _fnc_lzPos) select 0;
+    };
+    // a landing near the enemy, into an attack or with the squad under fire: a fast one
+    if (_insertWanted isEqualTo "HOT") then { _insert = "HOT"; };
+    if (_insert isEqualTo "LAND" && { _insertWanted isEqualTo "" } && { ([_cmd, "heliHotLanding"] call AIC_fnc_getSetting) isEqualTo true }
+        && { ([_cmd, _dropPos, AIC_HOT_INSERT_RADIUS] call AIC_fnc_nearestThreat) isNotEqualTo []
+            || { _finalTask isEqualTo "ATTACK" }
+            || { (time - (_cRec getOrDefault ["lastEngaged", -1e6])) < 60 } }) then {
+        _insert = "HOT";
+    };
+    if (_insert isNotEqualTo "ROPE") then {
+        _lz = createVehicle ["Land_HelipadEmpty_F", _dropPos, [], 0, "CAN_COLLIDE"];
+    };
 } else {
     private _short = ((if (_threatened) then { AIC_DROP_OFFSET_GROUND_THREAT } else { AIC_DROP_OFFSET_GROUND }) min (_trip * 0.4)) max 0;
     private _p = _dest getPos [_short, _dirBack];
@@ -331,11 +394,11 @@ if (!_isPlane) then {
     };
 
     _wpUnload = _tGroup addWaypoint [_dropPos, 0];
-    _wpUnload setWaypointType "TR UNLOAD";
+    _wpUnload setWaypointType (["TR UNLOAD", "MOVE"] select (_insert isEqualTo "ROPE"));
     _wpUnload setWaypointBehaviour _tBeh;
     _wpUnload setWaypointCombatMode "YELLOW";
     _wpUnload setWaypointSpeed "FULL";
-    _wpUnload setWaypointCompletionRadius (if (_isHeli) then { 30 } else { 40 });
+    _wpUnload setWaypointCompletionRadius (call { if (_insert isEqualTo "ROPE") exitWith { 15 }; if (_isHeli) exitWith { 30 }; 40 });
 };
 
 [_cGroup, "setBehaviour", "AWARE"] call AIC_fnc_do;
@@ -413,8 +476,23 @@ _cRec set ["approachTime", -1];
 _cRec set ["pickupLzMoved", false];
 _cRec set ["dropLzMoved", false];
 _cRec set ["hotLzMoved", false];
+_cRec set ["insert", _insert];
+_cRec set ["pickupHot", _isHeli && { ([_cmd, "heliHotLanding"] call AIC_fnc_getSetting) isEqualTo true }
+    && { ([_cmd, _pickupPos, AIC_HOT_INSERT_RADIUS] call AIC_fnc_nearestThreat) isNotEqualTo []
+        || { (time - (_cRec getOrDefault ["lastEngaged", -1e6])) < 60 } }];
+_cRec set ["ropeBusy", false];
+_cRec set ["ropeDone", false];
+_cRec set ["ropeFailed", false];
 _cRec set ["lastPos", _cPos];
 _cRec set ["lastMoveTime", time];
+
+// a new ride id: the watcher of an earlier ride of this transport ends
+private _rideId = (missionNamespace getVariable ["AIC_rideCounter", 0]) + 1;
+missionNamespace setVariable ["AIC_rideCounter", _rideId];
+_tRec set ["rideId", _rideId];
+// a helicopter's landing (fast, under fire) or rope insertion is flown by
+// its own watcher, twice a second
+if (_isHeli) then { [_cmd, _cRec, _tRec, _veh, _rideId] call AIC_fnc_heliInsert; };
 
 // the ride is set up, so now the transport's garrison surplus is spoken for
 // (AIC_fnc_findTransport only checks it, nothing to undo when a ride fails;
@@ -423,10 +501,11 @@ if !((_tRec getOrDefault ["transportOnly", false]) isEqualTo true) then {
     [_cmd, _tGroup] call AIC_fnc_canLeaveGarrison;
 };
 
-["%1: %2 (%3) picks up group %4 (%5 units) at %6, drop %7 (%8 m from target), then %9 obj '%10'", [
+["%1: %2 (%3) picks up group %4 (%5 units) at %6, drop %7 (%8 m from target, %11), then %9 obj '%10'", [
     _side, groupId _tGroup, typeOf _veh, groupId _cGroup, _cargoCount,
     _pickupPos apply { round _x }, _dropPos apply { round _x },
-    round (_dropPos distance2D _dest), _finalTask, _objective
+    round (_dropPos distance2D _dest), _finalTask, _objective,
+    if (_isHeli) then { toLowerANSI _insert + ([" landing", ""] select (_insert isEqualTo "ROPE")) } else { "ground" }
 ]] call AIC_fnc_log;
 
 true

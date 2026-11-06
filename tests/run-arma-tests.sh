@@ -7,6 +7,8 @@
 #   MISSIONS=aic_stress.Altis SOAK=600 GROUPS_PER_SIDE=80 tests/run-arma-tests.sh   (load test)
 #   HC=2 MISSIONS=aic_stress.Altis tests/run-arma-tests.sh   (with 2 headless clients)
 #   ONLY=t_hc HC=1 MISSIONS=aic_regression.VR tests/run-arma-tests.sh   (only matching test files)
+#   MODS="@CBA_A3;@ace" ONLY=t_fastrope MISSIONS=aic_scenarios.Stratis tests/run-arma-tests.sh
+#       (other mods loaded as well: folder names under <ARMA>/!Workshop or <ARMA>, ";"-separated)
 #
 # Missions (tests/missions/*): aic_regression.VR (unit checks of the real
 # functions + a soak with two live commanders) and aic_scenarios.Stratis
@@ -28,6 +30,15 @@ TIMEOUT="${TIMEOUT:-1500}"
 MISSIONS="${MISSIONS:-aic_regression.VR aic_scenarios.Stratis}"
 HC="${HC:-0}"
 STAGE="$REPO/.hemttout/arma-test"
+# extra mods, by folder name (<ARMA>/!Workshop/<name> or <ARMA>/<name>)
+MODLIST=""
+IFS=';' read -ra _MODS <<< "${MODS:-}"
+for M in "${_MODS[@]}"; do
+    [ -z "$M" ] && continue
+    if [ -d "$ARMA/!Workshop/$M" ]; then MODLIST="$MODLIST;$(cygpath -w "$ARMA/!Workshop/$M")"
+    elif [ -d "$ARMA/$M" ]; then MODLIST="$MODLIST;$(cygpath -w "$ARMA/$M")"
+    else echo "mod $M not found under $ARMA" >&2; exit 2; fi
+done
 
 [ -x "$ARMA/arma3server_x64.exe" ] || { echo "no arma3server_x64.exe in $ARMA" >&2; exit 2; }
 if tasklist 2>/dev/null | grep -qi "arma3server_x64.exe"; then
@@ -69,7 +80,7 @@ CFG
 
     echo "== server (soak ${SOAK}s, timeout ${TIMEOUT}s)"
     "$ARMA/arma3server_x64.exe" -port=2402 -name=aic -autoInit -showScriptErrors \
-        "-config=$(W "$STAGE/server-$MISSION.cfg")" "-profiles=$(W "$PROFILE")" "-mod=$(W "$STAGE/@aic_test")" >/dev/null 2>&1 &
+        "-config=$(W "$STAGE/server-$MISSION.cfg")" "-profiles=$(W "$PROFILE")" "-mod=$(W "$STAGE/@aic_test")$MODLIST" >/dev/null 2>&1 &
     PID=$!
     # headless clients, once the server has loaded the mission
     HPIDS=""
@@ -83,7 +94,7 @@ CFG
             for TRY in 1 2; do
                 rm -f "$PROFILE-hc$i"/*.rpt
                 "$ARMA/arma3server_x64.exe" -client -connect=127.0.0.1 -port=2402 -password=aic-local-only "-name=hc$i" \
-                    "-profiles=$(W "$PROFILE-hc$i")" "-mod=$(W "$STAGE/@aic_test")" >/dev/null 2>&1 &
+                    "-profiles=$(W "$PROFILE-hc$i")" "-mod=$(W "$STAGE/@aic_test")$MODLIST" >/dev/null 2>&1 &
                 HP=$!
                 HPIDS="$HPIDS $HP"
                 HSTATE=""

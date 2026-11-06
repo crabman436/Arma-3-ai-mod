@@ -114,6 +114,11 @@ class CfgFunctions
         {
             file = "\z\aic\addons\main\functions\logistics";
             class setGroupSim {};
+            class heliInsert {};
+            class fastRope {};
+            class ropeOrigins {};
+            class ropeHeights {};
+            class ropePoint {};
             class cacheCycle {};
             class cacheGroup {};
             class uncacheGroup {};
