@@ -38,7 +38,8 @@ original evidence; current status lives in the tracker.
   from the units in the area, and each objective is scored every cycle.
 - **Force allocation**: attacks are staffed until the attacking force has 1.5
   times the local enemy strength, threatened objectives are defended, and
-  damaged groups retreat to HQ. By default (`manageGarrisons` on) the
+  damaged groups fall back to the nearest place their side holds behind them
+  (HQ when there is none). By default (`manageGarrisons` on) the
   `BASE_HQ` garrison and the home garrisons of towns and bases hold the
   ground; with `manageGarrisons` off a reserve defends HQ and spare groups
   patrol instead. Orders stay in place while they are still valid, so groups
@@ -203,6 +204,8 @@ change them live through `(_cmd get "settings") set [key, value]`.
 | `objectiveRadius` | 300 | Default capture radius (m) |
 | `maxAutoObjectives` | 12 | Maximum number of automatic objectives (the ones nearest HQ) |
 | `excludePlayerGroups` | true | Never command groups that contain players |
+| `garrisonHoldPath` | true | Garrison men who reached their spot hold it without pathfinding until the group is engaged or ordered (see "Garrison pathfinding") |
+| `cacheDistance` | 2500 | Parked squads this far (m) from every player and enemy are stored as data, their men come back at 0.75 x this distance; 0 = off (see "Unit caching") |
 | `useHeadlessClients` | true | Hand ground groups to connected headless clients, so their AI runs on other CPU cores (see "Headless clients") |
 | `debugMarkers` | false | Draw the commander's view on the map |
 | `reportToPlayers` | true | Send HQ side-chat reports to players on the side |
@@ -377,7 +380,8 @@ attack objective stays and DEFENDs it. A group whose attack or reinforcement
 is called off goes back to DEFEND its home (or the town it was reinforcing).
 Groups sent to reinforce a threatened town count as incoming for it, so the
 garrison system doesn't send extra donors to the same threat. Damaged groups
-still retreat to HQ, and join its garrison there.
+still fall back to their rally point (the nearest held place behind them, else
+HQ) and join its garrison there.
 
 ### Attacks
 
@@ -412,10 +416,14 @@ the attack orders still waiting for that objective, and HQ says so ("Assault
 on X failed - the troops regroup", "... called off - the attackers are
 shaken"); the place is then left alone for a while.
 
-Infantry then comes in at a walk, in line, on a broad front. A built-up place is
-taken by infantry: the planner picks infantry first, and vehicles stop about
-250 m outside to give fire support. They only go in if the infantry is lost. On
-open ground vehicles go in at a walk too.
+Infantry then comes in at a walk, in line, on a broad front: each squad clears
+the near half of the place on its lane, then sweeps through to the centre. A
+built-up place is taken by infantry: the planner picks infantry first, and
+vehicles stop about 250 m outside to give fire support. They go in once the
+infantry has swept the place, or is lost, or after a long fight. On open ground
+vehicles go in at a walk too. The squads that take a place hold it for 3
+minutes before the planner may send them on; the reserve of an assault that had
+no assembly area waits outside the place, beyond the fire-support line.
 
 Long moves are **marches**. On a march the automatic combat mode is off, so a
 column that spots a distant enemy keeps walking instead of crawling the last
@@ -458,10 +466,15 @@ DEFEND farther than `transportMinDistance` away gets a ride if one is free:
   the ride off and fights.
 - Infantry orders go out first each cycle, so an APC is still there when the
   squad next to it asks for a ride. A vehicle never leaves the pickup without
-  its troops. After the drop, armed vehicles that carried a squad into an
-  attack stay and fight with it. Only unarmed crews go home.
-- Unarmed or lightly armed vehicles are preferred over IFVs and tanks, so
-  fighting vehicles stay in the fight.
+  its troops. After the drop, armed vehicles (APCs, IFVs, armed cars) that
+  carried a squad into an attack, a reinforcement or a place to hold stay and
+  fight with it. Unarmed crews go home at once, to be used again.
+- Unarmed or lightly armed vehicles are preferred over IFVs, so fighting
+  vehicles stay in the fight; tanks never carry troops.
+- A helicopter that cannot land at its drop for 5 minutes lets its squad jump
+  (high enough); troops in an aircraft nobody flies any more (pilot dead,
+  airframe destroyed) bail out by parachute when it is at least 75 m up, and
+  ride it down below that.
 - Beyond `heliTransportDistance`, helicopters are preferred (when `useAir` is
   on). Otherwise the closest ground vehicle is used.
 
@@ -557,6 +570,33 @@ Mission scripts can drop any units themselves:
 [units _squad, _plane] call AIC_fnc_paradrop;
 ```
 
+### Airlift
+
+On a big map, Tanoa above all, a squad does not have to walk or drive across
+the islands. When its trip is longer than `airliftDistance` (6 km) or crosses
+water, the side holds an airfield within 2 km of it and another within 3 km of
+where it is going, and an idle transport plane stands at the first one (any
+plane with at least 8 cargo seats: Blackfish, Y-32, a modded C-130), the squad
+is airlifted:
+
+- it walks to the plane and boards; other squads ordered the same way within
+  90 s board the same plane while there are seats, so one sortie carries a
+  whole company if the plane is big enough;
+- the plane takes off once everybody is aboard (squads that are not aboard
+  after 7 minutes go on foot), flies to the far airfield and lands there (a
+  VTOL straight down on the runway, any other plane on its approach);
+- the squads get out and carry on with their orders from the airfield, and the
+  plane is turned around there (refuelled, repaired) and free for the next
+  lift;
+- if the far airfield is lost on the way, the plane diverts to the airfield
+  the side holds nearest the squads' destination; with none near, the squads
+  jump over their destination by parachute.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `useAirlift` | true | Fly squads between two held airfields on long or island-crossing trips (needs `useAir`) |
+| `airliftDistance` | 6000 | Trips longer than this (m) go by plane; shorter ones only when they cross water |
+
 ### Digging in
 
 Once a base, airfield or town has been held for two minutes, with no enemy
@@ -606,9 +646,9 @@ out of a repaired vehicle gets back in.
 Crews of unarmed vehicles (trucks, transport helicopters without guns) are
 transport-only: the general never sends them to attack, garrison a town or
 patrol. This goes by the vehicle, so a lone passenger or a crew stepping out
-changes nothing. Trucks stay put for three minutes, so squads near them can ask
-for a ride, then move to the nearest base and wait there, and never drive off
-with somebody else's troops aboard. Helicopters fly to the nearest base after
+changes nothing. Trucks head for the nearest base as soon as their squad is
+out, wait there to be used again (refuelled when they get home), and never
+drive off with somebody else's troops aboard. Helicopters fly to the nearest base after
 each ride. A transport group with several vehicles is split into one group per
 vehicle, so each can carry a squad. Helicopters armed only with door guns
 are kept for rides too and are not used as close air support while
@@ -712,6 +752,42 @@ group (a set piece, an intel item on a corpse), set `AIC_keep`:
 
 ```sqf
 _wreck setVariable ["AIC_keep", true];
+```
+
+### Garrison pathfinding
+
+Pathfinding is one of the most expensive parts of a soldier's AI, and a man
+in his window has nowhere to walk. Once a garrison man on foot reaches his
+spot, AIC switches his pathfinding off (`disableAI "PATH"`); he still turns,
+aims and shoots. The squad leader keeps his. Everybody gets it back at once
+when the group is engaged (an enemy seen, a hit, fire nearby, a man killed),
+gets any new order, leaves the general's command or is handed to a headless
+client. After AIC_PATH_CALM (120) s of calm the men still at their spots are
+held again; a man who moved during the fight keeps his pathfinding. Turn it
+off with `garrisonHoldPath` false.
+
+### Unit caching
+
+A parked squad far from everybody still exists: the engine syncs it and
+keeps its objects. Caching goes further. An infantry squad that is parked,
+idle or garrisoned in place, calm for 5 minutes, and has no player, no
+hostile unit and no known enemy within `cacheDistance` (2500 m) for 2
+minutes, is stored as data: every man but the leader is deleted, with his
+class, loadout, position, direction, damage, skill, rank and stance kept in
+the group record. The leader stays (frozen, damage off), so the group, its
+home and its orders stay valid and the planner keeps counting it at full
+strength.
+
+The men come back where they stood the moment a player, a hostile unit or a
+known enemy is within 0.75 x `cacheDistance`, or anything wakes the group
+(an order, an alarm, the general's release). A watcher checks players and
+hostile aircraft every 5 s between the cycles, so a helicopter cannot fly in
+on a half-empty town. A squad on a headless client is taken back to the
+server first. Vehicles, crews, patrols and groups with a player are never
+cached. To keep a group out of it:
+
+```sqf
+_group setVariable ["AIC_noCache", true];
 ```
 
 ### Headless clients
@@ -1127,6 +1203,12 @@ and reports from the RPT:
   in (placement rules, manning, service point, reuse by the next owner), and a
   whole paradrop ride (the plane at the airfield, boarding, the jump, landing
   and the plane's turnaround), driven with 20 s cycles.
+- `tests/missions/aic_airlift.Tanoa` (not in the default run): three squads
+  flown by one Blackfish from Tanoa's main airport to the farthest airfield,
+  delivered there with their orders, and the plane turned around.
+- The VR mission also covers garrison pathfinding, unit caching and a whole
+  assault from plan to capture; the Stratis mission a helicopter ride from
+  pickup to the helicopter's refuelling at its base.
 - `tests/missions/aic_stress.Altis` (load test, not in the default run): two
   armies of `GROUPS_PER_SIDE` groups each (default 80), server FPS without
   and with the commanders for `SOAK` seconds, the commanders' per-step cost,

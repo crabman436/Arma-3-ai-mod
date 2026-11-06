@@ -117,7 +117,7 @@ User-tunable values are settings, not constants.
 | `AIC_ADVICE_YES`, `AIC_ADVICE_NO` | 0.6, 0.4 | Jev noul answers count as yes / no from these probabilities (allocateForces, assaultCycle, supportCycle) |
 | `AIC_ADVICE_SURE` | 0.4 | confidence needed before advice holds or aborts an attack (allocateForces, assaultCycle) |
 | `AIC_ADVICE_RISKY` | 2.5 | risk score from which no new attack starts (allocateForces) |
-| `AIC_ADVICE_ABORT_COOLDOWN` | 300 | s after an advised abort before the next one, and before that objective is attacked again (assaultCycle, allocateForces) |
+| `AIC_ADVICE_ABORT_COOLDOWN` | 300 | s after an advised abort before the next one (assaultCycle, allocateForces); the objective itself waits `AIC_ASSAULT_FAIL_COOLDOWN` (900 s), as after any failed assault |
 | `AIC_LOSS_WINDOW`, `AIC_LOSS_LOG_MAX` | 600, 400 | casualty log: window (s) reported to Jev, most entries kept (attachGroupEHs, jevState) |
 | `AIC_EST_HALF_LIFE`, `AIC_EST_FRESH`, `AIC_OBJ_THREAT_RANGE` | 900, 120, 700 | objective enemy estimate `"estPower"`: half-life (s) without a sighting, age (s) of a contact that counts as seen now, contacts / clusters within the objective radius plus this (m) belong to it (updateObjectives, scoreObjectives, allocateForces) |
 | `AIC_EST_PRIOR_SHARE` | 0.5 | allocateForces: an enemy-held objective not looked at (`"ownerTime"`) for `AIC_EST_HALF_LIFE` s is assumed to hold this share of priority × `garrisonPerPriority` |
@@ -206,7 +206,7 @@ when, repeated only after `AIC_REPORT_HOLD_REPEAT` s, and `"reserves"`),
 |---|---|---|
 | `"loopInterval"` | 30 | seconds between commander cycles |
 | `"aggression"` | 0.5 | 0..1, biases stance toward attack |
-| `"retreatThreshold"` | 0.3 | group strength below which it retreats to HQ |
+| `"retreatThreshold"` | 0.3 | group strength below which it retreats to its rally point (`AIC_fnc_rallyPoint`: the nearest held place behind it, else HQ; aircraft to HQ) |
 | `"reserveRatio"` | 0.2 | fraction of power kept as reserve / defence |
 | `"useArtillery"` | true | allow artillery fire missions |
 | `"useAir"` | true | allow air groups to be tasked (CAS) |
@@ -214,6 +214,8 @@ when, repeated only after `AIC_REPORT_HOLD_REPEAT` s, and `"reserves"`),
 | `"objectiveRadius"` | 300 | default capture radius |
 | `"maxAutoObjectives"` | 12 | cap for auto-generated objectives (nearest to HQ) |
 | `"excludePlayerGroups"` | true | never command groups that contain players |
+| `"garrisonHoldPath"` | true | garrison men at their spots without pathfinding until engaged or ordered (`AIC_fnc_garrisonPath`) |
+| `"cacheDistance"` | 2500 | m; parked squads this far from every player and enemy are stored as data (`AIC_fnc_cacheCycle`); 0 = off |
 | `"useHeadlessClients"` | true | hand ground groups to connected headless clients (`AIC_fnc_hcBalance`) |
 | `"debugMarkers"` | false | draw map markers of commander's view |
 | `"reportToPlayers"` | true | side-chat reports to players on the side |
@@ -334,7 +336,7 @@ HashMap: `"group"`, `"task"`, `"pos"`, `"objective"` (id or `""`).
 - `AIC_fnc_commanderLoop` — `[commander] spawn`. While `"enabled"`: clear `"replanRequested"` / `"replanReason"`, call `AIC_fnc_commanderCycle`, then wait for the rest of `loopInterval` (game time: the cycle's own game-time length is subtracted), or less when a replan is requested (see the replan-on-contact extension).
 - `AIC_fnc_requestReplan` — `[commander, reason(optional string)] call` → bool. Asks for an early cycle (see the replan-on-contact extension).
 - `AIC_fnc_commanderCycle` — `[commander] call`. One full think step, in order (the numbers are the comments in `fn_commanderCycle.sqf`):
-  1. `AIC_fnc_registerGroups` (pick up new groups, drop dead); 1a. `AIC_fnc_hcBalance` (ground groups to headless clients)
+  1. `AIC_fnc_registerGroups` (pick up new groups, drop dead); 1a. `AIC_fnc_hcBalance` (ground groups to headless clients); after `AIC_fnc_dynSimCycle`: 11a. `AIC_fnc_cacheCycle`
   2. `AIC_fnc_updateGroups` (strength/power refresh); 2a. `AIC_fnc_drainOrders` (queued orders that fell due during the sleep)
   3. `AIC_fnc_gatherIntel`
   4. `AIC_fnc_clusterThreats`
@@ -379,7 +381,7 @@ HashMap: `"group"`, `"task"`, `"pos"`, `"objective"` (id or `""`).
 ### strategy (`functions/strategy`)
 - `AIC_fnc_determineStance` — `[commander] call` → stance (also stored). ratio = ownPower / max(1, enemyPower); biased by aggression. ratio*(0.5+aggression) > 1.5 → OFFENSIVE, < 0.8 → DEFENSIVE, else BALANCED.
 - `AIC_fnc_scoreObjectives` — `[commander] call`. Sets `"score"` on each objective: priority, + bonus if enemy-held/contested, distance penalty from HQ, penalty for threat power nearby relative to own power. Owned and unthreatened → low score.
-- `AIC_fnc_allocateForces` — `[commander] call` → plan (array of assignment records; also stored in `"plan"`). Keeps `reserveRatio` of power defending HQ or the most threatened owned objective. In OFFENSIVE/BALANCED assigns available groups to top objectives by score until estimated power ≥ 1.5× local threat; in DEFENSIVE assigns to own objectives under threat (DEFEND) and counter-attacks only weak clusters. Air (HELI/PLANE) groups are left to support. Groups whose current task already matches (same objective & task, issued < 300s ago) keep their assignment (no re-issue spam). A group counts as "on" an objective-less target (HQ, DEFENSIVE counter-attack cluster) when its record objective is `""` and its `taskPos` is within 400 m of the target; such members are emitted with their existing `taskPos` so drifting cluster centres never trigger a re-issue. Groups below retreatThreshold (or already RETREATing) get RETREAT to HQ; once near HQ (250 m ground, 400 m HELI, 1500 m PLANE) or already DEFENDing HQ (task DEFEND, objective `""`, taskPos within 50 m of HQ) ground groups DEFEND HQ and air is left alone. Leftover groups PATROL near owned objectives.
+- `AIC_fnc_allocateForces` — `[commander] call` → plan (array of assignment records; also stored in `"plan"`). Keeps `reserveRatio` of power defending HQ or the most threatened owned objective. In OFFENSIVE/BALANCED assigns available groups to top objectives by score until estimated power ≥ 1.5× local threat; in DEFENSIVE assigns to own objectives under threat (DEFEND) and counter-attacks only weak clusters. Air (HELI/PLANE) groups are left to support. Groups whose current task already matches (same objective & task, issued < 300s ago) keep their assignment (no re-issue spam). A group counts as "on" an objective-less target (HQ, DEFENSIVE counter-attack cluster) when its record objective is `""` and its `taskPos` is within 400 m of the target; such members are emitted with their existing `taskPos` so drifting cluster centres never trigger a re-issue. Groups below retreatThreshold (or already RETREATing) get RETREAT to their rally point (`AIC_fnc_rallyPoint`; HQ when no held place lies behind them, aircraft always HQ); once near HQ (250 m ground, 400 m HELI, 1500 m PLANE) or already DEFENDing HQ (task DEFEND, objective `""`, taskPos within 50 m of HQ) ground groups DEFEND HQ and air is left alone. Leftover groups PATROL near owned objectives.
 
 ### orders (`functions/orders`)
 - `AIC_fnc_issueOrder` — `[commander, group, task, pos, objectiveId] call`. Skip if identical task+objective already active (unless forced 6th param true). "Identical" for `objectiveId == ""`: same task and current `taskPos` within **400 m** for ATTACK/REINFORCE (same tolerance as allocateForces' on-target test), within 50 m for every other task. Dispatches to the task function, updates group record (`task`, `taskPos`, `taskTime`, `objective`).
@@ -584,7 +586,7 @@ New objective sources:
     - free passenger seats (empty cargo seats plus empty FFV turret seats, each counted once from one `fullCrew [veh, "", true]` enumeration) ≥ the number of alive cargo units
     - the transport is within `transportSearchRadius` of the cargo leader
   - Prefer HELI if the distance > `heliTransportDistance`, `useAir` and flying weather; otherwise prefer the closest ground vehicle.
-  - Unarmed or lightly armed vehicles are preferred over IFVs and tanks, so fighting vehicles aren't pulled from combat (weapons as in `AIC_fnc_vehicleWeapons`).
+  - Unarmed or lightly armed vehicles are preferred over IFVs, so fighting vehicles aren't pulled from combat (weapons as in `AIC_fnc_vehicleWeapons`); ARMOR groups are never taxis.
   - Groups whose home is a base are preferred (other homes add 25 % to the cost).
 - `AIC_fnc_orderTransport` — `[commander, transportGroup, cargoGroup, destPos, finalTask, finalPos, objectiveId] call` → bool.
   - Makes the driver / pilot the transport group's leader (`selectLeader`) if the leader is not inside the vehicle: waypoints are followed by the leader, so a leader on foot would walk the LOAD waypoint while the vehicle stays put. `transportCycle` repeats this check every cycle.
@@ -970,7 +972,7 @@ Builds on the belief-state intel already in place (objective `estPower`/`estTime
 
 ### As built (F) — where the code adds to or differs from the above
 
-Constants (one block at the end of `script_component.hpp`, `#ifndef`-guarded): `AIC_RESERVE_COMMIT_TIME` 240, `AIC_RESERVE_POWER_FRACTION` 0.6, `AIC_ASSAULT_SHARE` 0.67, `AIC_QRF_RANGE` 5000, `AIC_QRF_RELEASE` 300. Setting `"useQRF"` (true), module checkbox `UseQRF` (`moduleCommander`).
+Constants (one block at the end of `script_component.hpp`, `#ifndef`-guarded): `AIC_RESERVE_COMMIT_TIME` 600 (as built), `AIC_RESERVE_POWER_FRACTION` 0.6, `AIC_ASSAULT_SHARE` 0.67, `AIC_QRF_RANGE` 5000, `AIC_QRF_RELEASE` 300. Setting `"useQRF"` (true), module checkbox `UseQRF` (`moduleCommander`).
 
 Phased assault (`assaultCycle`, `orderAssault`):
 - Assault keys: `"roles"` (HashMap `hashValue group` → `"SBF"` / `"ASSAULT"` / `"RESERVE"`), `"goPower"` (summed record `"power"` at GO of every ATTACK group that is not SBF / RESERVE, so a fireteam split off an ASSAULT squad still counts; the current power is summed the same way), `"reserveCommitted"` (`time` the reserve went in, -1 not yet). Written only when the assault goes from STAGE to GO with at least one INF group on ATTACK; an assault created in GO (no assembly area), one without infantry and `stagedAssaults` off have no roles, and every group without a role (late joiners, riders arriving after GO) is ordered exactly as before.
@@ -1048,6 +1050,16 @@ by `AIC_fnc_moduleCommander` into `"replanOnContact"`.
 
 `AIC_PARA_CHUTE` "NonSteerable_Parachute_F", `AIC_PARA_BACKPACK` "B_Parachute", `AIC_PARA_SPACING` 0.6, `AIC_PARA_CLEANUP` 10, `AIC_PARA_TIMEOUT` 180, `AIC_PARA_HEIGHT` 300, `AIC_PARA_MIN_HEIGHT` 150, `AIC_PARA_DROP_RANGE` 350, `AIC_PARA_PICKUP_RANGE` 1200, `AIC_PARA_DZ_OFFSET` 600, `AIC_PARA_DZ_OFFSET_SAFE` 250, `AIC_PARA_RUN_IN` 3000; `AIC_FORT_INTERVAL` 45, `AIC_FORT_HOLD` 120, `AIC_FORT_SAFE` 600, `AIC_FORT_PER_CYCLE` 6, `AIC_FORT_SERVICE_RADIUS` 25, `AIC_FORT_PLAYER_NEAR` 300, `AIC_FORT_RUNWAY_LEN` 1600, `AIC_FORT_RUNWAY_CLEAR` 70, `AIC_FORT_TOWER`, `AIC_FORT_BARRIER`, `AIC_FORT_FUEL`, `AIC_FORT_AMMO`, `AIC_FORT_REPAIR` (class lists, the first existing class is used).
 
+# Garrison pathfinding and unit caching
+
+- `AIC_fnc_garrisonPath` (orders) — `[group, on, units(with false)] call` → men switched. Off (false): each given man alive, on foot, not the leader, not a player, not held yet: unit variable `"AIC_pathOff"` true, group variable `"AIC_pathHeld"` true, `disableAI "PATH"` (through `AIC_fnc_do`, one unit per call). On (true): every man with `"AIC_pathOff"` gets `enableAI "PATH"`, the variables are cleared. Called on: `AIC_fnc_groupEngaged` (every engagement), `AIC_fnc_clearWaypoints` (every new order), the release sweep of `AIC_fnc_registerGroups`, `AIC_fnc_removeCommander`, `AIC_fnc_hcBalance` before a handover.
+- `AIC_fnc_monitorGarrison`: 8th parameter `holdPath` (setting `"garrisonHoldPath"`, default true). A man who reaches his spot (`_there`) gets unit variable `"AIC_garrisonSpot"` (the spot; cleared by `clearWaypoints`) and is held when the group's `"lastEngaged"` is older than `AIC_PATH_CALM`; in the done step, men still within 3 m of their spot are held again after that calm.
+- `AIC_fnc_cacheCycle` (logistics) — `[commander] call` → `[cached, brought back]`. Commander cycle step 11a, after `dynSimCycle`. Setting `"cacheDistance"` (m, default 2500, 0 = off: every cached group is brought back). Candidate: record `"parked"` and `dynamicSimulationEnabled`, type INF, at least 2 alive, all on foot, no player, no `AIC_noCache` / `AIC_noDynSim`, task IDLE or DEFEND with `"garrisonDone"`, `"lastEngaged"` older than `AIC_CACHE_CALM`, no player / hostile unit / known contact / threat cluster within `cacheDistance` of the leader (grid of cells one `cacheDistance` wide). Record `"cacheSeen"` (first time seen; absent while not a candidate); cached after `AIC_CACHE_AFTER` s. A candidate not local (headless client): record `"cacheWanted"` true and `setGroupOwner 2`. A cached group is brought back when anything of the above is within `AIC_CACHE_BACK` x `cacheDistance`. Commander keys `"cacheStats"` `[groups cached, men stored]`, `"cacheWatch"` (script: every `AIC_CACHE_WATCH` s, players and hostile aircraft within the same distance bring cached groups back; ends when none is cached).
+- `AIC_fnc_cacheGroup` (logistics) — `[commander, group] call` → men stored. Server-local group with a record, not cached yet, leader alive, nobody a player or aboard a vehicle. Record `"cache"`: per man but the leader `[class, getUnitLoadout, getPosASL, getDir, damage, skill, rank, unitPos, [[var, value]...]]` (variables `AIC_garrisonSpot`, `AIC_garrisonStance`, `AIC_sentry`, `AIC_buildingPos`), `"cacheTime"`; the men are deleted and the leader `allowDamage false`, in one unscheduled block.
+- `AIC_fnc_uncacheGroup` (logistics) — `[commander, group] call` → men made. Creates each stored man in the group (`createUnit` "CAN_COLLIDE", `setPosASL`, `setDir`, `setUnitLoadout`, `setDamage`, `setSkill`, `setRank`, `setUnitPos`, the variables; `doStop` for a garrison man), attaches the unit handlers (`AIC_fnc_attachGroupEHs` with the unit), leader `allowDamage true`, `"cache"` `[]`, in one unscheduled block. Called by `AIC_fnc_setGroupSim` before every wake, by `cacheCycle` and its watcher, and by `AIC_fnc_removeCommander`.
+- `AIC_fnc_updateGroups` skips a record with a non-empty `"cache"` (power, strength, morale, type stay). `AIC_fnc_hcBalance` never hands over a record with `"cache"` or `"cacheWanted"`.
+- Constants: `AIC_PATH_CALM` 120; `AIC_CACHE_AFTER` 120, `AIC_CACHE_CALM` 300, `AIC_CACHE_BACK` 0.75, `AIC_CACHE_WATCH` 5.
+
 # Headless-client extension
 
 The commander stays on the server; ground groups run on headless clients.
@@ -1063,10 +1075,37 @@ The commander stays on the server; ground groups run on headless clients.
 - `AIC_fnc_hcAttach` (hc) — headless client: group `EnemyDetected` / `UnitKilled` / `Empty` / `VehicleAdded` and unit `Hit` / hostile `FiredNear` and the `Hit` of the group's vehicles forward `[group, argument, record key, side]` to `AIC_fnc_groupEvent` on the server (`"engaged"` throttled by `AIC_EH_THROTTLE` per group while awake); `UnitJoined` attaches the new unit. Guarded by the local variable `"AIC_hcEH"`.
 - `AIC_fnc_hcReport` (hc) — `[clientOwner, fps, groups, units, report] remoteExecCall` (the client names itself; the server checks it against `AIC_fnc_hcOwners` and `AIC_fnc_fromHC`): stores `AIC_ns` `"hcIntel"` and `"hcStats"`; the first report of a client and the first refused one are logged.
 - `AIC_fnc_hcKnown` (hc) — `[] call` → HashMap group hash -> `[rows, nearest enemy]` from reports younger than `AIC_HC_STALE` s (merged oldest first: a group that changed client keeps its newest report).
-- `AIC_fnc_nearestEnemy` (hc) — `[unit, from] call` → `findNearestEnemy` for a local unit, the reported nearest enemy otherwise. Used by `monitorOrders` and `orderDefend`.
+- `AIC_fnc_nearestEnemy` (hc) — `[unit, from] call` → `findNearestEnemy` for a local unit, the reported nearest enemy otherwise (when that is null or dead: the nearest living target of the same report). Used by `monitorOrders` and `orderDefend`.
 - `AIC_fnc_groupEvent` (hc) — `[kind, args] call`. Server: `"engaged"` [group, underFire], `"UnitKilled"` [group, unit], `"Empty"` [group], `"VehicleAdded"` [group, vehicle] — the bodies of the former `attachGroupEHs` group handlers, which now call it; remote calls only from headless clients. With the group already deleted (an emptied group of a headless client) the record is found by the key and the commander by the side. `"Empty"` logs no `"G"` loss for a record with `"merged"` true.
 - `AIC_fnc_gatherIntel`: a remote observer leader's rows come from `AIC_fnc_hcKnown` (last-seen time from element 6, not `targetKnowledge`). `AIC_fnc_sentryWatch`: a remote group's reported rows within `AIC_SENTRY_RANGE` of the sentry. `AIC_fnc_monitorGarrison`: a remote unit counts as ready (`unitReady`) when its speed is below 0.5.
 - `AIC_fnc_teamCycle`: merges only groups with the same `groupOwner`; sets the source record's `"merged"` true before the units join (a merged record is never merged again) and gives the newcomers the target's AUTOCOMBAT state directly. `AIC_fnc_splitGroup` (and `splitForAttack`, `splitPassengers`) split only groups local to the server: a squad on a headless client does not split into teams.
 - `AIC_fnc_paradrop`: a jumper on a headless client is waited for (up to 1.5 s each) until he is out of the aircraft and in his parachute, before the backpack fallback is judged; `allowDamage` goes through `AIC_fnc_do`.
 - Mod `CfgRemoteExec` allows `AIC_fnc_execCmd` (any target), `AIC_fnc_groupEvent` and `AIC_fnc_hcReport` (server).
 - Constants: `AIC_INTEL_RANGE` 1500, `AIC_HC_MOVES` 16, `AIC_HC_HOPS` 3, `AIC_HC_REPORT` 10, `AIC_HC_STALE` 60, `AIC_HC_ROWS` 80.
+
+# Assault review 2026-11-05 (as built)
+
+- `AIC_fnc_orderAssault`: ASSAULT infantry get two SAD waypoints on their lane: 0.45 R (completion 0.2 R, at least 30 m), then 0.1 R (completion 0.15 R, at least 25 m), so "waypoints done" means the centre was swept. A RESERVE of an assault without an assembly area holds at R + `AIC_ASSAULT_OVERWATCH` + 150 m on its axis, not at the objective.
+- `AIC_fnc_assaultCycle`: roles of an assault created in GO are assigned once on its first GO cycle (assault key `"rolesTried"`), with ATTACK re-issued to its groups then; the shaken test averages only groups that are neither RESERVE nor SBF; an assault whose members all dropped out with the place not taken sets the objective's `"failedUntil"` to at least now + `AIC_ASSAULT_FAIL_COOLDOWN` / 3; a preparatory-fire request does not overwrite another assault's request younger than `AIC_PREP_FIRE_TIME` (that assault goes in without preparation).
+- `AIC_fnc_assaultFor`: `"hasInf"` of an assault created in GO = the first group is INF.
+- `AIC_fnc_supportCycle`: a fresh `"prepTarget"` with no fresh cluster within 600 m puts the objective itself first for the guns (as the Jev prep_fires advice did).
+- `AIC_fnc_allocateForces`: running attacks (members not only queued, riders, a live assault) hold their cap slots before new attacks are weighed (`_runningLeft`).
+- `AIC_fnc_issueOrder`: an infantry ride to an ATTACK whose assault is in GO ends at R + 300 m on the assault's axis (line of departure), not at the assembly area.
+- `AIC_fnc_teamCycle`: groups with a role in an assault, or staged, are not merged.
+- `AIC_fnc_monitorOrders` / `AIC_fnc_availableGroups`: the attackers of a place just taken get DEFEND on it and record `"consolidateUntil"` = now + `AIC_CONSOLIDATE` (180 s); groups with it, or on ATTACK of an objective their side owns, are not in the planner's pool.
+
+# Transport review 2026-11-05 (as built)
+
+- `AIC_fnc_rearmCycle`: "no ammunition" counts only for a plane with weapons (`AIC_fnc_vehicleArmament` > 0); an unarmed transport plane is sent back only for fuel or damage. A plane that never got down for its turnaround (record `"rearmGaveUp"`) is not sent again for `AIC_REARM_RETRY` s.
+- `AIC_fnc_dismountCarrier`: forced out of an aircraft still in the air (over 5 m) that nobody flies: `AIC_fnc_paradrop` when at least `AIC_PARA_MIN_HEIGHT` / 2 up, else nothing (they stay aboard).
+- `AIC_fnc_transportCycle`: a helicopter hovering over its drop for `AIC_HELI_UNLOAD_MAX` s (during the ride, or after the cargo's ride ended) lets the men aboard jump when high enough; `_fnc_relocateLz` uses up its one move only when a spot was found (at most 3 searches, record `"<flag>Tries"`); an armed carrier stays with its squad for DEFEND as for ATTACK / REINFORCE; a transport released IDLE (immobile) is taken off the march.
+- `AIC_fnc_updateGroups`: men re-assigned to their own driverless vehicle are ordered in when the group was not engaged for 60 s (armed vehicles too).
+- `AIC_fnc_monitorOrders`: a ground vehicle or helicopter whose RTB ends within 1.5 x the radius of a held base is refuelled (`setFuel 1`).
+- `AIC_fnc_airliftFor` / `AIC_fnc_airliftCycle` (logistics): airfield-to-airfield airlift, see their headers. Settings `"useAirlift"` (true), `"airliftDistance"` (6000). Commander key `"airlifts"`. Constants `AIC_AIRLIFT_MIN_TRIP` 2500, `AIC_AIRLIFT_WALK` 2000, `AIC_AIRLIFT_DEST` 3000, `AIC_AIRLIFT_MIN_SEATS` 8, `AIC_AIRLIFT_JOIN` 90, `AIC_AIRLIFT_LOAD_MAX` 420, `AIC_AIRLIFT_HEIGHT` 250, `AIC_AIRLIFT_FLY_MAX` 600, `AIC_AIRLIFT_UNLOAD_WAIT` 60. `AIC_fnc_transportCycle` leaves records with `"airlift"` alone; `AIC_fnc_issueOrder` tries `AIC_fnc_airliftFor` before `AIC_fnc_findTransport`.
+- `AIC_fnc_orderTransport`: the transport's LOAD waypoint has the condition "no living man of the cargo group outside the vehicle" (vehicle variable `"AIC_loadCargo"` = the cargo group, public; cleared when the ride starts), so a helicopter never lifts off with part of the squad outside.
+- `AIC_fnc_attachGroupEHs` / `AIC_fnc_hcAttach`: unit and vehicle `Hit` count only with a hostile shooter (instigator, else source; its effective commander for a vehicle; `getFriend < AIC_HOSTILE_FRIEND`), like `FiredNear`: falls, collisions, rotor wash and friendly scrapes are no engagement.
+- `AIC_fnc_cmdTable`: `doGetOut` (it was missing: every routed `doGetOut` was dropped since the headless-client extension; units still got out through `orderGetIn false` / `leaveVehicle`).
+- `AIC_fnc_airliftCycle`: a plane that cannot move, or whose pilot is dead, ends the lift in any phase (men in the air bail out by parachute when high enough, every squad goes on with its order); seats taken are recounted every cycle; a lost destination with no held airfield near the squads' destination always becomes a jump (the plane climbs to `AIC_PARA_MIN_HEIGHT` + 100 m); a diversion while on the ground takes off again; a flight not down after 3 x `AIC_AIRLIFT_FLY_MAX` s becomes a jump; a jump not over its drop after `AIC_AIRLIFT_FLY_MAX` s happens where the plane is once high enough; after a jump the plane keeps its landing pad (record `"pickupLz"`, deleted at its turnaround).
+- `AIC_fnc_issueOrder`: a forced order to a TRANSPORTED squad also deletes its `"airlift"` key.
+- `AIC_fnc_updateGroups`: a cached record's power counts in `"ownPower"`. `AIC_fnc_cacheCycle`: a cached group whose leader is gone is brought back at once. `AIC_fnc_setGroupSim`: waking brings a cached group's men back before the `AIC_noDynSim` exit.
+- `AIC_fnc_garrisonBuildings`: gives the group's held men their pathfinding back first (sentry re-posting at dusk). `AIC_fnc_transportCycle`: airlifted teammates do not hold a ride team at its rally.

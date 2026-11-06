@@ -32,6 +32,8 @@
             assault called off (commander "adviceAbort" [time, id], once
             per abort) and the reserve committed ("advice" "commit", once
             per stretch of commits) ("hold", "holdTime", "abort", "commit")
+          - an assault going in (state GO): "Assault on X - going in now",
+            once per assault ("goes": assault key -> objective id);
           - an assault's reserve committed (realism F, assault
             "reserveCommitted" set by AIC_fnc_assaultCycle): "Reserve
             committed on X" (+ " on the staff's advice" when assault
@@ -150,6 +152,14 @@ if !(_assaults isEqualType createHashMap) then { _assaults = createHashMap; };
     if (_t isEqualType 0 && { _t >= 0 }) then { _reserves set [_y getOrDefault ["key", _x], _x]; };
 } forEach _assaults;
 
+// assaults going in (state GO): assault key -> objective id
+private _goes = createHashMap;
+{
+    if (_y isEqualType createHashMap && { (_y getOrDefault ["state", ""]) isEqualTo "GO" }) then {
+        _goes set [_y getOrDefault ["key", _x], _x];
+    };
+} forEach _assaults;
+
 // assaults that ended badly (AIC_fnc_assaultCycle: objective "failedUntil",
 // "failReason"): objective id -> failedUntil
 private _fails = createHashMap;
@@ -186,6 +196,7 @@ private _fnc_storeBaseline = {
     _last set ["abort", _abort];
     _last set ["commit", _commit];
     _last set ["reserves", _reserves];
+    _last set ["goes", _goes];
     _last set ["fails", _fails];
     _last set ["recons", _recons];
     _last set ["nightHolds", _nightHolds];
@@ -323,6 +334,12 @@ if (_abort != "" && { _abort != (_last getOrDefault ["abort", ""]) }) then {
     private _abortId = _abortRec select 1;
     _parts pushBack format ["Assault on %1 called off - the staff judges it failing", _objNames getOrDefault [_abortId, _abortId]];
 };
+// assaults going in, each announced once
+private _lastGoes = _last getOrDefault ["goes", createHashMap];
+if !(_lastGoes isEqualType createHashMap) then { _lastGoes = createHashMap; };
+{
+    if !(_x in _lastGoes) then { _parts pushBack format ["Assault on %1 - going in now", _objNames getOrDefault [_y, _y]]; };
+} forEach _goes;
 // assault reserves committed, each announced once (on the staff's advice:
 // assault "reserveAdvice", AIC_fnc_assaultCycle)
 private _lastReserves = _last getOrDefault ["reserves", createHashMap];

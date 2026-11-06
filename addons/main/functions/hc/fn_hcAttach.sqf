@@ -46,9 +46,12 @@ private _fnc_unit = {
     if (isNull _u || { _u getVariable ["AIC_hcEH", false] }) exitWith {};
     _u setVariable ["AIC_hcEH", true];
     _u addEventHandler ["Hit", {
-        params ["_u"];
+        params ["_u", "_source", "", "_instigator"];
         private _g = group _u;
         if (isNull _g) exitWith {};
+        private _src = [_instigator, _source] select (isNull _instigator);
+        private _shooter = if (isNull _src || { _src isKindOf "CAManBase" }) then { _src } else { effectiveCommander _src };
+        if (isNull _shooter || { (side _g getFriend side group _shooter) >= AIC_HOSTILE_FRIEND }) exitWith {};
         if (!dynamicSimulationEnabled _g && { (time - (_g getVariable ["AIC_hcHitAt", -1e6])) < AIC_EH_THROTTLE }) exitWith {};
         _g setVariable ["AIC_hcHitAt", time];
         ["engaged", [_g, true] + (_g getVariable ["AIC_hc", []])] remoteExecCall ["AIC_fnc_groupEvent", 2];
@@ -71,9 +74,12 @@ private _fnc_veh = {
     if (isNull _v || { _v isKindOf "CAManBase" } || { _v getVariable ["AIC_hcEH", false] }) exitWith {};
     _v setVariable ["AIC_hcEH", true];
     _v addEventHandler ["Hit", {
-        params ["_v"];
+        params ["_v", "_source", "", "_instigator"];
         private _g = group (effectiveCommander _v);
         if (isNull _g || { !local _g }) exitWith {};
+        private _src = [_instigator, _source] select (isNull _instigator);
+        private _shooter = if (isNull _src || { _src isKindOf "CAManBase" }) then { _src } else { effectiveCommander _src };
+        if (isNull _shooter || { (side _g getFriend side group _shooter) >= AIC_HOSTILE_FRIEND }) exitWith {};
         if (!dynamicSimulationEnabled _g && { (time - (_g getVariable ["AIC_hcHitAt", -1e6])) < AIC_EH_THROTTLE }) exitWith {};
         _g setVariable ["AIC_hcHitAt", time];
         ["engaged", [_g, true] + (_g getVariable ["AIC_hc", []])] remoteExecCall ["AIC_fnc_groupEvent", 2];

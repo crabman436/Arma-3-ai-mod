@@ -192,10 +192,15 @@ if (_useArty && { (_now - (_cmd getOrDefault ["lastArtyTime", -1e6])) >= _artyCo
     private _artyTargets = [_threats select {
         (_x getOrDefault ["power", 0]) >= 2 && { ([_x] call _fnc_freshness) <= 120 }
     }, _artyPrep] call _fnc_prepFirst;
-    // preparatory fire on advice with no fresh cluster on the objective: the
-    // objective itself, a few rounds (the danger-close check still applies)
-    if (count _prepPos >= 2 && { (_artyTargets findIf { ((_x get "pos") distance2D _prepPos) < 600 }) < 0 }) then {
-        _artyTargets = [createHashMapFromArray [["pos", +_prepPos], ["power", 2], ["count", 0], ["contacts", []]]] + _artyTargets;
+    // preparatory fire (an assault's "prepTarget", or the staff's advice)
+    // with no fresh cluster on the objective: the objective itself, a few
+    // rounds (the danger-close check still applies)
+    private _prepAt = [];
+    if (count _prepPos >= 2) then { _prepAt = _prepPos; } else {
+        if (count _prep >= 2 && { (_now - (_prep select 1)) <= AIC_PREP_FIRE_TIME }) then { _prepAt = _prep select 0; };
+    };
+    if (count _prepAt >= 2 && { (_artyTargets findIf { ((_x get "pos") distance2D _prepAt) < 600 }) < 0 }) then {
+        _artyTargets = [createHashMapFromArray [["pos", +_prepAt], ["power", 2], ["count", 0], ["contacts", []]]] + _artyTargets;
     };
     if (_artyTargets isEqualTo []) exitWith {};
 

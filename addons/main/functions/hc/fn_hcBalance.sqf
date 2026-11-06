@@ -50,6 +50,8 @@ private _candidates = (_cmd getOrDefault ["groups", []]) select {
     && { !((_rec getOrDefault ["transportOnly", false]) isEqualTo true) }
     && { isNull (_rec getOrDefault ["transport", grpNull]) }
     && { !((_rec getOrDefault ["task", ""]) in ["TRANSPORT", "TRANSPORTED", "SUPPORT", "SUPPLY", "RTB"]) }
+    // cached, or called home to be cached (AIC_fnc_cacheCycle)
+    && { (_rec getOrDefault ["cache", []]) isEqualTo [] && { !((_rec getOrDefault ["cacheWanted", false]) isEqualTo true) } }
     && { ((units _x) findIf { isPlayer _x }) < 0 }
 };
 if (_candidates isEqualTo []) exitWith { 0 };
@@ -73,6 +75,9 @@ private _moved = 0;
     // record key the server knows it by (its events may arrive after the
     // engine deleted an emptied group)
     _grp setVariable ["AIC_hc", [hashValue _grp, side _grp], true];
+    // disabled AI features may not survive the change of owner: held
+    // garrison men walk again, AIC_fnc_monitorGarrison holds them anew there
+    [_grp, true] call AIC_fnc_garrisonPath;
     if (_grp setGroupOwner _to) then {
         _load set [_to, _min + count units _grp];
         _moved = _moved + 1;

@@ -170,6 +170,8 @@
 #define AIC_PICKUP_DANGER_RADIUS 400
 // a vehicle needs this much fuel for a ride
 #define AIC_RIDE_MIN_FUEL 0.2
+// least fuel of a helicopter or plane given a ride (the trip and the way home)
+#define AIC_RIDE_MIN_FUEL_AIR 0.35
 // a ride is aborted after at least this many seconds
 #define AIC_RIDE_TIMEOUT 900
 // no new ride for a group within this many seconds of an aborted one
@@ -518,6 +520,48 @@
 #define AIC_FORT_FUEL ["B_Slingload_01_Fuel_F", "Land_Pod_Heli_Transport_04_fuel_F", "Land_FuelStation_Feed_F"]
 #define AIC_FORT_AMMO ["Box_NATO_AmmoVeh_F", "Box_East_AmmoVeh_F", "Box_IND_AmmoVeh_F"]
 #define AIC_FORT_REPAIR ["B_Slingload_01_Repair_F", "Land_Pod_Heli_Transport_04_repair_F", "Land_ToolTrolley_02_F"]
+
+// ---------------------------------------------------------------- assaults
+// s the attackers of a place just taken hold it (DEFEND) before the planner
+// may send them on (AIC_fnc_monitorOrders, AIC_fnc_availableGroups)
+#define AIC_CONSOLIDATE 180
+// least men of one side on a place for it to change hands (2:1 as well)
+#define AIC_CAPTURE_MIN 3
+
+// ---------------------------------------------------------------- airlift
+// trips shorter than AIC_AIRLIFT_MIN_TRIP m never fly (an island hop at
+// least that long does); the squad's airfield within AIC_AIRLIFT_WALK m of
+// it, the landing airfield within AIC_AIRLIFT_DEST m of its destination;
+// least empty cargo seats of an airlift plane; s a lift takes squads after
+// it began, s it waits for them at most; m flight height; s before a landing
+// order is repeated; s before the last men are moved out after landing
+#define AIC_AIRLIFT_MIN_TRIP 2500
+// s a plane that never got down for its turnaround waits before trying again (AIC_fnc_rearmCycle)
+#define AIC_REARM_RETRY 300
+// s an empty-handed helicopter may hover over its drop before its cargo jumps (AIC_fnc_transportCycle)
+#define AIC_HELI_UNLOAD_MAX 300
+#define AIC_AIRLIFT_WALK 2000
+#define AIC_AIRLIFT_DEST 3000
+#define AIC_AIRLIFT_MIN_SEATS 8
+#define AIC_AIRLIFT_JOIN 90
+#define AIC_AIRLIFT_LOAD_MAX 420
+#define AIC_AIRLIFT_HEIGHT 250
+#define AIC_AIRLIFT_FLY_MAX 600
+#define AIC_AIRLIFT_UNLOAD_WAIT 60
+
+// ---------------------------------------------------------------- unit caching
+// s a parked group must be a candidate before it is cached; s since its last
+// engagement; share of "cacheDistance" within which its men come back; s
+// between two checks of the watcher (players, hostile aircraft)
+#define AIC_CACHE_AFTER 120
+#define AIC_CACHE_CALM 300
+#define AIC_CACHE_BACK 0.75
+#define AIC_CACHE_WATCH 5
+
+// ---------------------------------------------------------------- garrison pathfinding
+// s a garrison must be calm (no "lastEngaged") before its men at their spots
+// are held without pathfinding again (AIC_fnc_garrisonPath)
+#define AIC_PATH_CALM 120
 
 // ---------------------------------------------------------------- headless clients
 // m within which a leader's knowledge counts as intel (AIC_fnc_gatherIntel,

@@ -32,6 +32,11 @@ createHashMapFromArray [
     ["excludePlayerGroups", true],
     // groups handed to connected headless clients (AIC_fnc_hcBalance)
     ["useHeadlessClients", true],
+    // garrison men at their spots without pathfinding until engaged (AIC_fnc_garrisonPath)
+    ["garrisonHoldPath", true],
+    // m: parked squads this far from any player and enemy are stored as
+    // data, their men come back at 0.75 x (AIC_fnc_cacheCycle); 0 = off
+    ["cacheDistance", 2500],
     ["debugMarkers", false],
     ["reportToPlayers", true],
     ["artyCooldown", 120],
@@ -70,6 +75,10 @@ createHashMapFromArray [
     ["heliTransportDistance", 3000],
     ["useParadrop", true],
     ["paradropDistance", 3000],
+    // squads fly between two held airfields when the trip is longer than
+    // this (m) or crosses water (AIC_fnc_airliftFor)
+    ["useAirlift", true],
+    ["airliftDistance", 6000],
     ["transportSearchRadius", 4000],
 
     // --- garbage management

@@ -84,7 +84,10 @@
  *       "final" = this order), so the same plan entry next cycle is
  *       skipped as externally managed. A group no single vehicle fits is
  *       split into teams first, if each team gets its own vehicle
- *       (AIC_fnc_splitForRide).
+ *       (AIC_fnc_splitForRide). Before any of that, a trip longer than
+ *       "airliftDistance" or over water between two held airfields puts the
+ *       squad on a transport plane (AIC_fnc_airliftFor), several squads per
+ *       plane.
  *
  * Parameters:
  *   0: HASHMAP - commander
@@ -255,6 +258,8 @@ if (_curTask isEqualTo "TRANSPORTED") then {
     _record set ["transport", grpNull];
     _record set ["final", createHashMap];
     _record set ["transportPhase", ""];
+    // off an airlift too (AIC_fnc_airliftCycle drops it from the lift)
+    _record deleteAt "airlift";
 };
 if (_curTask isEqualTo "TRANSPORT") then {
     [_record] call AIC_fnc_deleteHelipads;
@@ -273,7 +278,16 @@ private _inside = _task == "ATTACK" && {count _objRec > 0}
 // an assault's troops are carried to its assembly area, not to the objective
 private _rideDest = +_pos;
 if (_task == "ATTACK" && {_type == "INF"} && {!_inside}) then {
-    private _stage = ([_cmd, _group, _pos, _objective] call AIC_fnc_assaultFor) getOrDefault ["stage", []];
+    private _a = [_cmd, _group, _pos, _objective] call AIC_fnc_assaultFor;
+    private _stage = _a getOrDefault ["stage", []];
+    // an assault already going in: to its line of departure, on its side,
+    // not back out to the assembly area
+    if ((_a getOrDefault ["state", ""]) isEqualTo "GO") then {
+        private _dir = _a getOrDefault ["dir", _pos getDir (leader _group)];
+        if !(_dir isEqualType 0) then {_dir = _pos getDir (leader _group)};
+        private _p = _pos getPos [_radius + 300, _dir];
+        if (!surfaceIsWater _p) then {_stage = [_p select 0, _p select 1, 0]};
+    };
     if (_stage isNotEqualTo []) then {_rideDest = +_stage};
 };
 
@@ -334,6 +348,8 @@ if (_type == "INF" && {_task in ["ATTACK", "REINFORCE", "DEFEND"]} && {_curTask 
         && {((getPosATL (leader _group)) distance2D _pos) > _minDist}
         && {!(_engaged isEqualType 0) || {(time - _engaged) > 60}}
         && {([_cmd, getPosATL (leader _group), AIC_PICKUP_DANGER_RADIUS] call AIC_fnc_nearestThreat) isEqualTo []}) then {
+        // far, or over the water, between two held airfields: by plane (AIC_fnc_airliftFor)
+        if ([_cmd, _group, _task, _pos, _objective] call AIC_fnc_airliftFor) exitWith { _task = "TRANSPORTED"; };
         private _tGrp = [_cmd, _group, _pos] call AIC_fnc_findTransport;
         // too big for any one vehicle: teams, if each gets a vehicle of its own
         if (isNull _tGrp && {[_cmd, _group, _pos, _task, _objective] call AIC_fnc_splitForRide}) then {

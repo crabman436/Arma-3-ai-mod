@@ -123,6 +123,8 @@ private _staleKeys = (keys _groupData) select {!(_x in _newData)};
     // a released group gets its automatic combat and free driving back
     // (no-op unless it marches; sent to its owner through AIC_fnc_do)
     [_oldGrp, false] call AIC_fnc_setMarch;
+    // and its garrison its pathfinding (AIC_fnc_garrisonPath)
+    if (!isNull _oldGrp) then {[_oldGrp, true] call AIC_fnc_garrisonPath};
     if (!isNil "AIC_ns" && { AIC_ns getOrDefault ["debug", false] isEqualTo true }) then {
         ["Commander %1 released group %2", [_side, if (isNull _oldGrp) then {"<dead>"} else {groupId _oldGrp}]] call AIC_fnc_log;
     };

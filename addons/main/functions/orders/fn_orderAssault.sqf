@@ -124,7 +124,9 @@ private _fnc_wp = {
 
 // --- gather (and the reserve waits at the assembly area) ----------------------
 if ((_assault get "state") isEqualTo "STAGE" || {_role isEqualTo "RESERVE"}) exitWith {
-    private _p = (_target getPos [_stageDist + _row * 150, _dir]) getPos [_lane * AIC_ASSAULT_FRONT, _dir + 90];
+    // (no assembly area: the reserve holds outside, beyond the overwatch line)
+    private _holdDist = [_stageDist, _radius + AIC_ASSAULT_OVERWATCH + 150] select (_stage isEqualTo []);
+    private _p = (_target getPos [_holdDist + _row * 150, _dir]) getPos [_lane * AIC_ASSAULT_FRONT, _dir + 90];
     if !(_isInf) then {
         _p = _p getPos [120, _dir];
         _p = [[_p select 0, _p select 1, 0], 100] call AIC_fnc_roadPos;
@@ -181,7 +183,10 @@ private _first = [];
 if (count _via >= 2 || {(_leader distance2D _target) > (_radius + 200)}) then {
     _first = [_start, "MOVE", "AWARE", "NORMAL", "WEDGE", ([40, 25] select _isInf)] call _fnc_wp;
 };
-private _wpS = [[_radius * 0.45, 40] call _lanePos, "SAD", "COMBAT", "LIMITED", ["WEDGE", "LINE"] select _isInf, (_radius * 0.5) max 30] call _fnc_wp;
+// clear the near half of the place on its lane, then sweep through to the
+// centre: a group is done once it stands in the middle, not at the edge
+private _wpS = [[_radius * 0.45, 40] call _lanePos, "SAD", "COMBAT", "LIMITED", ["WEDGE", "LINE"] select _isInf, (_radius * 0.2) max 30] call _fnc_wp;
+[[_radius * 0.1, 40] call _lanePos, "SAD", "COMBAT", "LIMITED", ["WEDGE", "LINE"] select _isInf, (_radius * 0.15) max 25] call _fnc_wp;
 [_group, "setCurrentWaypoint", ([_first, _wpS] select (_first isEqualTo []))] call AIC_fnc_do;
 
 true

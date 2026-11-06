@@ -137,8 +137,9 @@ if (!(_groupData isEqualType createHashMap) || { count _groupData == 0 }) exitWi
 
 private _side = _cmd getOrDefault ["side", sideUnknown];
 private _records = (values _groupData) select { _x isEqualType createHashMap };
-private _cargoRecs = _records select { (_x getOrDefault ["task", ""]) isEqualTo "TRANSPORTED" };
-private _transportRecs = _records select { (_x getOrDefault ["task", ""]) isEqualTo "TRANSPORT" };
+// (an airlift is flown by AIC_fnc_airliftCycle)
+private _cargoRecs = _records select { (_x getOrDefault ["task", ""]) isEqualTo "TRANSPORTED" && { !("airlift" in _x) } };
+private _transportRecs = _records select { (_x getOrDefault ["task", ""]) isEqualTo "TRANSPORT" && { !("airlift" in _x) } };
 if (_cargoRecs isEqualTo [] && { _transportRecs isEqualTo [] }) exitWith { 0 };
 
 private _PICKUP_STALL = 240;
@@ -162,7 +163,10 @@ private _fnc_relocateLz = {
     private _isPickup = _leg isEqualTo "pickup";
     if (_flag isEqualTo "") then { _flag = ["dropLzMoved", "pickupLzMoved"] select _isPickup; };
     if (_rec getOrDefault [_flag, false]) exitWith { false };
-    _rec set [_flag, true];
+    // (a search that finds nothing does not use the move up; three tries)
+    private _tries = (_rec getOrDefault [_flag + "Tries", 0]) + 1;
+    _rec set [_flag + "Tries", _tries];
+    if (_tries > 3) exitWith { false };
     private _posKey = ["dropPos", "pickupPos"] select _isPickup;
     private _padKey = ["lz", "pickupLz"] select _isPickup;
     private _wpKey = ["wpUnload", "wpLoad"] select _isPickup;
@@ -177,6 +181,7 @@ private _fnc_relocateLz = {
     _p = [_p select 0, _p select 1, 0];
     if (surfaceIsWater _p || { (_p distance2D _c) < 20 }) exitWith { false };
 
+    _rec set [_flag, true];
     private _pad = _tRec getOrDefault [_padKey, objNull];
     if (_pad isEqualType objNull && { !isNull _pad }) then { deleteVehicle _pad; };
     _pad = createVehicle ["Land_HelipadEmpty_F", _p, [], 0, "CAN_COLLIDE"];
@@ -242,6 +247,7 @@ private _fnc_teamRiding = {
         (_x getOrDefault ["teamId", 0]) isEqualTo _id
         && {(_x getOrDefault ["group", grpNull]) isNotEqualTo _self}
         && {(_x getOrDefault ["task", ""]) isEqualTo "TRANSPORTED"}
+        && {!("airlift" in _x)}
         && {(_x getOrDefault ["transportPhase", ""]) isNotEqualTo "RALLY"}
         && {({alive _x} count (units (_x getOrDefault ["group", grpNull]))) > 0}
     }) >= 0}
@@ -433,6 +439,7 @@ private _fnc_boardFallback = {
         call {
             if (_aboard == count _units) exitWith {
                 _rec set ["transportPhase", "RIDE"];
+                _veh setVariable ["AIC_loadCargo", nil, true];
                 _rec set ["phaseTime", time];
                 _rec set ["nearDropTime", -1];
                 _rec set ["landOrderTime", -1];
@@ -707,6 +714,12 @@ private _fnc_boardFallback = {
                     _rec set ["landOrderTime", time];
                     ["%1: %2 ordered to land at the LZ for group %3", [_side, groupId _tGroup, groupId _grp]] call AIC_fnc_log;
                 };
+                // hovering on and on over a drop it cannot land at: they jump, high enough
+                if (_nearAge > AIC_HELI_UNLOAD_MAX && { ((getPosATL _veh) select 2) >= AIC_PARA_MIN_HEIGHT * 0.5 }) then {
+                    [(units _grp) select { alive _x && { (objectParent _x) isEqualTo _veh } }, _veh] call AIC_fnc_paradrop;
+                    _rec set ["nearDropTime", time];
+                    ["%1: %2 cannot land at the LZ, group %3 jumps", [_side, groupId _tGroup, groupId _grp]] call AIC_fnc_log;
+                };
                 // still airborne long after the landing order: the LZ is unusable, move it
                 if (_nearAge > 120 && { [_rec, _tRec, _tGroup, _veh, "drop"] call _fnc_relocateLz }) then {
                     _rec set ["nearDropTime", -1];
@@ -717,7 +730,8 @@ private _fnc_boardFallback = {
                 };
             };
         } else {
-            if (_stopped && { _nearAge > 10 }) then { [_grp, _veh] call _fnc_getOut; };
+            // (one creeping on at walking pace near its drop lets them out too)
+            if ((_stopped && { _nearAge > 10 }) || { _nearAge > 60 && { (abs (speed _veh)) < 8 } }) then { [_grp, _veh] call _fnc_getOut; };
         };
         continue;
     };
@@ -841,10 +855,25 @@ private _fnc_objPos = {
         };
         // a flying helicopter is waited for: moveOut would drop them to their death
         if ((time - _outTime) <= 60 || { _veh isKindOf "Air" && { !([_veh] call AIC_fnc_isLanded) } }) then {
-            [_cargo, _veh, true, true] call AIC_fnc_dismountCarrier;
+            // one that hovers on and never sets down: they jump, high enough
+            if (_veh isKindOf "Air" && { (time - _outTime) > AIC_HELI_UNLOAD_MAX } && { ((getPosATL _veh) select 2) >= AIC_PARA_MIN_HEIGHT * 0.5 }) then {
+                [_inside, _veh] call AIC_fnc_paradrop;
+                _rec set ["cargoOutTime", time];
+            } else {
+                // (hovering low for long: out once it is a few metres up)
+                if (_veh isKindOf "Air" && { (time - _outTime) > (2 * AIC_HELI_UNLOAD_MAX) } && { ((getPosATL _veh) select 2) < 4 }) then {
+                    { [_x, "moveOut"] call AIC_fnc_do; } forEach _inside;
+                };
+                [_cargo, _veh, true, true] call AIC_fnc_dismountCarrier;
+            };
             continue;
         };
-        { [_x, "moveOut"] call AIC_fnc_do; } forEach _inside;
+        // (never out of a ground vehicle still rolling: it is told to stop)
+        if (!(_veh isKindOf "Air") && { (abs (speed _veh)) > 5 }) then {
+            [driver _veh, "doStop"] call AIC_fnc_do;
+        } else {
+            { [_x, "moveOut"] call AIC_fnc_do; } forEach _inside;
+        };
     };
 
     // a transport plane lands at the nearest airfield the side holds;
@@ -902,8 +931,9 @@ private _fnc_objPos = {
     // clears "transport". A wrecked / immobile vehicle never gets home, so
     // its crew is released as IDLE instead and the garrison system takes it.
     private _immobile = isNull _veh || { !alive _veh } || { !canMove _veh };
-    // a fighting vehicle stays with the squad it carried into a fight; only
-    // crews without weapons leave (the cargo may still be waiting for its
+    // a fighting vehicle stays with the squad it carried into a fight or to
+    // a place to hold (its guns are part of the defence); only crews without
+    // weapons leave (the cargo may still be waiting for its
     // other teams, then its final order counts)
     private _cFinal = _cRec getOrDefault ["final", createHashMap];
     private _cOrder = if ((_cRec getOrDefault ["task", ""]) isEqualTo "TRANSPORTED") then {
@@ -915,7 +945,7 @@ private _fnc_objPos = {
         && { (_rec getOrDefault ["type", ""]) in ["MOTOR", "MECH", "ARMOR"] }
         && { !((_rec getOrDefault ["transportOnly", false]) isEqualTo true) }
         && { _cargoUnits isNotEqualTo [] }
-        && { (_cOrder select 0) in ["ATTACK", "REINFORCE"] }
+        && { (_cOrder select 0) in ["ATTACK", "REINFORCE", "DEFEND"] }
         && { [_cOrder select 1] call _fnc_validPos };
     private _ok = call {
         if (_immobile) exitWith { false };
@@ -929,6 +959,8 @@ private _fnc_objPos = {
         _rec set ["taskPos", []];
         _rec set ["taskTime", time];
         _rec set ["objective", ""];
+        // off the march too (automatic combat back): no order did it
+        [_grp, false] call AIC_fnc_setMarch;
     };
     _rec set ["transport", grpNull];
     _rec set ["cargoOutTime", -1];

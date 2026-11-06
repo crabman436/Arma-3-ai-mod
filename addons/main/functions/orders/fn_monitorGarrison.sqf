@@ -57,7 +57,8 @@ params [
     ["_radius", 150, [0]],
     ["_threatPos", [], [[]]],
     ["_manStatics", true, [true]],
-    ["_sector", -1, [0]]
+    ["_sector", -1, [0]],
+    ["_holdPath", true, [true]]
 ];
 
 if (isNull _group || {count _rec == 0} || {count _center < 2}) exitWith {false};
@@ -68,6 +69,15 @@ private _token = _group getVariable ["AIC_orderToken", 0];
 private _valid = (_rec getOrDefault ["garrisonToken", -1]) isEqualTo _token;
 private _hasThreat = count _threatPos >= 2;
 if (_valid && {(_rec getOrDefault ["garrisonDone", false]) isEqualTo true}) exitWith {
+    // calm again after a fight: the men still at their spot are held again
+    // (AIC_fnc_garrisonPath; whoever moved keeps his pathfinding)
+    if (_holdPath && {(time - (_rec getOrDefault ["lastEngaged", -1e6])) > AIC_PATH_CALM}) then {
+        private _back = (units _group) select {
+            alive _x && {!(_x getVariable ["AIC_pathOff", false])}
+            && {private _s = _x getVariable ["AIC_garrisonSpot", []]; _s isNotEqualTo [] && {((getPosATL _x) distance _s) < 3}}
+        };
+        if (_back isNotEqualTo []) then {[_group, false, _back] call AIC_fnc_garrisonPath};
+    };
     // already in place: follow the threat around the town
     if (_hasThreat) then {
         private _dir = _center getDir _threatPos;
@@ -102,6 +112,7 @@ if (!_valid) exitWith {
 
 // --- garrisoned: stop units at their positions, give up after 120 s
 private _timedOut = (time - (_rec getOrDefault ["garrisonTime", time])) > 120;
+private _atSpot = [];
 {
     private _bp = _x getVariable ["AIC_garrisonPos", []];
     if (_bp isNotEqualTo []) then {
@@ -127,11 +138,20 @@ private _timedOut = (time - (_rec getOrDefault ["garrisonTime", time])) > 120;
                     [_x, "doWatch", (if (_hasThreat && {!(_x getVariable ["AIC_sentry", false])}) then {_threatPos} else {_bp getPos [200, _center getDir _bp]})] call AIC_fnc_do;
                     _x setVariable ["AIC_garrisonPos", nil];
                     _x setVariable ["AIC_garrisonRetry", nil];
+                    // at his spot: nowhere to walk (AIC_fnc_garrisonPath)
+                    if (_there) then {
+                        _x setVariable ["AIC_garrisonSpot", _bp];
+                        _atSpot pushBack _x;
+                    };
                 };
             };
         };
     };
 } forEach ((units _group) select {alive _x});
+// (not while the group is engaged: then it may need to move)
+if (_holdPath && {_atSpot isNotEqualTo []} && {(time - (_rec getOrDefault ["lastEngaged", -1e6])) > AIC_PATH_CALM}) then {
+    [_group, false, _atSpot] call AIC_fnc_garrisonPath;
+};
 _rec set ["garrisonWatchDir", if (_hasThreat) then {_center getDir _threatPos} else {-1}];
 
 private _done = ((units _group) findIf {alive _x && {(_x getVariable ["AIC_garrisonPos", []]) isNotEqualTo []}}) < 0;

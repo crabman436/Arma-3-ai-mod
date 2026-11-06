@@ -10,8 +10,8 @@
         homes (AIC_fnc_garrisonCycle homes only), allocate forces and queue
         the plan's orders (AIC_fnc_queueOrder: they reach the groups after
         the "orderDelay"; due orders go out through AIC_fnc_drainOrders at
-        the start of the cycle and right after the plan), garrison distribution, transports, supply trucks,
-        monitor orders, assaults, squad merges, garbage cleanup, dynamic simulation (park / wake), support, debug
+        the start of the cycle and right after the plan), garrison distribution, transports, airlifts (AIC_fnc_airliftCycle), supply trucks,
+        monitor orders, assaults, squad merges, garbage cleanup, dynamic simulation (park / wake), unit caching, support, debug
         markers and player reports.
 
         Profiling (AIC_ns "profile" true): the time of every step
@@ -106,6 +106,7 @@ private _fnc_planInf = {
 // 9. logistics: garrisons between owned objectives / bases, then transports
 [_cmd] call AIC_fnc_garrisonCycle; AIC_PROF("garrisonCycle");
 [_cmd] call AIC_fnc_transportCycle; AIC_PROF("transportCycle");
+[_cmd] call AIC_fnc_airliftCycle; AIC_PROF("airliftCycle");
 [_cmd] call AIC_fnc_supplyCycle; AIC_PROF("supplyCycle");
 [_cmd] call AIC_fnc_fortifyCycle; AIC_PROF("fortifyCycle");
 
@@ -122,6 +123,8 @@ private _fnc_planInf = {
 
 // 11. park idle garrisons / wake groups that are needed or threatened
 [_cmd] call AIC_fnc_dynSimCycle; AIC_PROF("dynSimCycle");
+// 11a. far from everybody: parked squads stored as data (AIC_fnc_cacheCycle)
+[_cmd] call AIC_fnc_cacheCycle; AIC_PROF("cacheCycle");
 
 // 12. fire support / CAS
 [_cmd] call AIC_fnc_supportCycle; AIC_PROF("supportCycle");

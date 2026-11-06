@@ -309,6 +309,12 @@ if (!_isPlane) then {
     _wpLoad setWaypointSpeed "FULL";
     _wpLoad setWaypointFormation "COLUMN";
     _wpLoad setWaypointCompletionRadius (if (_isHeli) then { 60 } else { 40 });
+    // the LOAD is done only once the whole squad is aboard (the engine's own
+    // test is met by the first men in: a helicopter would lift off with half
+    // of them still outside). Vehicle variable "AIC_loadCargo" (public: the
+    // condition runs where the transport group is local)
+    _veh setVariable ["AIC_loadCargo", _cGroup, true];
+    _wpLoad setWaypointStatements ["private _v = vehicle this; private _g = _v getVariable ['AIC_loadCargo', grpNull]; isNull _g || {((units _g) findIf {alive _x && {(vehicle _x) != _v}}) < 0}", ""];
 
     // around what is known to be hostile on the way
     if (_isHeli) then {

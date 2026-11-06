@@ -5,7 +5,8 @@
  *   adds a type-aware MOVE approach waypoint short of the target and a
  *   SEEK AND DESTROY waypoint at the target.
  *     INF          : approach 250 m out, WEDGE, AWARE -> SAD COMBAT/RED
- *     MOTOR        : road-snapped approach 450 m out (dismount/stand-off),
+ *     MOTOR        : road-snapped approach 450 m out (stand-off; the crew
+ *                    fights from its vehicles, it does not dismount),
  *                    COLUMN, AWARE, NORMAL -> SAD COMBAT/RED
  *     MECH / ARMOR : road-snapped approach 600 m out, WEDGE, AWARE ->
  *                    SAD COMBAT/RED, LIMITED speed to keep formation

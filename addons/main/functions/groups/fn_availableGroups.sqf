@@ -82,7 +82,12 @@ private _result = [];
                 _until isEqualType 0 && {_until > time}
             };
             private _qrf = _skipQRF && {(_record getOrDefault ["role", ""]) isEqualTo "QRF"};
-            if (_typeOk && {!_qrf} && {!_transportOnly} && {!_antiAir} && {!_broken} && {!(_task in _excludedTasks)} && {_strength > _threshold}) then {
+            // just took a place (or is taking it this very cycle): it holds it first
+            private _consolidating = (_record getOrDefault ["consolidateUntil", -1]) > time
+                || {_task isEqualTo "ATTACK" && {
+                    ((([_commander, _record getOrDefault ["objective", ""]] call AIC_fnc_getObjective) getOrDefault ["owner", sideUnknown]) isEqualTo (_commander getOrDefault ["side", sideUnknown]))
+                }};
+            if (_typeOk && {!_qrf} && {!_consolidating} && {!_transportOnly} && {!_antiAir} && {!_broken} && {!(_task in _excludedTasks)} && {_strength > _threshold}) then {
                 _result pushBack [_record getOrDefault ["power", 0], _forEachIndex];
             };
         };
