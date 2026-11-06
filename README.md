@@ -520,9 +520,65 @@ as an ordinary vehicle.
 Helicopters never take objectives: only an order from the transport system makes
 one land away from a base, and aircraft do not count towards holding ground.
 Transport helicopters land outside every objective, about 450 m short, and the
-troops walk in. CAS helicopters drop any old landing order when tasked, fly back
-to a base after three minutes with nothing to do, and land in the helicopter
-park.
+troops walk in, except at a place the side holds that the squad is to hold or
+reinforce with no enemy known near it: there the helicopter puts the squad
+down at the place itself (open ground there, else down the ropes). CAS
+helicopters drop any old landing order when tasked, fly back to a base after
+three minutes with nothing to do, and land in the helicopter park.
+
+### Helicopter insertions: fast landings and fast rope
+
+How a transport helicopter puts its squad down depends on where it is going:
+
+- **Normal landing**, when nothing is known near the LZ.
+- **Fast landing** (`heliHotLanding`), when a known enemy or threat is within
+  900 m of the LZ, the squad is going into an attack, or it was under fire in
+  the last minute. A landing turns fast on the way in, too, when contact shows
+  up near the LZ or the helicopter is shot at. From 3 km out the helicopter
+  flies low (40 m) and AWARE, so its door gunners can fire, but it never
+  switches to COMBAT, which makes AI pilots break off and evade instead of
+  landing. It is told to land from 900 m out instead of hovering first. As soon
+  as it touches down the squad is ordered out; anyone still aboard after 20 s
+  is put out. With the last man out it leaves at once, 1.5 km away from the
+  enemy, and the squad goes to COMBAT and clears the LZ. A pickup near the
+  enemy, or of a squad under fire, works the same way: in low, it lands at once
+  and lifts off the moment everyone is aboard.
+- **Fast rope** (`useFastRope`), when there is no open, flat ground to land on
+  near where the squad should be (a town, a forest, a held town to reinforce)
+  and no known threat within 350 m of the spot. The helicopter flies to a spot
+  with a clear drop straight down to the ground (a street, a yard, a clearing;
+  never a roof, never water, nothing tall where the rotor turns). AI pilots
+  stop well short of such a spot, so the last 200 m are flown for them: the
+  helicopter is steered over the spot at its own height, then brought down
+  to about 20 m above the ground and held there. Then the ropes go down (two
+  to four, by airframe) and the men slide down them one after another at
+  6 m/s. The ropes are let go once the last man is down and the helicopter
+  leaves at once. Over a roof or water it tries another spot near by (three
+  tries) before it gives up and lands instead. Men on a rope
+  can be shot; if the helicopter is shot down, whoever is on a rope falls.
+  - Rope points come from where ACE3 places them on the vanilla helicopters
+    (Orca, Kajman, Mohawk, Huron, Taru), and from the cargo doors on any other
+    helicopter, modded ones too. Each point is checked on the airframe
+    itself, so nobody slides into a skid or a sponson.
+  - With **ACE3** loaded (`fastRopeUseAce`) and a helicopter ACE supports,
+    ACE's own fast rope does it: ACE's ropes, pose and sounds, and a FRIES
+    fitted first where ACE wants one. The squad stays one group. Men ACE leaves
+    aboard (FFV seats) come down the vanilla way.
+
+Mission scripts can choose the insertion themselves (parameter 7 of
+`AIC_fnc_orderTransport`: `"LAND"`, `"HOT"`, `"ROPE"`, or `""` to let it
+pick), or fast-rope any units out of a hovering helicopter:
+
+```sqf
+[_cmd, _heliGroup, _squad, _townPos, "DEFEND", _townPos, "", "ROPE"] call AIC_fnc_orderTransport;
+[units _squad, _heli] call AIC_fnc_fastRope;
+```
+
+| Key | Default | Meaning |
+|---|---|---|
+| `heliHotLanding` | true | Transport helicopters land fast near the enemy: low, AWARE, no hover, out and gone at once |
+| `useFastRope` | true | Fast-rope squads in where a helicopter cannot land |
+| `fastRopeUseAce` | true | Use ACE3's fast rope when ACE is loaded and supports the helicopter |
 
 ### Close air support
 
@@ -702,6 +758,9 @@ attack. The rest of the army stays parked and costs nothing.
 | `splitPassengers` | true | Passengers placed in the same group as a helicopter or truck crew get a squad of their own (group variable `AIC_noSplit` opts a group out) |
 | `transportMinDistance` | 1200 | Infantry orders farther than this (m) look for a transport |
 | `heliTransportDistance` | 3000 | Beyond this distance (m), helicopters are preferred (if `useAir`) |
+| `heliHotLanding` | true | Fast landings near the enemy (see Helicopter insertions) |
+| `useFastRope` | true | Fast-rope squads in where a helicopter cannot land |
+| `fastRopeUseAce` | true | ACE3's fast rope when ACE is loaded |
 | `transportSearchRadius` | 4000 | Maximum distance (m) between the infantry and a candidate transport |
 | `useParadrop` | true | Transport planes at a held airfield drop squads by parachute on long trips (needs `useAir`) |
 | `paradropDistance` | 3000 | Least trip (m) for a paradrop (at least 1000) |

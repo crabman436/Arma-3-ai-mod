@@ -43,6 +43,12 @@
               a ground vehicle stuck on the way (AIC_STUCK_TIMEOUT) -> aborted.
             - Order older than 900 s -> aborted.
           RIDE - cargo aboard.
+            - A helicopter's fast landing (cargo record "insert" HOT) and its
+              rope insertion (ROPE) are flown by AIC_fnc_heliInsert, twice a
+              second; the checks below stay as its fallback, except that a
+              ROPE ride near its rope point is left to the watcher (back to
+              LAND after AIC_ROPE_TIMEOUT + 60 s, should the watcher be gone)
+              and nothing is final while men are on the ropes ("ropeBusy").
             - Vehicle near the drop point (250 m helicopter, 200 m ground):
               helicopter on the ground or ground vehicle stopped (> 10 s
               near) -> cargo ordered out (unassignVehicle, doGetOut,
@@ -53,8 +59,10 @@
               waypoint follow; record "dropLzMoved"). A low, slow hover
               counts as landed (AIC_fnc_isLanded).
             - Helicopter more than 600 m out with a threat within
-              AIC_HOT_LZ_RADIUS of the drop -> the LZ is moved once to
-              AIC_LZ_OFFSET_HELI short of the threat (record "hotLzMoved").
+              AIC_HOT_LZ_RADIUS of the drop (AIC_ROPE_SAFE_RADIUS of a rope
+              point) -> the LZ is moved once to AIC_LZ_OFFSET_HELI short of
+              the threat (record "hotLzMoved"); a rope insertion becomes a
+              fast landing there (TR UNLOAD again).
             - Transport waypoints finished and the vehicle stopped on the
               ground anywhere -> cargo ordered out.
             - No cargo unit in a vehicle any more -> the "final" order is
@@ -641,6 +649,9 @@ private _fnc_boardFallback = {
     };
 
     // ================================================== RIDE
+    // men on their way down the ropes are in no vehicle, but not down yet
+    if ((_rec getOrDefault ["ropeBusy", false]) isEqualTo true
+        && { (time - (_rec getOrDefault ["ropeTime", time])) < (2 * AIC_ROPE_RUN_MAX + 30) }) then { continue };
     if (_inAnyVeh == 0) then {
         private _atDrop = (_lpos distance2D _dropPos) < 500 || { (_lpos distance2D _finalPos) < 500 };
         // a team waits for the rest of its squad; releasing "transport" sends the vehicle home
@@ -690,21 +701,65 @@ private _fnc_boardFallback = {
     private _wpsDone = (currentWaypoint _tGroup) >= (count waypoints _tGroup);
 
     // the LZ turned hot while the helicopter is on its way: land short of it
+    // (a rope point: no roping near the enemy, a fast landing instead)
+    private _isRope = (_rec getOrDefault ["insert", "LAND"]) isEqualTo "ROPE";
     if (_isHeli && { _dDrop > 600 } && { !(_rec getOrDefault ["hotLzMoved", false]) }) then {
-        private _hot = [_cmd, _dropPos, AIC_HOT_LZ_RADIUS] call AIC_fnc_nearestThreat;
+        private _hot = [_cmd, _dropPos, [AIC_HOT_LZ_RADIUS, AIC_ROPE_SAFE_RADIUS] select _isRope] call AIC_fnc_nearestThreat;
         if (_hot isNotEqualTo []) then {
             private _c = _hot getPos [AIC_LZ_OFFSET_HELI, _hot getDir _vPos];
-            if ([_rec, _tRec, _tGroup, _veh, "drop", _c, "hotLzMoved"] call _fnc_relocateLz) then {
+            if (_isRope) then {
+                private _iU = _tRec getOrDefault ["wpUnload", -1];
+                private _wpOk = _iU isEqualType 0 && { _iU >= 0 } && { _iU < count (waypoints _tGroup) };
+                if ([_rec, _tRec, _tGroup, _veh, "drop", _c, "hotLzMoved"] call _fnc_relocateLz) then {
+                    // ground to land on short of the threat: a fast landing there
+                    _rec set ["insert", "HOT"];
+                    _isRope = false;
+                    [_veh, "flyInHeight", [100, false]] call AIC_fnc_do;
+                    if (_wpOk) then {
+                        [_tGroup, _iU] setWaypointType "TR UNLOAD";
+                        [_tGroup, _iU] setWaypointCompletionRadius 30;
+                    };
+                    ["%1: rope spot of group %2 turned hot, %3 lands fast at %4 instead", [
+                        _side, groupId _grp, groupId _tGroup, (_rec get "dropPos") apply { round _x }
+                    ]] call AIC_fnc_log;
+                } else {
+                    // none: the ropes go down short of it instead
+                    private _rp = [_c, 150] call AIC_fnc_ropePoint;
+                    if (_rp isNotEqualTo [] && { ([_cmd, _rp, AIC_ROPE_SAFE_RADIUS] call AIC_fnc_nearestThreat) isEqualTo [] }) then {
+                        _rec set ["hotLzMoved", true];
+                        _rec set ["dropPos", +_rp];
+                        _tRec set ["dropPos", +_rp];
+                        _tRec set ["taskPos", +_rp];
+                        if (_wpOk) then { [_tGroup, _iU] setWaypointPosition [_rp, 0]; };
+                        ["%1: rope spot of group %2 turned hot, %3 ropes in at %4 instead", [
+                            _side, groupId _grp, groupId _tGroup, _rp apply { round _x }
+                        ]] call AIC_fnc_log;
+                    };
+                };
+            } else { if ([_rec, _tRec, _tGroup, _veh, "drop", _c, "hotLzMoved"] call _fnc_relocateLz) then {
                 ["%1: LZ of group %2 turned hot, %3 lands at %4 instead", [
                     _side, groupId _grp, groupId _tGroup, (_rec get "dropPos") apply { round _x }
                 ]] call AIC_fnc_log;
-            };
+            }; };
         };
     };
 
     if (_dDrop < _nearR) then {
         if ((_rec getOrDefault ["nearDropTime", -1]) < 0) then { _rec set ["nearDropTime", time]; };
         private _nearAge = time - (_rec get "nearDropTime");
+        // a rope insertion hovers, it does not land (AIC_fnc_heliInsert); should
+        // its watcher be gone, the normal landing after a while
+        if (_isHeli && { _isRope }) then {
+            if (_nearAge > (AIC_ROPE_TIMEOUT + 60)) then {
+                _rec set ["insert", "LAND"];
+                _rec set ["nearDropTime", -1];
+                private _iU = _tRec getOrDefault ["wpUnload", -1];
+                if (_iU isEqualType 0 && { _iU >= 0 } && { _iU < count (waypoints _tGroup) }) then { [_tGroup, _iU] setWaypointType "TR UNLOAD"; };
+                [_veh, "flyInHeight", [100, false]] call AIC_fnc_do;
+                ["%1: rope insertion of group %2 by %3 never started, it lands instead", [_side, groupId _grp, groupId _tGroup]] call AIC_fnc_log;
+            };
+            continue;
+        };
         if (_isHeli) then {
             if ([_veh] call AIC_fnc_isLanded) then {
                 [_grp, _veh] call _fnc_getOut;
@@ -742,7 +797,7 @@ private _fnc_boardFallback = {
         [_grp, _veh] call _fnc_getOut;
         continue;
     };
-    if (_wpsDone && { _isHeli } && { !([_veh] call AIC_fnc_isLanded) }
+    if (_wpsDone && { _isHeli } && { !_isRope } && { !([_veh] call AIC_fnc_isLanded) }
         && { (time - (_rec getOrDefault ["landOrderTime", -1e6])) > 45 }) then {
         [_veh, _tRec getOrDefault ["lz", objNull], "GET OUT"] call _fnc_landAt;
         _rec set ["landOrderTime", time];
