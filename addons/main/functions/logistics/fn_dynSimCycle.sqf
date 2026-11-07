@@ -261,8 +261,10 @@ private _woken = 0;
         _wpDone || { (time - _taskTime) > 120 && { (time - _lastMove) > 120 } }
     };
 
-    // infantry occupying buildings: only once every unit is in place
-    if (_settled && { _task isEqualTo "DEFEND" } && { (_rec getOrDefault ["type", ""]) isEqualTo "INF" }) then {
+    // infantry occupying buildings, vehicles taking their posts
+    // (AIC_fnc_monitorVehiclePosts, record "vehPosts"): only once every unit is in place
+    if (_settled && { _task isEqualTo "DEFEND" }
+        && { (_rec getOrDefault ["type", ""]) isEqualTo "INF" || { (_rec getOrDefault ["vehPosts", false]) isEqualTo true } }) then {
         _settled = (time - _taskTime) > _GARRISON_WAIT
             || {
                 (_rec getOrDefault ["garrisonDone", false]) isEqualTo true

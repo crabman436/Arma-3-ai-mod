@@ -55,9 +55,45 @@
 
 // a threat cluster this close to an objective's edge makes its garrison stand to
 #define AIC_STANDTO_RANGE 800
-// garrisons: units per building, how far a sentry looks (m), how long an
-// alarm keeps a garrison stood to (s) and the least time between alarms (s)
+// garrisons: units per building (an ordinary house; a big building takes
+// one more per 4 positions, up to the maximum), how far a sentry looks (m),
+// how long an alarm keeps a garrison stood to (s) and the least time
+// between alarms (s)
 #define AIC_GARRISON_PER_BUILDING 2
+#define AIC_GARRISON_PER_BUILDING_MAX 4
+// garrisonBuildings ranks buildings by distance less height: one metre of
+// height is worth this many metres of distance (towers and roofs first)
+#define AIC_BUILDING_HEIGHT_W 6
+
+// ---------------------------------------------------------------- layered garrisons (garrisonLayout / garrisonPost / garrisonVehicles)
+// a place with fewer houses than this is built up to its whole radius
+#define AIC_LAYOUT_MIN_HOUSES 6
+// m: a built-up area wider than this is held in posts spread over it
+#define AIC_POST_LARGE 200
+// posts of the main belt and of the core, as a share of the built-up radius
+#define AIC_POST_BELT 0.55
+#define AIC_POST_CORE 0.12
+// m: the ground one infantry post covers (0.3 x built-up radius within these)
+#define AIC_POST_LOCAL_MIN 80
+#define AIC_POST_LOCAL_MAX 150
+// every n-th infantry group of a large place holds the core (issueOrder)
+#define AIC_CORE_EVERY 4
+// approaches of a place: degrees between two, and how many at most
+#define AIC_APPROACH_GAP 40
+#define AIC_APPROACH_MAX 8
+// vehicle posts: a vehicle is at its post within this (m); one that never
+// gets there holds where it stands after this (s); the men riding in a
+// posted vehicle take positions within this (m) of the leader's post
+#define AIC_VEHPOST_NEAR 15
+#define AIC_VEHPOST_TIMEOUT 240
+#define AIC_VEHPOST_INF_RADIUS 70
+// s: a man told to get out at a vehicle post who is still aboard after this rides along as crew
+#define AIC_VEHPOST_OUT_MAX 60
+// vehiclePostWatch: a vehicle is slowed to this (km/h) within this (m) of its
+// post and halted within this (m) of it
+#define AIC_VEHPOST_SLOW 120
+#define AIC_VEHPOST_SLOW_KMH 20
+#define AIC_VEHPOST_HOLD 20
 #define AIC_SENTRY_RANGE 700
 #define AIC_ALARM_TIME 300
 #define AIC_ALARM_REPEAT 60

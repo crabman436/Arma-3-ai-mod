@@ -384,21 +384,43 @@ private _fnc_setIdle = {
         continue;
     };
 
+    // --- DEFEND: the post the group holds (AIC_fnc_garrisonPost, record
+    // "defendPost" for this objective) and the ground around it; without
+    // one the place itself (same radius as AIC_fnc_issueOrder gives
+    // AIC_fnc_orderDefend)
+    private _defPost = [];
+    private _defR = (_objRec getOrDefault ["radius", _defRadius]) min 200;
+    private _defSector = -1;
+    if (_task == "DEFEND" && {(_rec getOrDefault ["defendSectorObj", ""]) isEqualTo _objId}) then {
+        _defSector = _rec getOrDefault ["defendSector", -1];
+        private _p = _rec getOrDefault ["defendPost", []];
+        if (_p isEqualType [] && {count _p >= 2}) then {
+            _defPost = _p;
+            private _pr = _rec getOrDefault ["defendPostR", 0];
+            if (_pr isEqualType 0 && {_pr > 0}) then {_defR = _pr};
+        };
+    };
     // --- infantry DEFEND: occupy buildings once arrived (unscheduled, one
     // step per cycle; AIC_fnc_dynSimCycle parks the group only when done).
-    // Same radius as AIC_fnc_issueOrder gives AIC_fnc_orderDefend.
     if (_task == "DEFEND" && {_type == "INF"}) then {
         private _threatPos = [_cmd, _taskPos] call AIC_fnc_nearestThreat;
         if (_threatPos isEqualTo []) then {_threatPos = [_cmd, _objId] call AIC_fnc_alarmPos};
         private _inPlace = [
-            _group, _rec, _taskPos, (_objRec getOrDefault ["radius", _defRadius]) min 200,
+            _group, _rec, [_taskPos, _defPost] select (_defPost isNotEqualTo []), _defR,
             _threatPos,
             ([_cmd, "garrisonManStatics"] call AIC_fnc_getSetting) isEqualTo true,
-            if ((_rec getOrDefault ["defendSectorObj", ""]) isEqualTo _objId) then {_rec getOrDefault ["defendSector", -1]} else {-1},
+            _defSector,
             ([_cmd, "garrisonHoldPath"] call AIC_fnc_getSetting) isEqualTo true
         ] call AIC_fnc_monitorGarrison;
         // the sentries raise the alarm
         if (_inPlace) then {[_cmd, _group, _rec] call AIC_fnc_sentryWatch};
+    };
+    // --- vehicle DEFEND with posts of their own (AIC_fnc_garrisonVehicles):
+    // each vehicle settles at its post, the men riding along take positions
+    if (_task == "DEFEND" && {_type in ["MOTOR", "MECH", "ARMOR"]} && {(_rec getOrDefault ["vehPosts", false]) isEqualTo true}) then {
+        private _threatPos = [_cmd, _taskPos] call AIC_fnc_nearestThreat;
+        if (_threatPos isEqualTo []) then {_threatPos = [_cmd, _objId] call AIC_fnc_alarmPos};
+        [_cmd, _group, _rec, _threatPos, _defSector, ([_cmd, "garrisonHoldPath"] call AIC_fnc_getSetting) isEqualTo true] call AIC_fnc_monitorVehiclePosts;
     };
 
     // --- completion -----------------------------------------------------------
@@ -574,11 +596,26 @@ private _fnc_setIdle = {
     private _far = switch (_task) do {
         case "PATROL": { true };
         case "DEFEND": {
-            if (_type == "INF" && {(_rec getOrDefault ["garrisonToken", -1]) isNotEqualTo (_group getVariable ["AIC_orderToken", 0])}) then {
-                private _gRadius = (_objRec getOrDefault ["radius", _defRadius]) min 200;
-                _dist > (((_gRadius * 0.5) max 50) + 30 + 50)
-            } else {
-                _dist > ((_arriveR max 200) + 100)
+            // a group with a post of its own is measured against the post
+            // (a city's belt lies far from the centre, the group is not stuck there)
+            private _vehPosted = _type in ["MOTOR", "MECH", "ARMOR"] && {(_rec getOrDefault ["vehPosts", false]) isEqualTo true};
+            private _lv = objectParent _leader;
+            private _vp = if (_vehPosted && {!isNull _lv}) then {(_lv getVariable ["AIC_vehPost", [[]]]) select 0} else {[]};
+            switch (true) do {
+                case (_vp isNotEqualTo []): {
+                    // its vehicle holds its post (settled, or still rolling up to it)
+                    (_lv getVariable ["AIC_vehPosted", false]) isEqualTo false && {(_leaderPos distance2D _vp) > 100}
+                };
+                case (_type == "INF" && {(_rec getOrDefault ["garrisonToken", -1]) isNotEqualTo (_group getVariable ["AIC_orderToken", 0])}): {
+                    private _to = [_taskPos, _defPost] select (_defPost isNotEqualTo []);
+                    (_leaderPos distance2D _to) > (((_defR * 0.5) max 50) + 30 + 50)
+                };
+                case (_defPost isNotEqualTo []): {
+                    (_leaderPos distance2D _defPost) > (_defR + 100)
+                };
+                default {
+                    _dist > ((_arriveR max 200) + 100)
+                };
             }
         };
         default { _dist > (_arriveR max 200) };
