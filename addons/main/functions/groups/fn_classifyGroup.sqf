@@ -66,9 +66,16 @@ private _scores = createHashMapFromArray [
 
 private _vehicles = [];
 
+// men a garrison let out of their vehicle (AIC_fnc_monitorVehiclePosts) are
+// still its passengers: counted with that vehicle below, not as infantry
 {
     private _unit = _x;
     private _veh = objectParent _unit;
+    private _dm = if (isNull _veh) then {_unit getVariable ["AIC_dismounted", objNull]} else {objNull};
+    if (!isNull _dm && {alive _dm} && {!_filter || {_dm in _known}}) then {
+        _vehicles pushBackUnique _dm;
+        continue;
+    };
     // a garrison gunner (AIC_fnc_garrisonBuildings) stays infantry
     if (isNull _veh || {!isNull (_unit getVariable ["AIC_gunnerOf", objNull])}) then {
         _scores set ["INF", (_scores get "INF") + 1];
@@ -93,9 +100,10 @@ private _vehicles = [];
         private _vType = [_veh] call AIC_fnc_vehicleType;
         _scores set [_vType, (_scores get _vType) + (_typeWeights getOrDefault [_vType, 1])];
     } else {
-        // Only passengers of this group in the vehicle: they count as infantry
+        // Only passengers of this group in the vehicle (or let out of it at a
+        // garrison post): they count as infantry
         private _passengers = {
-            alive _x && {objectParent _x isEqualTo _veh} && {!_filter || {_x in _known}}
+            alive _x && {(objectParent _x isEqualTo _veh) || {(_x getVariable ["AIC_dismounted", objNull]) isEqualTo _veh}} && {!_filter || {_x in _known}}
         } count _units;
         _scores set ["INF", (_scores get "INF") + _passengers];
     };

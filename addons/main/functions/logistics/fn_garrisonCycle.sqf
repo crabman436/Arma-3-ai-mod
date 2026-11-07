@@ -754,7 +754,16 @@ private _reposted = 0;
     private _threatPos = [_cmd, _taskPos] call AIC_fnc_nearestThreat;
     if (_threatPos isEqualTo []) then { _threatPos = [_cmd, _objId] call AIC_fnc_alarmPos; };
     private _sector = if ((_rec getOrDefault ["defendSectorObj", ""]) isEqualTo _objId) then { _rec getOrDefault ["defendSector", -1] } else { -1 };
-    private _n = [_grp, _taskPos, ([_obj] call _fnc_radius) min 200, _threatPos, false, _sector, true] call AIC_fnc_garrisonBuildings;
+    // around the group's post, where its positions are (AIC_fnc_garrisonPost)
+    private _centre = _taskPos;
+    private _reach = ([_obj] call _fnc_radius) min 200;
+    private _post = _rec getOrDefault ["defendPost", []];
+    if (_sector >= 0 && { _post isEqualType [] } && { count _post >= 2 }) then {
+        _centre = _post;
+        private _pr = _rec getOrDefault ["defendPostR", 0];
+        if (_pr isEqualType 0 && { _pr > 0 }) then { _reach = _pr; };
+    };
+    private _n = [_grp, _centre, _reach, _threatPos, false, _sector, true] call AIC_fnc_garrisonBuildings;
     if (_n > 0) then {
         // the new sentries are settled by AIC_fnc_monitorGarrison like the rest
         _rec set ["garrisonDone", false];

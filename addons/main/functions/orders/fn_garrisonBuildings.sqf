@@ -11,9 +11,11 @@
  *        keeps the unit variable "AIC_gunnerOf" (AIC_fnc_classifyGroup still
  *        counts him as infantry) and the gun "AIC_gunner".
  *     2. Sentries. A group of 4 or more posts one, of 7 or more two, at the
- *        edge of the place (0.6 to 1.15 radius out): the highest position of
- *        an edge building near the bearing, or a terrain post on high ground
- *        with trees (AIC_fnc_bestPlace) when there is no building. The
+ *        edge of the place (0.6 to 1.15 radius out): the highest free
+ *        position of the edge buildings within 80 m of the post (one metre
+ *        of height worth AIC_BUILDING_HEIGHT_W m of distance: a tower or a
+ *        roof before the cottage next to the post), or a terrain post on
+ *        high ground with trees (AIC_fnc_bestPlace) when there is no building. The
  *        bearings are the group's sector (its own slice of the place), the
  *        threat's side first when one is known. Sentries get the unit
  *        variable "AIC_sentry"; AIC_fnc_sentryWatch raises the alarm when
@@ -21,12 +23,17 @@
  *        below AIC_NIGHT_SUN, or outside sunrise..sunset) the count doubles, up to half the group (a 4-man group posts
  *        two), spread wider around the facing; the count is set when the
  *        positions are handed out.
- *     3. Buildings. Spread over the group's sector: buildings nearest the
- *        sector's anchor are filled with at most AIC_GARRISON_PER_BUILDING
- *        units each, and a building within 20 m of one already used is
- *        skipped while others remain, so one squad covers a street, not a
- *        single house. High positions and positions near the threat go
- *        first. A position is claimed through the building variable
+ *     3. Buildings. Spread over the group's sector: buildings are ranked by
+ *        their distance to the sector's anchor less their height (the
+ *        highest free position, AIC_BUILDING_HEIGHT_W m per metre) and size
+ *        (1.5 m per free position, up to 8), so towers, office blocks and
+ *        roofs come before the cottages next to the anchor. Each takes
+ *        AIC_GARRISON_PER_BUILDING units, a big one (more than 4 positions)
+ *        one more per 4 positions up to AIC_GARRISON_PER_BUILDING_MAX, and
+ *        a building within 20 m of one already used is skipped while others
+ *        remain, so one squad covers a street, not a single house. High
+ *        positions and positions near the threat go first within a
+ *        building. A position is claimed through the building variable
  *        "AIC_claims" and the unit variable "AIC_buildingPos", so two groups
  *        in one town never take the same spot.
  *     4. Perimeter. Whoever is left (open ground, a full town) spreads on a
@@ -202,17 +209,25 @@ if (_wanted > 0) then {
         private _unit = _free deleteAt 0;
         _unit setVariable ["AIC_sentry", true];
 
-        // the edge building nearest the post with a free position: its highest one
+        // the highest free position of the edge buildings within 80 m of the
+        // post (a tower, a roof: one metre up is worth AIC_BUILDING_HEIGHT_W m
+        // of distance), so the sentry looks out over the place
         private _best = objNull;
-        private _bestD = 80;
+        private _high = [];
+        private _bestScore = 1e9;
         {
             private _d = _x distance2D _post;
-            if (_d < _bestD && {([_x] call _fnc_freePositions) isNotEqualTo []}) then {_bestD = _d; _best = _x};
+            if (_d < 80) then {
+                private _bps = [_x] call _fnc_freePositions;
+                if (_bps isNotEqualTo []) then {
+                    private _top = _bps select 0;
+                    {if ((_x select 2) > (_top select 2)) then {_top = _x}} forEach _bps;
+                    private _score = _d - AIC_BUILDING_HEIGHT_W * (_top select 2);
+                    if (_score < _bestScore) then {_bestScore = _score; _best = _x; _high = _top};
+                };
+            };
         } forEach _edge;
         if (!isNull _best) then {
-            private _bps = [_best] call _fnc_freePositions;
-            private _high = _bps select 0;
-            {if ((_x select 2) > (_high select 2)) then {_high = _x}} forEach _bps;
             [_unit, _best, _high, "UP"] call _fnc_claim;
         } else {
             // no building out there: a terrain post on high ground with trees
@@ -250,8 +265,21 @@ private _anchor = switch (true) do {
     case (_hasThreat): {_c getPos [_radius * 0.35, _threatDir]};
     default {_c};
 };
+// ranked by distance to the anchor less height and size: a tower, an office
+// block or a big house with a roof beats the cottage next to the anchor (one
+// metre of its highest free position is worth AIC_BUILDING_HEIGHT_W m, each
+// free position up to 8 is worth 1.5 m); the free positions are read once
 private _order = [];
-{ _order pushBack [_x distance2D _anchor, _forEachIndex]; } forEach _buildings;
+private _freeOf = [];
+{
+    private _bps = [_x] call _fnc_freePositions;
+    _freeOf pushBack _bps;
+    if (_bps isNotEqualTo []) then {
+        private _top = 0;
+        {_top = _top max (_x select 2)} forEach _bps;
+        _order pushBack [(_x distance2D _anchor) - AIC_BUILDING_HEIGHT_W * _top - 1.5 * ((count _bps) min 8), _forEachIndex];
+    };
+} forEach _buildings;
 _order sort true;
 
 private _inside = 0;
@@ -264,7 +292,7 @@ private _used = [];
         private _b = _buildings select (_x select 1);
         if (_b in _used) then {continue};
         if (_pass == 0 && {(_used findIf {(_x distance2D _b) < 20}) >= 0}) then {continue};
-        private _bps = [_b] call _fnc_freePositions;
+        private _bps = _freeOf select (_x select 1);
         if (_bps isEqualTo []) then {continue};
 
         // high up first; 10 m closer to the threat is worth one metre of height
@@ -273,7 +301,10 @@ private _used = [];
             _rank pushBack [(if (_hasThreat) then {(_x distance2D _threatPos) / 10} else {0}) - (_x select 2) + random 1, _forEachIndex];
         } forEach _bps;
         _rank sort true;
-        for "_i" from 0 to (((count _rank) min AIC_GARRISON_PER_BUILDING) - 1) do {
+        // a big building takes more men: one more per 4 positions over 4
+        private _cap = (AIC_GARRISON_PER_BUILDING + floor (((count _bps) - 4) / 4)) max AIC_GARRISON_PER_BUILDING;
+        _cap = _cap min AIC_GARRISON_PER_BUILDING_MAX;
+        for "_i" from 0 to (((count _rank) min _cap) - 1) do {
             if (_free isEqualTo []) exitWith {};
             [_free deleteAt 0, _b, _bps select ((_rank select _i) select 1), "UP"] call _fnc_claim;
             _inside = _inside + 1;

@@ -57,6 +57,10 @@ createHashMapFromArray [
     ["garrisonPerPriority", 8],
     ["garrisonMovesPerCycle", 2],
     ["garrisonManStatics", true],
+    // every vehicle of a garrison gets a post of its own at the approaches
+    // of the place (AIC_fnc_garrisonVehicles); off: the group holds one
+    // road spot on the threatened side
+    ["garrisonVehiclePosts", true],
     ["useVehicleParks", true],
     // --- logistics: digging in at held places (AIC_fnc_fortifyCycle)
     ["fortifyObjectives", true],

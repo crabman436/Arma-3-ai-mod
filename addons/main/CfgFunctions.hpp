@@ -81,6 +81,13 @@ class CfgFunctions
             class garrisonBuildings {};
             class garrisonPath {};
             class monitorGarrison {};
+            class garrisonLayout {};
+            class garrisonPost {};
+            class garrisonVehicles {};
+            class monitorVehiclePosts {};
+            class vehiclePostWatch {};
+            class holdVehicle {};
+            class releaseVehicle {};
             class sentryWatch {};
             class alarmPos {};
             class orderAssault {};

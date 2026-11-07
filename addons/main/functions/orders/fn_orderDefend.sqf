@@ -35,6 +35,16 @@
  *               vehicle drives there, holds, relaxed, and stops its engine
  *   7: NUMBER - (optional) infantry sector: bearing from the centre the
  *               group's part of the place lies on, -1 for any, default -1
+ *   8: ARRAY  - (optional) infantry post (AIC_fnc_garrisonPost): where the
+ *               group holds and takes its positions (the ground it covers
+ *               is in the record, AIC_fnc_monitorOrders hands it on), [] =
+ *               a spot off the centre on its sector, default []
+ *   9: ARRAY  - (optional) vehicle posts (AIC_fnc_garrisonVehicles,
+ *               [vehicle, post, facing] each, the leader's first): the
+ *               leader's vehicle holds at its post, every other one drives
+ *               to its own (AIC_fnc_monitorVehiclePosts settles them);
+ *               [] = the group holds one road spot on the threatened side,
+ *               default []
  *
  * Returns:
  *   BOOL - true if the order was applied
@@ -51,7 +61,9 @@ params [
     ["_threatPos", [], [[]]],
     ["_rear", false, [false]],
     ["_park", [], [[]]],
-    ["_sector", -1, [0]]
+    ["_sector", -1, [0]],
+    ["_post", [], [[]]],
+    ["_vehPosts", [], [[]]]
 ];
 
 if (isNull _group || {count _pos < 2}) exitWith {false};
@@ -126,6 +138,51 @@ if (_type in ["MOTOR", "MECH", "ARMOR"] && {count _park >= 2}) exitWith {
     true
 };
 
+// --- Ground vehicles with posts of their own (AIC_fnc_garrisonVehicles) ----
+if (_type in ["MOTOR", "MECH", "ARMOR"] && {_vehPosts isNotEqualTo []}) exitWith {
+    (_vehPosts select 0) params ["", "_lp", "_ldir"];
+    _lp = [_lp select 0, _lp select 1, 0];
+    // the side the group holds: its leader's post (AIC_fnc_garrisonCycle turns it round)
+    _group setVariable ["AIC_holdDir", if (count _threatPos >= 2) then {_center getDir _threatPos} else {_center getDir _lp}];
+    private _wpM = _group addWaypoint [_lp, 0];
+    _wpM setWaypointType "MOVE";
+    _wpM setWaypointBehaviour "AWARE";
+    _wpM setWaypointCombatMode "YELLOW";
+    _wpM setWaypointSpeed "NORMAL";
+    _wpM setWaypointFormation "COLUMN";
+    _wpM setWaypointCompletionRadius 15;
+    private _wpH = _group addWaypoint [_lp, 0];
+    _wpH setWaypointType "HOLD";
+    _wpH setWaypointBehaviour "AWARE";
+    _wpH setWaypointCombatMode "YELLOW";
+    _wpH setWaypointCompletionRadius 15;
+    [_group, "setCurrentWaypoint", _wpM] call AIC_fnc_do;
+    // each vehicle keeps its post (after the clearing above, which wipes the
+    // old ones); every other vehicle makes for its own: its crew is taken
+    // out of the formation first (doStop), or the leader's hold would pull
+    // the vehicle back on the way
+    {
+        _x params ["_veh", "_p", "_d"];
+        if (!isNull _veh && {alive _veh}) then {
+            _veh setVariable ["AIC_vehPost", [[_p select 0, _p select 1, 0], _d]];
+            _veh setVariable ["AIC_vehPosted", false];
+            _veh setVariable ["AIC_vehHeld", nil];
+            _veh setVariable ["AIC_vehSlow", nil];
+            if (_forEachIndex > 0) then {
+                [(crew _veh) select {alive _x && {(group _x) isEqualTo _group} && {!isPlayer _x}}, "doStop"] call AIC_fnc_do;
+                [_veh, "doMove", [_p select 0, _p select 1, 0]] call AIC_fnc_do;
+            };
+        };
+    } forEach _vehPosts;
+    // a move ends as a drive-through back into the formation: the watcher
+    // halts each vehicle on its post the second it gets there
+    if (count _vehPosts > 1) then {
+        _group setVariable ["AIC_vehWatch", true];
+        [_group, _group getVariable ["AIC_orderToken", 0]] spawn AIC_fnc_vehiclePostWatch;
+    };
+    true
+};
+
 // --- Ground vehicles: hold a road-friendly spot on the threatened side -----
 if (_type in ["MOTOR", "MECH", "ARMOR"]) exitWith {
     private _dir = _center getDir _leader;
@@ -160,8 +217,13 @@ if (_type in ["MOTOR", "MECH", "ARMOR"]) exitWith {
 
 // --- Infantry: move and hold (buildings: AIC_fnc_monitorGarrison) -----------
 // every group makes for its own part of the place, not for the very middle:
-// its sector (AIC_fnc_issueOrder), else any
-private _spot = _center getPos [(_radius min 200) * (0.15 + random 0.25), [random 360, _sector] select (_sector >= 0)];
+// its post (AIC_fnc_garrisonPost), else a spot on its sector
+// (AIC_fnc_issueOrder), else any
+private _spot = if (count _post >= 2) then {
+    [_post select 0, _post select 1, 0]
+} else {
+    _center getPos [(_radius min 200) * (0.15 + random 0.25), [random 360, _sector] select (_sector >= 0)]
+};
 _spot = if (surfaceIsWater _spot) then {_center} else {[_spot select 0, _spot select 1, 0]};
 private _wpM = _group addWaypoint [_spot, 0];
 _wpM setWaypointType "MOVE";

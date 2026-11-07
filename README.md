@@ -205,6 +205,7 @@ change them live through `(_cmd get "settings") set [key, value]`.
 | `maxAutoObjectives` | 12 | Maximum number of automatic objectives (the ones nearest HQ) |
 | `excludePlayerGroups` | true | Never command groups that contain players |
 | `garrisonHoldPath` | true | Garrison men who reached their spot hold it without pathfinding until the group is engaged or ordered (see "Garrison pathfinding") |
+| `garrisonVehiclePosts` | true | Every vehicle of a garrison stands at a post of its own at the approaches of the place, mechanised squads dismount beside their APC (see "Bases and garrisons"); off: a vehicle group holds one road spot on the threatened side |
 | `cacheDistance` | 2500 | Parked squads this far (m) from every player and enemy are stored as data, their men come back at 0.75 x this distance; 0 = off (see "Unit caching") |
 | `useHeadlessClients` | true | Hand ground groups to connected headless clients, so their AI runs on other CPU cores (see "Headless clients") |
 | `debugMarkers` | false | Draw the commander's view on the map |
@@ -335,26 +336,44 @@ Infantry on DEFEND take real positions once they arrive:
 - Each squad gets a **sector** of the town, the slice the other defenders
   cover least, so several squads spread around the place instead of stacking
   in its middle. The first squad takes the threatened side.
+- A **large place** (a city, an airfield: the built-up area is wider than
+  200 m) is held in layers. The commander reads the town once: how far out
+  the houses stand, which roads come in, where the open ground on the ring
+  is. Each squad then gets a **post** of its own on its sector: most squads in
+  the **belt** a little over halfway out through the built-up area, every
+  fourth squad in the **core** as the reserve. A squad takes its positions
+  within 80–150 m of its post, so a Kavala-sized garrison covers the whole
+  town instead of the 200 m around its centre. A village is still one area.
 - Up to half of the group mans empty, armed static weapons in the area.
   Mortars are left alone.
 - A squad of four or more posts one **sentry**, seven or more two, in the
-  highest position of a building at the edge of town on its sector, or on
-  high ground with trees when there is no building. Sentries watch outward,
-  and when one recognises an enemy the town's **alarm** goes: every group of
-  the place wakes and is told about the sighting, the garrison stands to, and
-  the defenders face that side until a threat cluster is known.
-- The rest spreads over the sector's buildings, at most two men per building
+  highest position of the buildings at the edge of its ground on its sector
+  (a tower or a roof beats the cottage next to the post), or on high ground
+  with trees when there is no building. Sentries watch outward, and when one
+  recognises an enemy the town's **alarm** goes: every group of the place
+  wakes and is told about the sighting, the garrison stands to, and the
+  defenders face that side until a threat cluster is known.
+- The rest spreads over the sector's buildings. Buildings are ranked by
+  distance less height and size, so towers, office blocks and houses with a
+  roof come first; two men per ordinary house, up to four in a big building,
   and never two houses side by side while others are free, so a squad covers
   a street rather than a single house. High positions and positions near the
   threat go first, and two groups never take the same spot.
 - Whoever is left, or a whole group on open ground, spreads on a ring around
-  the objective next to whatever cover is close, crouched and facing out or
+  its post next to whatever cover is close, crouched and facing out or
   towards the threat.
 - Units watch the threat, and turn when it moves to another side of the town.
 
-Vehicles hold the threatened side of the town, spread out a little. Trucks and
-other transport-only crews do not count as defenders and are never sent to
-fill another garrison.
+Vehicles of a garrison each get a **post of their own** (`garrisonVehiclePosts`):
+a spot beside each road coming into the place, 20 m inside the ring and off
+the road, facing out along it, the threatened side first; then open high
+ground on the ring where no road comes in; whatever is left near the centre.
+Cars, APCs and tanks drive to their posts, stop, watch outward (or the threat)
+and switch their engines off. A mechanised squad's men get out and take
+positions in the buildings and cover round their APC; they get back in with
+the next order. When enemies come near, the vehicles move to the approaches on
+that side. Trucks and other transport-only crews wait in the rear, do not
+count as defenders and are never sent to fill another garrison.
 
 At a base, vehicles wait in a **motor pool**: rows of parking places on open,
 flat ground, engines off, with a separate helicopter park of invisible helipads.

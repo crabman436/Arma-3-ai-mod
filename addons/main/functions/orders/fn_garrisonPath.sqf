@@ -43,13 +43,28 @@ params [["_group", grpNull, [grpNull]], ["_on", true, [true]], ["_units", [], [[
 if (isNull _group) exitWith { 0 };
 
 if (_on) exitWith {
-    if !(_group getVariable ["AIC_pathHeld", false]) exitWith { 0 };
+    // drivers held on a vehicle post (AIC_fnc_vehiclePostWatch) drive again
+    // too, and the watcher ends: an engaged garrison's vehicles may have to
+    // move, and a disabled AI feature may not survive a handover to a
+    // headless client (AIC_fnc_monitorVehiclePosts sends them back once calm)
+    _group setVariable ["AIC_vehWatch", nil];
+    private _drivers = (units _group) select { _x getVariable ["AIC_driveOff", false] };
+    {
+        private _v = objectParent _x;
+        if (isNull _v) then {
+            _x setVariable ["AIC_driveOff", nil];
+            [_x, "enableAI", "MOVE"] call AIC_fnc_do;
+        } else {
+            [_v, _group] call AIC_fnc_releaseVehicle;
+        };
+    } forEach _drivers;
+    if !(_group getVariable ["AIC_pathHeld", false]) exitWith { count _drivers };
     _group setVariable ["AIC_pathHeld", nil];
     private _held = (units _group) select { _x getVariable ["AIC_pathOff", false] };
     { _x setVariable ["AIC_pathOff", nil]; } forEach _held;
     // (one by one: enableAI / disableAI take a single unit)
     { [_x, "enableAI", "PATH"] call AIC_fnc_do; } forEach _held;
-    count _held
+    (count _held) + (count _drivers)
 };
 
 private _leader = leader _group;

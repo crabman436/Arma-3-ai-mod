@@ -404,10 +404,15 @@ private _ok = switch (_task) do {
         // no cluster known yet: the side the sentries raised the alarm on
         if (_threatPos isEqualTo [] && {_objective isNotEqualTo ""}) then {_threatPos = [_cmd, _objective] call AIC_fnc_alarmPos};
         // infantry: a sector of its own, the slice of the place the other
-        // defenders cover least (kept while it defends this objective)
+        // defenders cover least (kept while it defends this objective), a
+        // band (belt or core, AIC_fnc_garrisonPost) and the post where it holds
         private _sector = -1;
+        private _post = [];
+        private _postR = 0;
         if (_type == "INF" && {_objective isNotEqualTo ""} && {count _objRec > 0}) then {
             _sector = _record getOrDefault ["defendSector", -1];
+            private _band = _record getOrDefault ["defendBand", ""];
+            if !(_band isEqualType "") then {_band = ""};
             // the sectors the other defenders of this objective hold, from
             // the objective's own map (no scan over every group record);
             // entries of groups that no longer defend it are dropped
@@ -415,6 +420,7 @@ private _ok = switch (_task) do {
             if !(_sectors isEqualType createHashMap) then {_sectors = createHashMap};
             _objRec set ["sectors", _sectors];
             private _others = [];
+            private _otherBands = [];
             {
                 private _entry = _sectors get _x;
                 private _g = if (_entry isEqualType [] && {count _entry >= 2}) then {_entry select 0} else {grpNull};
@@ -428,7 +434,10 @@ private _ok = switch (_task) do {
                 ) then {
                     _sectors deleteAt _x;
                 } else {
-                    if (_g isNotEqualTo _group) then {_others pushBack (_entry select 1)};
+                    if (_g isNotEqualTo _group) then {
+                        _others pushBack (_entry select 1);
+                        _otherBands pushBack (_entry param [2, "belt"]);
+                    };
                 };
             } forEach (keys _sectors);
             // keep the sector while defending on; choose again when coming
@@ -438,6 +447,11 @@ private _ok = switch (_task) do {
                 || {_curTask isNotEqualTo "DEFEND"}
                 || {(_others findIf {(abs ((_sector - _x + 540) % 360 - 180)) < AIC_SECTOR_MIN_GAP}) >= 0}
             ) then {
+                // the band with it: every AIC_CORE_EVERY-th defender of the place
+                // holds the core, the rest the belt (one group alone: the belt)
+                private _n = (count _others) + 1;
+                private _cores = {_x isEqualTo "core"} count _otherBands;
+                _band = ["belt", "core"] select (_cores < floor (_n / AIC_CORE_EVERY));
                 _sector = if (_others isEqualTo []) then {
                     // the first defender takes the threatened side, else any
                     if (_threatPos isNotEqualTo []) then {_pos getDir _threatPos} else {random 360}
@@ -449,20 +463,43 @@ private _ok = switch (_task) do {
                         {_gap = _gap min (abs ((_a - _x + 540) % 360 - 180))} forEach _others;
                         if (_gap > _bestGap) then {_bestGap = _gap; _best = _a};
                     };
-                    _best + (random 20) - 10
+                    (_best + (random 20) - 10 + 360) % 360
                 };
                 _record set ["defendSector", _sector];
                 _record set ["defendSectorObj", _objective];
             };
-            _sectors set [hashValue _group, [_group, _sector]];
+            if (_band isEqualTo "") then {_band = "belt"};
+            _record set ["defendBand", _band];
+            _sectors set [hashValue _group, [_group, _sector, _band]];
+            // where it holds: its post in a large place (AIC_fnc_garrisonPost;
+            // a small place is one area, no post)
+            private _pp = [_objRec, _sector, _band] call AIC_fnc_garrisonPost;
+            if (_pp isNotEqualTo []) then {
+                _post = _pp select 0;
+                _postR = _pp select 1;
+            };
         };
+        _record set ["defendPost", _post];
+        _record set ["defendPostR", _postR];
+        // (the radius the men take their positions in: AIC_fnc_monitorOrders reads it from the record)
         // at a quiet base vehicles wait in the motor pool
         private _park = if (!_antiAir && {_threatPos isEqualTo []} && {_type in ["MOTOR", "MECH", "ARMOR"]}) then {
             [_cmd, _group, _objRec] call AIC_fnc_parkSlot
         } else {
             []
         };
-        [_group, _pos, [_radius min 200, 60] select _rear, _type, _threatPos, _rear, _park, _sector] call AIC_fnc_orderDefend
+        // elsewhere every vehicle gets a post of its own at the approaches
+        // (AIC_fnc_garrisonVehicles); trucks and anti-air stay in the rear / middle
+        private _vehPosts = [];
+        if (
+            _park isEqualTo [] && {!_rear} && {_type in ["MOTOR", "MECH", "ARMOR"]}
+            && {_objective isNotEqualTo ""} && {count _objRec > 0}
+            && {([_cmd, "garrisonVehiclePosts"] call AIC_fnc_getSetting) isEqualTo true}
+        ) then {
+            _vehPosts = [_cmd, _group, _objRec, _threatPos] call AIC_fnc_garrisonVehicles;
+        };
+        _record set ["vehPosts", _vehPosts isNotEqualTo []];
+        [_group, _pos, [_radius min 200, 60] select _rear, _type, _threatPos, _rear, _park, _sector, _post, _vehPosts] call AIC_fnc_orderDefend
     };
     case "PATROL": {
         // armed cars also drive to the next owned objective
