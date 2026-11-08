@@ -366,11 +366,36 @@ if (_useMorale) then {
 } forEach _groups;
 
 // --- broken groups fall back to their rally point (after the loop: issueOrder
-// may wake groups and change records)
+// may wake groups and change records); with "recoverBroken" to a rally spot
+// about a kilometre away, from where AIC_fnc_recoverCycle takes them home
+private _recover = ([_commander, "recoverBroken"] call AIC_fnc_getSetting) isEqualTo true;
 {
     _x params ["_grp", "_record"];
     if (isNull _grp || {({alive _x} count (units _grp)) == 0}) then {continue};
     private _threat = [_commander, getPosATL (leader _grp), AIC_THREAT_RADIUS] call AIC_fnc_nearestThreat;
+    if (_recover) then {
+        private _rs = [_commander, _grp, _threat] call AIC_fnc_rallySpot;
+        if (_rs isEqualTo []) then {continue};
+        _rs params ["_spot", "_base", "_place"];
+        if (_threat isNotEqualTo []) then {_grp setVariable ["AIC_retreatFrom", [_threat, time]]};
+        if ([_commander, _grp, "RETREAT", _spot, "", true] call AIC_fnc_issueOrder) then {
+            [_grp, _record, 0.6] call _fnc_setFleeing;
+            _record set ["recover", createHashMapFromArray [["phase", "RALLY"], ["spot", _spot], ["base", _base], ["place", _place], ["time", time]]];
+            if (_base isNotEqualTo "" && {_base isNotEqualTo (_record getOrDefault ["home", ""])}) then {
+                _record set ["home", _base];
+                _record set ["homeTime", time];
+            };
+            ["updateGroups: %1 group %2 broke (morale %3), falls back to %4 %5 m away%6", [
+                _commander getOrDefault ["side", sideUnknown], groupId _grp,
+                (round ((_record getOrDefault ["morale", 0]) * 100)) / 100,
+                [mapGridPosition _spot, format ["'%1'", _place]] select (_place isNotEqualTo ""),
+                round (_spot distance2D (leader _grp)),
+                ["", format [", home '%1'", _base]] select (_base isNotEqualTo "")
+            ]] call AIC_fnc_log;
+        };
+        _grp setVariable ["AIC_retreatFrom", nil];
+        continue;
+    };
     private _rally = [_commander, _grp, _threat] call AIC_fnc_rallyPoint;
     if (_rally isEqualTo []) then {continue};
     // the threat for AIC_fnc_orderRetreat's first leg (issueOrder passes three params)

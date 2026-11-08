@@ -221,6 +221,51 @@ private _fnc_lzPos = {
     [_p, _q]
 };
 
+// the landing zones the other helicopter rides use right now (their pickup
+// while they still load, their drop while they ride or fly home): this ride's
+// LZs keep AIC_LZ_SEPARATION from them, so two helicopters never land on top
+// of each other
+private _busyLz = [];
+if (_isHeli) then {
+    {
+        private _r = _y;
+        if (!(_r isEqualType createHashMap) || { (_r getOrDefault ["group", grpNull]) isEqualTo _tGroup }) then { continue };
+        if ((_r getOrDefault ["type", ""]) isNotEqualTo "HELI") then { continue };
+        // one standing on the ground anywhere (parked, landed) takes its spot
+        private _rv = objectParent (leader (_r getOrDefault ["group", grpNull]));
+        if (!isNull _rv && { alive _rv } && { [_rv] call AIC_fnc_isLanded }) then { _busyLz pushBack (getPosATL _rv); };
+        if ((_r getOrDefault ["task", ""]) isNotEqualTo "TRANSPORT") then { continue };
+        private _d = _r getOrDefault ["dropPos", []];
+        if (_d isEqualType [] && { count _d >= 2 }) then { _busyLz pushBack _d; };
+        private _c = _r getOrDefault ["transport", grpNull];
+        private _cr = if (_c isEqualType grpNull && { !isNull _c }) then { _groupData getOrDefault [hashValue _c, createHashMap] } else { createHashMap };
+        if ((_cr getOrDefault ["transportPhase", ""]) isEqualTo "PICKUP") then {
+            private _p = _r getOrDefault ["pickupPos", []];
+            if (_p isEqualType [] && { count _p >= 2 }) then { _busyLz pushBack _p; };
+        };
+    } forEach _groupData;
+};
+// (near: a position the spot must stay within maxFrom m of, the squad that
+// walks to it; keepFrom: a position the spot may not come nearer to, the
+// target a stand-off was kept from)
+private _fnc_apart = {
+    params ["_p", ["_near", []], ["_maxFrom", 0], ["_keepFrom", []]];
+    if (_busyLz isEqualTo [] || { (_busyLz findIf { (_x distance2D _p) < AIC_LZ_SEPARATION }) < 0 }) exitWith { _p };
+    // a flat, dry spot a little farther out, the first free bearing
+    private _found = [];
+    private _dKeep = if (_keepFrom isEqualTo []) then { 0 } else { _p distance2D _keepFrom };
+    {
+        private _q = _p getPos [AIC_LZ_SEPARATION + 40, _x];
+        _q = [_q select 0, _q select 1, 0];
+        if (!surfaceIsWater _q && { (_busyLz findIf { (_x distance2D _q) < AIC_LZ_SEPARATION }) < 0 }
+            && { _near isEqualTo [] || { (_q distance2D _near) <= _maxFrom } }
+            && { _keepFrom isEqualTo [] || { (_q distance2D _keepFrom) >= _dKeep } }
+            && { (_q isFlatEmpty [12, -1, 0.3, 12, 0, false]) isNotEqualTo [] }) exitWith { _found = _q; };
+    } forEach [0, 90, 180, 270, 45, 135, 225, 315];
+    if (_found isEqualTo []) then { _found = _p; };
+    _found
+};
+
 // old helipads of a previous transport order
 [_tRec] call AIC_fnc_deleteHelipads;
 [_cRec] call AIC_fnc_deleteHelipads;
@@ -238,7 +283,7 @@ if (_isPlane) then {
     private _vp = getPosATL _veh;
     _pickupPos = [_vp select 0, _vp select 1, 0];
 } else { if (_isHeli) then {
-    _pickupPos = ([_cPos, 150] call _fnc_lzPos) select 0;
+    _pickupPos = [([_cPos, 150] call _fnc_lzPos) select 0, _cPos, AIC_LZ_PICKUP_MAX] call _fnc_apart;
     _pickupLz = createVehicle ["Land_HelipadEmpty_F", _pickupPos, [], 0, "CAN_COLLIDE"];
 } else {
     _pickupPos = [_cPos, 80] call AIC_fnc_roadPos;
@@ -320,6 +365,8 @@ if (_isPlane) then {
         _insert = "HOT";
     };
     if (_insert isNotEqualTo "ROPE") then {
+        // apart from the other rides' LZs (and no nearer the target than the stand-off)
+        _dropPos = [[_dropPos select 0, _dropPos select 1, 0], [], 0, _dest] call _fnc_apart;
         _lz = createVehicle ["Land_HelipadEmpty_F", _dropPos, [], 0, "CAN_COLLIDE"];
     };
 } else {
@@ -350,7 +397,12 @@ private _tBeh = if (_isHeli || _isPlane) then { "CARELESS" } else { "AWARE" };
 [_tGroup, "setCombatMode", "YELLOW"] call AIC_fnc_do;
 [_tGroup, "setSpeedMode", "FULL"] call AIC_fnc_do;
 [_tGroup, !_isHeli && { !_isPlane }] call AIC_fnc_setMarch;
-if (_isHeli) then { [_veh, "land", "NONE"] call AIC_fnc_do; };
+// (a helicopter that landed at the end of its last ride sits with its engine
+// off: the AI pilot does not start it for the new waypoints by himself)
+if (_isHeli) then {
+    [_veh, "land", "NONE"] call AIC_fnc_do;
+    if (!isEngineOn _veh) then { [_veh, "engineOn", true] call AIC_fnc_do; };
+};
 
 // own members on foot climb back in
 {
@@ -376,8 +428,9 @@ if (!_isPlane) then {
     // test is met by the first men in: a helicopter would lift off with half
     // of them still outside). Vehicle variable "AIC_loadCargo" (public: the
     // condition runs where the transport group is local)
-    _veh setVariable ["AIC_loadCargo", _cGroup, true];
-    _wpLoad setWaypointStatements ["private _v = vehicle this; private _g = _v getVariable ['AIC_loadCargo', grpNull]; isNull _g || {((units _g) findIf {alive _x && {(vehicle _x) != _v}}) < 0}", ""];
+    // (an array: the riders AIC_fnc_joinRide adds must be aboard too)
+    _veh setVariable ["AIC_loadCargo", [_cGroup], true];
+    _wpLoad setWaypointStatements ["private _v = vehicle this; ((_v getVariable ['AIC_loadCargo', []]) findIf {!isNull _x && {((units _x) findIf {alive _x && {(vehicle _x) != _v}}) >= 0}}) < 0", ""];
 
     // around what is known to be hostile on the way
     if (_isHeli) then {
@@ -431,6 +484,7 @@ _tRec set ["taskPos", +_dropPos];
 _tRec set ["taskTime", time];
 _tRec set ["objective", ""];
 _tRec set ["transport", _cGroup];
+_tRec set ["riders", []];
 _tRec set ["final", createHashMap];
 _tRec set ["lz", _lz];
 _tRec set ["pickupLz", _pickupLz];
