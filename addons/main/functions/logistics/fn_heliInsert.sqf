@@ -234,6 +234,8 @@ if (!isServer || { isNull _veh } || { count _cRec == 0 } || { count _tRec == 0 }
         if !(call _fnc_valid) exitWith {};
         if ((time - _t0) > 3600) exitWith {};
         private _units = (units _cGroup) select { alive _x };
+        // the riders (AIC_fnc_joinRide) get out with the first squad
+        { if (_x isEqualType grpNull && { !isNull _x }) then { _units append ((units _x) select { alive _x }); }; } forEach (_tRec getOrDefault ["riders", []]);
         if (_units isEqualTo []) exitWith {};
         private _aboard = { (objectParent _x) isEqualTo _veh } count _units;
         private _vPos = getPosATL _veh;

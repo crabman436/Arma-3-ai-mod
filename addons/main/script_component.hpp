@@ -94,6 +94,37 @@
 #define AIC_VEHPOST_SLOW 120
 #define AIC_VEHPOST_SLOW_KMH 20
 #define AIC_VEHPOST_HOLD 20
+
+// m between the landing zones of two helicopter rides (orderTransport), and the
+// height (m) below which a helicopter on another ride's LZ holds this one's landing
+#define AIC_LZ_SEPARATION 80
+#define AIC_LZ_HOLD_ALT 25
+// m: a pickup LZ kept apart from another ride's stays within this of the squad
+#define AIC_LZ_PICKUP_MAX 300
+// riders (joinRide): a squad joins a helicopter ride still loading within this
+// (m) of it, for a destination within this (m) of the ride's; the ride waits
+// this long (s) for its riders once the first squad is aboard
+#define AIC_RIDE_JOIN_RANGE 300
+#define AIC_RIDE_JOIN_DEST 800
+#define AIC_RIDE_JOIN_WAIT 120
+// s into a ride after which a helicopter still on the ground far from the drop
+// is started and sent on again (transportCycle)
+#define AIC_HELI_KICK_AFTER 30
+// kicks before the ride is given up (the helicopter will not take off)
+#define AIC_HELI_KICK_MAX 3
+
+// ---------------------------------------------------------------- recovery of broken groups (rallySpot / recoverCycle)
+// m: a broken group's rally spot lies this far from the threat; a held place
+// behind within this is the spot instead; no known threat within this of a spot
+#define AIC_RALLY_SPOT_DIST 1000
+#define AIC_RALLY_SPOT_NEAR 1500
+#define AIC_RALLY_SPOT_CLEAR 600
+// m: at the spot within this; s it gathers there before a ride is asked
+// for, between two asks, and before it walks home instead
+#define AIC_RECOVER_ARRIVE 150
+#define AIC_RECOVER_WAIT 120
+#define AIC_RECOVER_RETRY 120
+#define AIC_RECOVER_TIMEOUT 1800
 #define AIC_SENTRY_RANGE 700
 #define AIC_ALARM_TIME 300
 #define AIC_ALARM_REPEAT 60

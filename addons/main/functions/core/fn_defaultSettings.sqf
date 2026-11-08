@@ -109,5 +109,14 @@ createHashMapFromArray [
     ["useMorale", true],
     ["orderDelay", 1.0],
     ["nightAssaults", true],
-    ["useQRF", true]
+    ["useQRF", true],
+    // a base keeps a quick-reaction force only while this many motorised /
+    // mechanised groups are at home there: a lone APC joins the attacks instead
+    ["qrfMinVehicleGroups", 2],
+    // a broken group gathers a kilometre off, is picked up and taken home
+    // (AIC_fnc_recoverCycle), and its dead are replaced at the base
+    // (AIC_fnc_refillGroup): at most this many men per base an hour
+    ["recoverBroken", true],
+    ["replaceLosses", true],
+    ["replaceLossesPerHour", 24]
 ]

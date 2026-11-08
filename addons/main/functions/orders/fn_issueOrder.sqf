@@ -350,6 +350,8 @@ if (_type == "INF" && {_task in ["ATTACK", "REINFORCE", "DEFEND"]} && {_curTask 
         && {([_cmd, getPosATL (leader _group), AIC_PICKUP_DANGER_RADIUS] call AIC_fnc_nearestThreat) isEqualTo []}) then {
         // far, or over the water, between two held airfields: by plane (AIC_fnc_airliftFor)
         if ([_cmd, _group, _task, _pos, _objective] call AIC_fnc_airliftFor) exitWith { _task = "TRANSPORTED"; };
+        // a helicopter ride another squad is just boarding near by, going the same way (AIC_fnc_joinRide)
+        if ([_cmd, _group, _task, _pos, _objective] call AIC_fnc_joinRide) exitWith { _task = "TRANSPORTED"; };
         private _tGrp = [_cmd, _group, _pos] call AIC_fnc_findTransport;
         // too big for any one vehicle: teams, if each gets a vehicle of its own
         if (isNull _tGrp && {[_cmd, _group, _pos, _task, _objective] call AIC_fnc_splitForRide}) then {

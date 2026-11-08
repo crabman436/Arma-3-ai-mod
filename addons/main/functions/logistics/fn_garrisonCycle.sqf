@@ -277,7 +277,8 @@ private _sentHome = 0;
 {
     _x params ["_grp", "_rec"];
     private _task = _rec getOrDefault ["task", "IDLE"];
-    if (_task in _settleTasks) then {
+    // a broken group gathering and being taken home (AIC_fnc_recoverCycle) is sent nowhere
+    if (_task in _settleTasks && { count (_rec getOrDefault ["recover", createHashMap]) == 0 }) then {
         private _home = _rec getOrDefault ["home", ""];
         if !(_home isEqualType "") then { _home = ""; };
         private _leaderPos = getPosATL leader _grp;
@@ -396,6 +397,27 @@ private _fnc_broken = {
     private _until = _rec getOrDefault ["brokenUntil", -1];
     _useMorale && { _until isEqualType 0 } && { _until > time }
 };
+// a base keeps a QRF only while it has at least "qrfMinVehicleGroups"
+// motorised / mechanised groups of its own there (a lone APC is not held
+// back from the attacks for it)
+private _qrfMin = round (([_cmd, "qrfMinVehicleGroups"] call AIC_fnc_getSetting) max 1);
+private _fnc_vehGroupsAt = {
+    params ["_baseId"];
+    private _baseObj = _objById get _baseId;
+    {
+        _x params ["_g", "_r"];
+        (_r getOrDefault ["type", ""]) in ["MOTOR", "MECH"]
+        && { (_r getOrDefault ["home", ""]) isEqualTo _baseId }
+        && { (_r getOrDefault ["task", "IDLE"]) in (_settleTasks + ["REINFORCE"]) }
+        && { !((_r getOrDefault ["transportOnly", false]) isEqualTo true) }
+        && { !((_r getOrDefault ["antiAir", false]) isEqualTo true) }
+        // fit for it: not broken, not shot up (the same bar as the naming below)
+        && { (_r getOrDefault ["strength", 1]) >= 0.7 }
+        && { !([_r] call _fnc_broken) }
+        && { !_useMorale || { (_r getOrDefault ["morale", 1]) >= AIC_MORALE_SHAKY } }
+        && { (_r getOrDefault ["role", ""]) isEqualTo "QRF" || { [_g, _baseObj] call _fnc_atObjective } }
+    } count _entries
+};
 // keep or clear the roles handed out earlier
 {
     _x params ["_grp", "_rec"];
@@ -407,6 +429,7 @@ private _fnc_broken = {
         case (!_useQRF): { "quick-reaction forces are off" };
         case (!(_base in _baseIds)): { "its base is no longer held" };
         case (_base in _qrfHeld): { "the base has one already" };
+        case (([_base] call _fnc_vehGroupsAt) < _qrfMin): { format ["the base has fewer than %1 vehicle groups, it fights with the rest", _qrfMin] };
         case ((_rec getOrDefault ["home", ""]) isNotEqualTo _base): { "it has a new home" };
         case ([_rec] call _fnc_broken): { "it is broken" };
         case (!(_task in ["IDLE", "DEFEND", "PATROL", "REINFORCE"])): { format ["it is on %1", _task] };
@@ -426,6 +449,7 @@ if (_useQRF) then {
     {
         private _baseId = _x;
         if (_baseId in _qrfHeld) then { continue };
+        if (([_baseId] call _fnc_vehGroupsAt) < _qrfMin) then { continue };
         private _baseObj = _objById get _baseId;
         private _best = [];
         private _bestPower = -1;
@@ -504,6 +528,8 @@ if (_maxMoves > 0 && { _deficits isNotEqualTo [] }) then {
         && { !((hashValue _grp) in _queued) }
         && { (_rec getOrDefault ["task", "IDLE"]) in _settleTasks }
         && { (_rec getOrDefault ["strength", 1]) > _threshold }
+        // a broken group gathering or on its way home (AIC_fnc_recoverCycle)
+        && { count (_rec getOrDefault ["recover", createHashMap]) == 0 }
         // transfer cooldown: a group that changed home recently stays put
         && { (time - (_rec getOrDefault ["homeTime", -1e6])) >= _COOLDOWN }
         // settled: a home-less group or one physically at its home
@@ -608,6 +634,7 @@ private _mix = createHashMap;
     if (
         (_rec getOrDefault ["task", "IDLE"]) isEqualTo "IDLE"
         && { (_rec getOrDefault ["type", ""]) in _donorTypes }
+        && { count (_rec getOrDefault ["recover", createHashMap]) == 0 }
         && { _home in _homeIds }
         && { [_grp, _objById get _home] call _fnc_atObjective }
     ) then {

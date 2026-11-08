@@ -148,6 +148,15 @@ private _records = (values _groupData) select { _x isEqualType createHashMap };
 // (an airlift is flown by AIC_fnc_airliftCycle)
 private _cargoRecs = _records select { (_x getOrDefault ["task", ""]) isEqualTo "TRANSPORTED" && { !("airlift" in _x) } };
 private _transportRecs = _records select { (_x getOrDefault ["task", ""]) isEqualTo "TRANSPORT" && { !("airlift" in _x) } };
+// the transport helicopters out on rides or flying home: nobody lands on top of one
+private _heliVehs = [];
+{
+    if ((_x getOrDefault ["type", ""]) isEqualTo "HELI" && { (_x getOrDefault ["task", ""]) in ["TRANSPORT", "RTB"] }) then {
+        private _v = _x getOrDefault ["transportVeh", objNull];
+        if (!(_v isEqualType objNull) || { isNull _v }) then { _v = objectParent (leader (_x getOrDefault ["group", grpNull])); };
+        if (!isNull _v && { alive _v }) then { _heliVehs pushBackUnique _v; };
+    };
+} forEach _records;
 if (_cargoRecs isEqualTo [] && { _transportRecs isEqualTo [] }) exitWith { 0 };
 
 private _PICKUP_STALL = 240;
@@ -264,9 +273,27 @@ private _fnc_teamRiding = {
 // land on the ride's own helipad when there is one (exact), else near here
 private _fnc_landAt = {
     params ["_veh", "_pad", "_mode"];
+    // another transport helicopter down (or coming down) on this LZ: this one
+    // keeps hovering until it has gone (the landing is asked for again next cycle)
+    private _lzPos = if (_pad isEqualType objNull && { !isNull _pad }) then { getPosATL _pad } else { getPosATL _veh };
+    // (two coming down near each other's pads: the one with the lower group
+    // hash lands first, the other holds; a landed one always has the right of way)
+    private _mine = hashValue (group (driver _veh));
+    private _other = _heliVehs findIf {
+        _x isNotEqualTo _veh && { alive _x } && { (_x distance2D _lzPos) < AIC_LZ_SEPARATION }
+        && { [_x] call AIC_fnc_isLanded || { ((getPosATL _x) select 2) < AIC_LZ_HOLD_ALT && { (hashValue (group (driver _x))) < _mine } } }
+    };
+    if (_other >= 0) exitWith {
+        if ((time - (_veh getVariable ["AIC_landHoldLog", -1e6])) > 60) then {
+            _veh setVariable ["AIC_landHoldLog", time];
+            ["%1: %2 holds off its landing, %3 is on the LZ", [_side, groupId (group (driver _veh)), typeOf (_heliVehs select _other)]] call AIC_fnc_log;
+        };
+        false
+    };
     if (!(_pad isEqualType objNull) || { isNull _pad } || { !(_veh landAt [_pad, _mode]) }) then {
         [_veh, "land", _mode] call AIC_fnc_do;
     };
+    true
 };
 
 // seats for cargo units outside the vehicle: cargo seats first, then FFV
@@ -343,7 +370,8 @@ private _fnc_boardFallback = {
     if !(_final isEqualType createHashMap) then { _final = createHashMap; };
     private _finalPos = _final getOrDefault ["pos", _rec getOrDefault ["taskPos", []]];
     if !([_finalPos] call _fnc_validPos) then { _finalPos = _lpos; };
-    private _dropPos = _rec getOrDefault ["dropPos", []];
+    private _isRider = (_rec getOrDefault ["rider", false]) isEqualTo true;
+    private _dropPos = if (_isRider) then { _tRec getOrDefault ["dropPos", []] } else { _rec getOrDefault ["dropPos", []] };
     if !([_dropPos] call _fnc_validPos) then { _dropPos = _finalPos; };
     private _pickupPos = _rec getOrDefault ["pickupPos", []];
     if !([_pickupPos] call _fnc_validPos) then { _pickupPos = _lpos; };
@@ -393,7 +421,7 @@ private _fnc_boardFallback = {
         case (!alive _drv): { "driver dead" };
         case ((group _drv) isNotEqualTo _tGroup): { "driver left the group" };
         case ((_tRec getOrDefault ["task", ""]) isNotEqualTo "TRANSPORT"): { "transport has another task" };
-        case ((_tRec getOrDefault ["transport", grpNull]) isNotEqualTo _grp): { "transport has other cargo" };
+        case ((_tRec getOrDefault ["transport", grpNull]) isNotEqualTo _grp && { !(_grp in (_tRec getOrDefault ["riders", []])) }): { "transport has other cargo" };
         default { "" };
     };
     if (_lost isNotEqualTo "") then {
@@ -445,6 +473,53 @@ private _fnc_boardFallback = {
     if (_phase isEqualTo "PICKUP") then {
         // own scope: the exitWith branches below must still reach "continue"
         call {
+            // a rider (AIC_fnc_joinRide) aboard rides; one too late for a ride that
+            // has gone is left with its order; otherwise it boards like the first squad
+            // a rider rides once it and the first squad are aboard (the first
+            // squad's step below holds the ride until then); one whose ride has
+            // gone without it, or whose first squad gave up, is put out with its order
+            private _riderRides = false;
+            private _riderMissed = false;
+            if (_isRider) then {
+                private _first = _groupData getOrDefault [hashValue (_tRec getOrDefault ["transport", grpNull]), createHashMap];
+                private _firstPhase = _first getOrDefault ["transportPhase", ""];
+                if (_aboard == count _units && { _firstPhase isEqualTo "RIDE" }) then { _riderRides = true; };
+                if (!_riderRides && { _firstPhase isNotEqualTo "PICKUP" } && { (time - (_first getOrDefault ["phaseTime", time])) > 5 }) then { _riderMissed = true; };
+            };
+            if (_riderRides) exitWith {
+                _rec set ["transportPhase", "RIDE"];
+                _rec set ["phaseTime", time];
+                _rec set ["nearDropTime", -1];
+                _rec set ["landOrderTime", -1];
+            };
+            if (_riderMissed) exitWith {
+                [_grp, _veh] call _fnc_getOut;
+                _finals pushBack [_grp, _rec, format ["missed its ride (%1 of %2 aboard)", _aboard, count _units], true];
+            };
+            // the first squad aboard waits for riders not aboard yet, AIC_RIDE_JOIN_WAIT s at most
+            private _waitRiders = false;
+            if (!_isRider && { _aboard == count _units }) then {
+                private _riders = (_tRec getOrDefault ["riders", []]) select {
+                    _x isEqualType grpNull && { !isNull _x } && {
+                        private _rr = _groupData getOrDefault [hashValue _x, createHashMap];
+                        private _rv = _veh;
+                        (_rr getOrDefault ["task", ""]) isEqualTo "TRANSPORTED" && { (_rr getOrDefault ["transport", grpNull]) isEqualTo _tGroup }
+                        && { ((units _x) findIf { alive _x && { !((objectParent _x) isEqualTo _rv) } }) >= 0 }
+                    }
+                };
+                if (_riders isNotEqualTo []) then {
+                    if ((_rec getOrDefault ["allAboardTime", -1]) < 0) then { _rec set ["allAboardTime", time]; };
+                    if ((time - (_rec get "allAboardTime")) < AIC_RIDE_JOIN_WAIT) then {
+                        _waitRiders = true;
+                    } else {
+                        // riders not aboard are left behind (their own loop ends their ride)
+                        _tRec set ["riders", (_tRec getOrDefault ["riders", []]) - _riders];
+                        _veh setVariable ["AIC_loadCargo", (_veh getVariable ["AIC_loadCargo", []]) - _riders, true];
+                        ["%1: %2 leaves without %3 rider squad(s) still boarding", [_side, groupId _tGroup, count _riders]] call AIC_fnc_log;
+                    };
+                };
+            };
+            if (_waitRiders) exitWith {};
             if (_aboard == count _units) exitWith {
                 _rec set ["transportPhase", "RIDE"];
                 _veh setVariable ["AIC_loadCargo", nil, true];
@@ -455,7 +530,11 @@ private _fnc_boardFallback = {
                 if (_pad isEqualType objNull && { !isNull _pad }) then { deleteVehicle _pad; };
                 _tRec set ["pickupLz", objNull];
                 _rec set ["pickupLz", objNull];
-                if (_isHeli) then { [_veh, "land", "NONE"] call AIC_fnc_do; };
+                // (and the engine, should it have been shut down on the pad)
+                if (_isHeli) then {
+                    [_veh, "land", "NONE"] call AIC_fnc_do;
+                    if (!isEngineOn _veh) then { [_veh, "engineOn", true] call AIC_fnc_do; };
+                };
                 // a plane takes off now: run-in, drop zone, beyond
                 if (_isPlane) then {
                     [_tGroup] call AIC_fnc_clearWaypoints;
@@ -550,9 +629,13 @@ private _fnc_boardFallback = {
             if (_isHeli && { !([_veh] call AIC_fnc_isLanded) } && { (_vPos distance2D _pickupPos) < 300 || { _near } }) then {
                 if ((_rec getOrDefault ["hoverTime", -1]) < 0) then { _rec set ["hoverTime", time]; };
                 if ((time - (_rec get "hoverTime")) > 45 && { (time - (_rec getOrDefault ["landOrderTime", -1e6])) > 60 }) then {
-                    [_veh, _tRec getOrDefault ["pickupLz", objNull], "GET IN"] call _fnc_landAt;
-                    _rec set ["landOrderTime", time];
-                    ["%1: %2 ordered to land for pickup of group %3", [_side, groupId _tGroup, groupId _grp]] call AIC_fnc_log;
+                    if ([_veh, _tRec getOrDefault ["pickupLz", objNull], "GET IN"] call _fnc_landAt) then {
+                        _rec set ["landOrderTime", time];
+                        ["%1: %2 ordered to land for pickup of group %3", [_side, groupId _tGroup, groupId _grp]] call AIC_fnc_log;
+                    } else {
+                        // held for another helicopter on the LZ: not the LZ's fault
+                        _rec set ["hoverTime", time];
+                    };
                 };
                 // still airborne long after the landing order: the LZ is unusable, move it
                 if ((time - (_rec get "hoverTime")) > 165 && { [_rec, _tRec, _tGroup, _veh, "pickup"] call _fnc_relocateLz }) then {
@@ -674,6 +757,43 @@ private _fnc_boardFallback = {
         continue;
     };
 
+    // a helicopter still on the ground long after everybody boarded (its
+    // engine shut down on the pad after the last ride, a pilot that lost his
+    // waypoint): started and pointed at the drop again, once a minute
+    if (_isHeli && { !_isRider } && { _phaseAge > AIC_HELI_KICK_AFTER } && { [_veh] call AIC_fnc_isLanded } && { (_vPos distance2D _dropPos) > 500 }
+        && { (time - (_rec getOrDefault ["kickTime", -1e6])) > 60 }) then {
+        private _kicks = (_rec getOrDefault ["kickCount", 0]) + 1;
+        _rec set ["kickTime", time];
+        _rec set ["kickCount", _kicks];
+        // one that cannot be got off the ground (no fuel, no engine): the squad walks
+        if (_kicks > AIC_HELI_KICK_MAX) then {
+            [_grp, _veh] call _fnc_getOut;
+            _finals pushBack [_grp, _rec, format ["transport would not take off (%1 tries, fuel %2)", _kicks - 1, (fuel _veh) toFixed 2], true];
+            continue;
+        };
+        [_veh, "land", "NONE"] call AIC_fnc_do;
+        [_veh, "engineOn", true] call AIC_fnc_do;
+        // on from the LOAD (through the detour, if the ride has one)
+        private _iNext = (_tRec getOrDefault ["wpLoad", -2]) + 1;
+        if (_iNext > 0 && { _iNext < count (waypoints _tGroup) }) then {
+            [_tGroup, "setCurrentWaypoint", [_tGroup, _iNext]] call AIC_fnc_do;
+        };
+        ["%1: %2 sits on the ground %3 s into the ride of group %4 (engine %5): started and sent on (%6)", [
+            _side, groupId _tGroup, round _phaseAge, groupId _grp, isEngineOn _veh, _kicks
+        ]] call AIC_fnc_log;
+    };
+
+    // a rider gets out where the ride lands (the first squad's loop lands it,
+    // moves the LZ, calls the fast landing); nothing of that is its business
+    if (_isRider) then {
+        private _dDropR = _vPos distance2D _dropPos;
+        private _wpsDoneR = (currentWaypoint _tGroup) >= (count waypoints _tGroup);
+        if ((_dDropR < 300 || { _wpsDoneR }) && { [_veh] call AIC_fnc_isLanded }) then {
+            [_grp, _veh] call _fnc_getOut;
+        };
+        continue;
+    };
+
     // a transport plane: the stick jumps over the drop zone
     if (_isPlane) then {
         private _dz = _vPos distance2D _dropPos;
@@ -765,9 +885,13 @@ private _fnc_boardFallback = {
                 [_grp, _veh] call _fnc_getOut;
             } else {
                 if (_nearAge > 20 && { (time - (_rec getOrDefault ["landOrderTime", -1e6])) > 45 }) then {
-                    [_veh, _tRec getOrDefault ["lz", objNull], "GET OUT"] call _fnc_landAt;
-                    _rec set ["landOrderTime", time];
-                    ["%1: %2 ordered to land at the LZ for group %3", [_side, groupId _tGroup, groupId _grp]] call AIC_fnc_log;
+                    if ([_veh, _tRec getOrDefault ["lz", objNull], "GET OUT"] call _fnc_landAt) then {
+                        _rec set ["landOrderTime", time];
+                        ["%1: %2 ordered to land at the LZ for group %3", [_side, groupId _tGroup, groupId _grp]] call AIC_fnc_log;
+                    } else {
+                        // held for another helicopter on the LZ: not the LZ's fault
+                        _rec set ["nearDropTime", time];
+                    };
                 };
                 // hovering on and on over a drop it cannot land at: they jump, high enough
                 if (_nearAge > AIC_HELI_UNLOAD_MAX && { ((getPosATL _veh) select 2) >= AIC_PARA_MIN_HEIGHT * 0.5 }) then {
@@ -799,8 +923,7 @@ private _fnc_boardFallback = {
     };
     if (_wpsDone && { _isHeli } && { !_isRope } && { !([_veh] call AIC_fnc_isLanded) }
         && { (time - (_rec getOrDefault ["landOrderTime", -1e6])) > 45 }) then {
-        [_veh, _tRec getOrDefault ["lz", objNull], "GET OUT"] call _fnc_landAt;
-        _rec set ["landOrderTime", time];
+        if ([_veh, _tRec getOrDefault ["lz", objNull], "GET OUT"] call _fnc_landAt) then { _rec set ["landOrderTime", time]; };
         continue;
     };
 
@@ -877,7 +1000,16 @@ private _fnc_objPos = {
     private _paired = _cargoUnits isNotEqualTo []
         && { (_cRec getOrDefault ["task", ""]) isEqualTo "TRANSPORTED" }
         && { (_cRec getOrDefault ["transport", grpNull]) isEqualTo _grp };
+    // riders (AIC_fnc_joinRide) still on the ride keep the helicopter busy too
+    private _riders = (_rec getOrDefault ["riders", []]) select { _x isEqualType grpNull && { !isNull _x } };
+    {
+        private _rr = _groupData getOrDefault [hashValue _x, createHashMap];
+        if ((_rr getOrDefault ["task", ""]) isEqualTo "TRANSPORTED" && { (_rr getOrDefault ["transport", grpNull]) isEqualTo _grp }
+            && { ((units _x) findIf { alive _x }) >= 0 }) then { _paired = true; };
+        _cargoUnits append ((units _x) select { alive _x });
+    } forEach _riders;
     if (_paired) then { continue };
+    _rec set ["riders", []];
 
     // cargo is out or dead: anybody of it still inside?
     private _veh = _rec getOrDefault ["transportVeh", objNull];

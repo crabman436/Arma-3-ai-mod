@@ -28,6 +28,7 @@ class CfgFunctions
             class registerGroups {};
             class classifyGroup {};
             class newGroupRecord {};
+            class refillGroup {};
             class splitPassengers {};
             class splitGroup {};
             class teamCycle {};
@@ -88,6 +89,7 @@ class CfgFunctions
             class vehiclePostWatch {};
             class holdVehicle {};
             class releaseVehicle {};
+            class rallySpot {};
             class sentryWatch {};
             class alarmPos {};
             class orderAssault {};
@@ -133,6 +135,7 @@ class CfgFunctions
             class garrisonStatus {};
             class canLeaveGarrison {};
             class garrisonCycle {};
+            class recoverCycle {};
             class dismountCarrier {};
             class parkSlot {};
             class nearestBase {};
@@ -148,6 +151,7 @@ class CfgFunctions
             class freeSeats {};
             class findTransport {};
             class orderTransport {};
+            class joinRide {};
             class transportCycle {};
             class airliftFor {};
             class airliftCycle {};

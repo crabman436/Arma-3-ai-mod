@@ -218,6 +218,10 @@ change them live through `(_cmd get "settings") set [key, value]`.
 | `useRecon` | true | Before attacking an important objective with stale intel, send a small group to watch it first |
 | `nightAssaults` | true | Staged assaults on towns wait for the night when it is less than 30 minutes away |
 | `useQRF` | true | Each held base keeps its best motorised / mechanised group ready as a quick-reaction force for attacks within 5 km (needs `manageGarrisons`; see "Phased assaults, reserves and quick-reaction forces") |
+| `qrfMinVehicleGroups` | 2 | A base keeps its quick-reaction force only while at least this many motorised / mechanised groups are at home there; a lone APC or armed car joins the attacks instead |
+| `recoverBroken` | true | A broken group falls back to a rally spot about a kilometre from the threat, gathers for two minutes, and is picked up and taken home to the nearest base (see "Morale, rally points and reaction times") |
+| `replaceLosses` | true | A group back at a base after a recovery gets its dead replaced by new men of its original classes |
+| `replaceLossesPerHour` | 24 | Most men a base replaces in an hour |
 
 The Eden module sets Side, Aggression, LoopInterval, ReplanOnContact, UseArtillery, UseAir,
 AutoObjectives, DebugMarkers, ReportToPlayers, ManageDynSim, ManageGarrisons,
@@ -284,6 +288,21 @@ _myGroup setVariable ["AIC_noDynSim", true];
 
 AIC then never parks or wakes that group, and `removeCommander` leaves its
 setting alone. The general still commands it.
+
+### Several squads per helicopter
+
+A squad ordered somewhere a helicopter ride is just being set up for, from
+near the same pickup to near the same place, joins that ride instead of
+waiting for a vehicle of its own, as long as the helicopter has the seats:
+a Huron leaves with two squads, not one squad and eight empty seats. The
+helicopter waits up to two minutes for its riders once the first squad is
+aboard, sets everybody down at the same LZ, and goes home once the last
+squad is out. Fast-rope rides take no riders.
+
+Two helicopters never land on the same spot: a ride's pickup and drop LZs
+keep 80 m from the LZs of the other rides under way, and a helicopter whose
+LZ another transport helicopter is just landing on or sitting on holds its
+landing until that one has gone.
 
 ### Bases and garrisons
 
@@ -933,6 +952,20 @@ left of it counts as a full squad again, so its morale can recover and it
 returns to attack duty. Only infantry and ground vehicle groups that can
 break have their fleeing set; aircraft, guns and transport crews keep the
 mission maker's setting.
+
+**Recovery** (`recoverBroken`). A broken group does not just run. It falls
+back to a **rally spot**: the nearest held place behind it if one is within
+1.5 km, else a spot of its own about a kilometre from the threat, in cover
+(forest, trees, high ground) with no known enemy within 600 m. There it
+gathers for two minutes, the men in whatever cover is around. Then the
+commander sends a vehicle for it, a helicopter or a car or truck from the
+nearest base, any distance, and the squad rides home to that base; with no
+vehicle free it asks again every two minutes and walks after half an hour.
+Back at the base its dead are **replaced** (`replaceLosses`): new men of the
+classes it was registered with join it, up to its original size, at most
+`replaceLossesPerHour` men per base an hour and never while an enemy is
+within 1.5 km of the base. From there the garrison system has it again.
+A group given another job on the way is left to it.
 
 **Rally points.** A group that falls back goes to the nearest objective or
 base its side holds that is not under threat and lies behind it, never

@@ -106,6 +106,7 @@ private _fnc_planInf = {
 // 9. logistics: garrisons between owned objectives / bases, then transports
 [_cmd] call AIC_fnc_garrisonCycle; AIC_PROF("garrisonCycle");
 [_cmd] call AIC_fnc_transportCycle; AIC_PROF("transportCycle");
+[_cmd] call AIC_fnc_recoverCycle; AIC_PROF("recoverCycle");
 [_cmd] call AIC_fnc_airliftCycle; AIC_PROF("airliftCycle");
 [_cmd] call AIC_fnc_supplyCycle; AIC_PROF("supplyCycle");
 [_cmd] call AIC_fnc_fortifyCycle; AIC_PROF("fortifyCycle");

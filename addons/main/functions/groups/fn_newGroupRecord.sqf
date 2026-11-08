@@ -21,13 +21,15 @@
 
 params [["_group", grpNull, [grpNull]]];
 
-private _aliveCount = if (isNull _group) then { 0 } else { {alive _x} count (units _group) };
+private _alive = if (isNull _group) then { [] } else { (units _group) select {alive _x} };
 
 createHashMapFromArray [
     ["group", _group],
     ["type", [_group] call AIC_fnc_classifyGroup],
     ["power", [_group] call AIC_fnc_groupPower],
-    ["initialSize", _aliveCount max 1],
+    ["initialSize", (count _alive) max 1],
+    // the men it was registered with, by class: AIC_fnc_refillGroup replaces its dead from it
+    ["roster", _alive apply {typeOf _x}],
     ["strength", 1],
     ["task", "IDLE"],
     ["taskPos", []],
