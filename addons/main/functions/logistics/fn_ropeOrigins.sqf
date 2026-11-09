@@ -12,7 +12,7 @@
         helicopter (skids, sponsons, the hull); a blocked point is moved
         outwards in 0.25 m steps (up to 1.5 m) or dropped (a known point is
         kept as it is). The result is
-        cached per vehicle class (missionNamespace "AIC_ropeOriginCache").
+        cached per vehicle class (AIC_ns "ropeOriginCache").
         Planes, and helicopters without cargo seats, get none.
 
     Parameters:
@@ -31,7 +31,7 @@ params [["_veh", objNull, [objNull]]];
 
 if (isNull _veh || { !(_veh isKindOf "Helicopter") }) exitWith { [] };
 private _cls = typeOf _veh;
-private _cache = missionNamespace getVariable ["AIC_ropeOriginCache", createHashMap];
+private _cache = AIC_ns getOrDefault ["ropeOriginCache", createHashMap];
 if (_cls in _cache) exitWith { +(_cache get _cls) };
 
 private _cfg = configOf _veh;
@@ -39,7 +39,7 @@ private _seats = getNumber (_cfg >> "transportSoldier");
 // (cargo seats, or FFV / bench seats, which are turrets: a squad rides in either)
 if (_seats < 1 && { (fullCrew [_veh, "cargo", true]) isEqualTo [] } && { ((fullCrew [_veh, "turret", true]) findIf { (_x param [4, false]) isEqualTo true }) < 0 }) exitWith {
     _cache set [_cls, []];
-    missionNamespace setVariable ["AIC_ropeOriginCache", _cache];
+    AIC_ns set ["ropeOriginCache", _cache];
     []
 };
 
@@ -112,5 +112,5 @@ private _blocked = [];
 
 if (count _ok < 2) then { _ok append _blocked; };
 _cache set [_cls, _ok];
-missionNamespace setVariable ["AIC_ropeOriginCache", _cache];
+AIC_ns set ["ropeOriginCache", _cache];
 +_ok

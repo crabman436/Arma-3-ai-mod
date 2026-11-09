@@ -314,7 +314,11 @@ if (_useMorale) then {
                 _skill = _skill / (count _alive);
                 // the initial size may have been reset by a reorganisation: use what it is now
                 private _lossTenths = floor (10 * (_recentLosses getOrDefault [_key, 0]) / ((_record getOrDefault ["initialSize", _initial]) max 1));
-                private _target = _strength - ([0, 0.15] select _leaderLost) - 0.1 * _lossTenths + 0.1 * _skill;
+                // pinned down (record "lastHit" within 30 s: Hit / FiredNear /
+                // UnitKilled) weighs on a group even without a man lost
+                private _hitAt = _record getOrDefault ["lastHit", -1e6];
+                private _pinned = _hitAt isEqualType 0 && {(time - _hitAt) < 30};
+                private _target = _strength - ([0, 0.15] select _leaderLost) - 0.1 * _lossTenths + 0.1 * _skill - ([0, 0.1] select _pinned);
                 _target = (_target max 0) min 1;
 
                 private _prev = _record getOrDefault ["morale", 1];

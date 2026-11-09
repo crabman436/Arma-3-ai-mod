@@ -54,7 +54,7 @@
  *      sized down, or released and re-staffed, just because contacts
  *      expired.
  *      Required power: ATTACK AIC_ATTACK_RATIO x local threat (floor
- *      AIC_ATTACK_MIN_FORCE + 2*priority for enemy-held,
+ *      AIC_ATTACK_MIN_FORCE + 2*min(priority, 3) for enemy-held,
  *      AIC_ATTACK_MIN_FORCE otherwise), times the objective's "attackBoost"
  *      (set by AIC_fnc_assaultCycle when an assault stalls; it only raises
  *      what new staffing aims at, target key "requiredBase" is the

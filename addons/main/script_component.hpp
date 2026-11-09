@@ -682,3 +682,35 @@
 #define AIC_HC_REPORT 10
 #define AIC_HC_STALE 60
 #define AIC_HC_ROWS 80
+
+// ---------------------------------------------------------------- support by fire, smoke, illumination
+// s a contact counts as fresh for suppression; m no friendly may be from a
+// suppressed point and from the line of fire; s of GO the overwatch fires
+// on the near edge of a quiet objective; s between two bursts of the
+// watcher; s the jobs stay valid after the last refresh (AIC_fnc_suppressFor)
+#define AIC_SUPPRESS_FRESH 90
+#define AIC_SUPPRESS_SAFE 60
+#define AIC_SUPPRESS_LINE 25
+#define AIC_SUPPRESS_OPENING 90
+#define AIC_SUPPRESS_PERIOD 8
+#define AIC_SUPPRESS_HOLD 75
+// smoke: rounds a gun lays per screen point, s between two screens, s a
+// request waits for guns before it lapses; illumination: s between two
+// rounds over the same place, m of danger close for smoke (AIC_fnc_fireMission)
+#define AIC_SMOKE_ROUNDS 2
+#define AIC_SMOKE_COOLDOWN 150
+#define AIC_SMOKE_REQUEST_MAX 180
+#define AIC_ILLUM_INTERVAL 75
+#define AIC_SMOKE_DANGER 60
+// m from its attack position within which an ATTACK group is left on its lane
+// by AIC_fnc_spreadCycle
+#define AIC_CROWD_ATTACK_KEEP 400
+// degrees off the assault's axis for a support-by-fire position
+// (AIC_fnc_orderAssault): from its own line of advance the infantry would
+// mask the fire
+#define AIC_ASSAULT_SBF_OFFSET 55
+// a suppressing vehicle's turret: degrees off the point within which it
+// fires, rounds a burst (current weapon / a machine gun of the turret)
+#define AIC_SUPPRESS_AIM 3
+#define AIC_SUPPRESS_VEH_SHOTS 3
+#define AIC_SUPPRESS_VEH_SHOTS_MG 8

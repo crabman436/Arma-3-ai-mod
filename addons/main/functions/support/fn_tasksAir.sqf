@@ -82,6 +82,8 @@ if (_skill isEqualType 0 && { _skill >= 0 }) then {
 // a helicopter back from a job still has its order to land: drop it, or the
 // pilot lands at the target instead of attacking it
 if (_veh isKindOf "Helicopter") then { [_veh, "land", "NONE"] call AIC_fnc_do; };
+// landed with the engine off: the crew does not start it for the sortie by itself
+if (!isEngineOn _veh) then { [_veh, "engineOn", true] call AIC_fnc_do; };
 
 // ---------------------------------------------------------------- waypoints
 [_group] call AIC_fnc_clearWaypoints;

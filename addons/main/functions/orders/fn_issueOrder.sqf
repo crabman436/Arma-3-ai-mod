@@ -378,7 +378,12 @@ _record set ["assaultRole", ""];
 // a new order ends any landing (only AIC_fnc_transportCycle lands at an LZ)
 if (_type == "HELI") then {
     private _air = objectParent (leader _group);
-    if (!isNull _air && {_air isKindOf "Air"}) then {[_air, "land", "NONE"] call AIC_fnc_do};
+    if (!isNull _air && {_air isKindOf "Air"}) then {
+        [_air, "land", "NONE"] call AIC_fnc_do;
+        // landed with the engine off after an RTB: the AI pilot does not start
+        // it for new waypoints (as AIC_fnc_orderTransport does for rides)
+        if (_task isNotEqualTo "IDLE" && {alive _air} && {!isEngineOn _air}) then {[_air, "engineOn", true] call AIC_fnc_do};
+    };
 };
 private _ok = switch (_task) do {
     case "ATTACK": {

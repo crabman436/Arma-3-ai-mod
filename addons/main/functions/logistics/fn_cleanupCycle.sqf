@@ -59,6 +59,11 @@ if !(_queue isEqualType []) then {
 
 private _deleted = 0;
 
+// nothing is ever deleted with the limit at 0: the handlers' queue would only grow
+if (_queue isNotEqualTo [] && { _maxPerCycle <= 0 }) then {
+    _cmd set ["deadQueue", []];
+};
+
 if (_queue isNotEqualTo [] && { _maxPerCycle > 0 }) then {
     private _players = (allPlayers - (entities "HeadlessClient_F")) select { alive _x };
 

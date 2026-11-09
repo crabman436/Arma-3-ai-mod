@@ -97,9 +97,10 @@ if (_ace) then {
     [_id, _maxRopes >= 2, format ["%1 ropes hung from it", _maxRopes]] call AIC_T_check;
 };
 [_id, _tDown >= 0 && { (_tDown - _tRope) < 60 }, format ["everybody down the ropes in %1 s", round (_tDown - _tRope)]] call AIC_T_check;
-private _onGround = _men select { isNull objectParent _x && { isNull attachedTo _x } && { ((getPosATL _x) select 2) < 2 } };
+// (height over the surface under the man, a wall or a roof included: getPos, not getPosATL)
+private _onGround = _men select { isNull objectParent _x && { isNull attachedTo _x } && { ((getPos _x) select 2) < 2 } };
 [_id, count _men == 8 && { count _onGround == 8 },
-    format ["all 8 down on their feet (%1 alive, %2 on the ground, heights %3)", count _men, count _onGround, _men apply { round ((getPosATL _x) select 2) }]] call AIC_T_check;
+    format ["all 8 down on their feet (%1 alive, %2 on the ground, heights %3)", count _men, count _onGround, _men apply { round ((getPos _x) select 2) }]] call AIC_T_check;
 [_id, _downAt isNotEqualTo [] && { (selectMax _downAt) < 25 }, format ["down at the spot (farthest %1 m from it where a man touched down)", if (_downAt isEqualTo []) then { -1 } else { round selectMax _downAt }]] call AIC_T_check;
 [_id, (_cRec getOrDefault ["task", ""]) == "DEFEND", format ["on their DEFEND order (%1)", _cRec getOrDefault ["task", ""]]] call AIC_T_check;
 [_id, _tGone >= 0 && { (_tGone - _tDown) < 90 }, format ["the helicopter left at once (%1 s after the last man)", round (_tGone - _tDown)]] call AIC_T_check;

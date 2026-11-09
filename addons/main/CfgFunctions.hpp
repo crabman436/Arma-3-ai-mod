@@ -90,6 +90,8 @@ class CfgFunctions
             class holdVehicle {};
             class releaseVehicle {};
             class rallySpot {};
+            class suppressFor {};
+            class suppressWatch {};
             class sentryWatch {};
             class alarmPos {};
             class orderAssault {};

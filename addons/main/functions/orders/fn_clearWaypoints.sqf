@@ -31,6 +31,8 @@ private _token = (_group getVariable ["AIC_orderToken", 0]) + 1;
 _group setVariable ["AIC_orderToken", _token];
 // the LOITER index of an air SUPPORT order (AIC_fnc_supportCycle) is gone with its waypoints
 _group setVariable ["AIC_airLoiterWp", nil];
+// support by fire ends with the order (AIC_fnc_suppressFor / AIC_fnc_suppressWatch)
+_group setVariable ["AIC_suppress", nil];
 
 // Delete waypoints back to front
 for "_i" from ((count waypoints _group) - 1) to 0 step -1 do {

@@ -102,6 +102,10 @@ if (_kind isEqualTo "UnitKilled") exitWith {
     if (_unit isEqualTo (_rec getOrDefault ["leaderUnit", objNull])) then {
         _rec set ["leaderLost", true];
         _rec set ["leaderLostTime", time];
+        // an attack that lost its leader is looked at again at once
+        if ((_rec getOrDefault ["task", ""]) in ["ATTACK", "REINFORCE"] && { ([_cmd, "replanOnContact"] call AIC_fnc_getSetting) isEqualTo true }) then {
+            [_cmd, format ["leader of %1 killed on %2", groupId _group, _rec getOrDefault ["task", ""]]] call AIC_fnc_requestReplan;
+        };
     };
     // (a scout hit on the job: "lastHit" ends it in AIC_fnc_monitorOrders)
     if (!isNull _group) then { [_group, true] call AIC_fnc_groupEngaged; };

@@ -127,8 +127,12 @@ if (!_on) exitWith {
                 if ((_rc getOrDefault ["place", ""]) isNotEqualTo "") then {
                     private _place = [_cmd, _rc get "place"] call AIC_fnc_getObjective;
                     if (count _place > 0 && { (_place getOrDefault ["isBase", false]) isEqualTo true }) then {
-                        // home already: refill and done
+                        // home already: refill and done (men still missing are
+                        // retried while the group stays, as after a ride)
                         [_cmd, _grp, _rc get "place"] call AIC_fnc_refillGroup;
+                        if (({ alive _x } count (units _grp)) < (_rec getOrDefault ["initialSize", 1])) then {
+                            _rec set ["refillDue", [_rc get "place", time]];
+                        };
                         _rec deleteAt "recover";
                         _changes = _changes + 1;
                     } else {

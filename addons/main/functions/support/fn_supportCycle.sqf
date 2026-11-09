@@ -141,7 +141,14 @@ if (!_heliWeather) then {
     } forEach _groups;
 };
 
-if (_threats isEqualTo [] && { count _prepPos < 2 }) exitWith { [false, false] };
+// (smoke asked for by an assault, or an assault going in at night, needs no
+// known threat)
+private _assaultsAll = _cmd getOrDefault ["assaults", createHashMap];
+if !(_assaultsAll isEqualType createHashMap) then { _assaultsAll = createHashMap; };
+private _anyGo = ((values _assaultsAll) findIf { _x isEqualType createHashMap && { (_x getOrDefault ["state", ""]) isEqualTo "GO" } }) >= 0;
+private _smokeReqs = _cmd getOrDefault ["smokeRequests", []];
+if !(_smokeReqs isEqualType []) then { _smokeReqs = []; };
+if (_threats isEqualTo [] && { count _prepPos < 2 } && { _smokeReqs isEqualTo [] } && { !_anyGo }) exitWith { [false, false] };
 
 // newest sighting inside a cluster
 private _fnc_freshness = {
@@ -177,6 +184,160 @@ private _fnc_prepFirst = {
 };
 // the staff's prep_fires puts its objective first for the guns only
 private _artyPrep = if (count _prepPos >= 2) then { [_prepPos, _now] } else { _prep };
+
+// ======================================================================= SMOKE AND ILLUMINATION
+// Laid by whatever battery has the rounds and the range; the guns' turn at
+// the enemy ("lastArtyTime" / artyCooldown) is not used up by it.
+//  - smoke: AIC_fnc_assaultCycle asks for a screen on the near edge of the
+//    objective as an assault goes in ("smokeRequests" = [[points], time,
+//    id]); the oldest request is served, AIC_SMOKE_ROUNDS a gun on each
+//    point, one screen per AIC_SMOKE_COOLDOWN s; a request older than
+//    AIC_SMOKE_REQUEST_MAX s, or one served or found impossible, is dropped
+//  - illumination, at night: over the objective of an assault in GO whose
+//    infantry going in is mostly without night vision (hmd), and over the
+//    enemy at a place of ours under attack whose infantry garrison is; one
+//    round every AIC_ILLUM_INTERVAL s per place (assault / objective key
+//    "illumTime"), one place per cycle
+private _useSmoke = ([_cmd, "useSmoke"] call AIC_fnc_getSetting) isEqualTo true;
+private _useIllum = ([_cmd, "useIllumination"] call AIC_fnc_getSetting) isEqualTo true;
+if ((([_cmd, "useArtillery"] call AIC_fnc_getSetting) isEqualTo true) && { _useSmoke || _useIllum }) then {
+    private _artyGroups = [["ARTY"]] call _fnc_groupsOfType;
+    if (_artyGroups isEqualTo []) exitWith {};
+    private _sideS = _cmd getOrDefault ["side", sideUnknown];
+    // the first battery with a gun that can fire this kind at the point
+    private _fnc_battery = {
+        params ["_kind", "_target"];
+        private _found = grpNull;
+        {
+            private _grp = _x;
+            private _ok = (units _grp) findIf {
+                private _veh = objectParent _x;
+                !isNull _veh && { alive _veh } && { getNumber (configOf _veh >> "artilleryScanner") == 1 }
+                && { alive gunner _veh } && { canFire _veh }
+                && { ((getArtilleryAmmo [_veh]) findIf { ([_x, _kind] call AIC_fnc_artilleryMagScore) >= 0 && { _target inRangeOfArtillery [[_veh], _x] } }) >= 0 }
+            };
+            if (_ok >= 0) exitWith { _found = _grp; };
+        } forEach _artyGroups;
+        _found
+    };
+
+    // --- smoke screens for the assaults
+    // (a gun fires one order at a time, so a one-gun section lays the points
+    // one a cycle: a request keeps the points not yet laid, marked started,
+    // and a started screen is not held by the cooldown)
+    if (_useSmoke) then {
+        _smokeReqs = _smokeReqs select {
+            _x isEqualType [] && { count _x >= 3 } && { (_x select 1) isEqualType 0 } && { (_now - (_x select 1)) <= AIC_SMOKE_REQUEST_MAX }
+            && { (_x select 0) isEqualType [] } && { (_x select 0) isNotEqualTo [] }
+        };
+        if (_smokeReqs isNotEqualTo []) then {
+            private _req = _smokeReqs select 0;
+            private _started = (_req param [3, false]) isEqualTo true;
+            if (_started || { (_now - (_cmd getOrDefault ["lastSmokeTime", -1e6])) >= AIC_SMOKE_COOLDOWN }) then {
+                private _left = [];
+                private _laid = 0;
+                private _anyBattery = false;
+                {
+                    private _p = [_x select 0, _x select 1, 0];
+                    private _grp = ["SMOKE", _p] call _fnc_battery;
+                    if (!isNull _grp) then { _anyBattery = true; };
+                    if (!isNull _grp && { [_cmd, _grp, _p, AIC_SMOKE_ROUNDS, "SMOKE"] call AIC_fnc_fireMission }) then { _laid = _laid + 1; } else { _left pushBack _x; };
+                } forEach ((_req select 0) select { _x isEqualType [] && { count _x >= 2 } });
+                if (_left isEqualTo [] || { !_anyBattery }) then {
+                    // laid in full, or nobody has smoke with the range: spent
+                    _smokeReqs deleteAt 0;
+                } else {
+                    _req set [0, _left];
+                    if (_laid > 0) then { _req set [3, true]; };
+                };
+                if (_laid > 0 || { !_anyBattery }) then {
+                    ["supportCycle (%1): smoke screen for the assault on '%2': %3 point(s) laid, %4 to go%5", [
+                        _sideS, _req param [2, ""], _laid, count _left, ["", " (no battery with smoke in range)"] select (!_anyBattery)
+                    ]] call AIC_fnc_log;
+                };
+            };
+        };
+        _cmd set ["smokeRequests", _smokeReqs];
+    };
+
+    // --- illumination
+    if (_useIllum && { sunOrMoon < AIC_NIGHT_SUN }) then {
+        // more than half the men on foot have no night vision
+        private _fnc_needsLight = {
+            params ["_grps"];
+            private _men = 0;
+            private _dark = 0;
+            {
+                {
+                    if (alive _x && { isNull objectParent _x }) then {
+                        _men = _men + 1;
+                        if ((hmd _x) isEqualTo "") then { _dark = _dark + 1; };
+                    };
+                } forEach (units _x);
+            } forEach _grps;
+            _men > 0 && { (_dark * 2) > _men }
+        };
+        private _lit = false;
+        // (a) the assaults going in
+        {
+            private _a = _y;
+            if (_lit || { !(_a isEqualType createHashMap) } || { (_a getOrDefault ["state", ""]) isNotEqualTo "GO" }) then { continue };
+            if ((_now - (_a getOrDefault ["illumTime", -1e6])) < AIC_ILLUM_INTERVAL) then { continue };
+            private _aPos = _a getOrDefault ["pos", []];
+            if (!(_aPos isEqualType []) || { count _aPos < 2 }) then { continue };
+            private _aId = _a getOrDefault ["id", ""];
+            private _roles = _a getOrDefault ["roles", createHashMap];
+            if !(_roles isEqualType createHashMap) then { _roles = createHashMap; };
+            private _inf = _groups select {
+                private _rec = _groupData getOrDefault [hashValue _x, createHashMap];
+                (_rec getOrDefault ["task", ""]) isEqualTo "ATTACK"
+                && { (_rec getOrDefault ["objective", ""]) isEqualTo _aId }
+                && { (_rec getOrDefault ["type", ""]) isEqualTo "INF" }
+                && { !((_roles getOrDefault [hashValue _x, ""]) in ["SBF", "RESERVE"]) }
+            };
+            if (_inf isEqualTo [] || { !([_inf] call _fnc_needsLight) }) then { continue };
+            private _p = [_aPos select 0, _aPos select 1, 0];
+            private _grp = ["ILLUM", _p] call _fnc_battery;
+            if (!isNull _grp && { [_cmd, _grp, _p, 1, "ILLUM"] call AIC_fnc_fireMission }) then {
+                _a set ["illumTime", _now];
+                _lit = true;
+            };
+        } forEach _assaultsAll;
+        // (b) our places under attack: the garrison calls for light over the enemy
+        if (!_lit) then {
+            {
+                private _o = _x;
+                if (_lit || { !(_o isEqualType createHashMap) }) then { continue };
+                private _oPos = _o getOrDefault ["pos", []];
+                if (!(_oPos isEqualType []) || { count _oPos < 2 }) then { continue };
+                private _owner = _o getOrDefault ["owner", sideUnknown];
+                private _contested = (_owner isEqualTo sideUnknown) && { (_o getOrDefault ["prevOwner", sideUnknown]) isEqualTo _sideS };
+                if (!(_owner isEqualTo _sideS) && { !_contested }) then { continue };
+                if ((_now - (_o getOrDefault ["illumTime", -1e6])) < AIC_ILLUM_INTERVAL) then { continue };
+                private _r = _o getOrDefault ["radius", 150];
+                if !(_r isEqualType 0) then { _r = 150; };
+                private _near = _threats findIf { ((_x get "pos") distance2D _oPos) < (_r + AIC_OBJ_THREAT_RANGE) && { ([_x] call _fnc_freshness) <= 120 } };
+                if (_near < 0) then { continue };
+                private _oId = _o getOrDefault ["id", ""];
+                private _def = _groups select {
+                    private _rec = _groupData getOrDefault [hashValue _x, createHashMap];
+                    (_rec getOrDefault ["task", ""]) in ["DEFEND", "REINFORCE"]
+                    && { (_rec getOrDefault ["objective", ""]) isEqualTo _oId }
+                    && { (_rec getOrDefault ["type", ""]) isEqualTo "INF" }
+                    && { ((leader _x) distance2D _oPos) < (_r + 100) }
+                };
+                if (_def isEqualTo [] || { !([_def] call _fnc_needsLight) }) then { continue };
+                private _tp = (_threats select _near) get "pos";
+                private _p = [_tp select 0, _tp select 1, 0];
+                private _grp = ["ILLUM", _p] call _fnc_battery;
+                if (!isNull _grp && { [_cmd, _grp, _p, 1, "ILLUM"] call AIC_fnc_fireMission }) then {
+                    _o set ["illumTime", _now];
+                    _lit = true;
+                };
+            } forEach (_cmd getOrDefault ["objectives", []]);
+        };
+    };
+};
 
 // ======================================================================= ARTILLERY
 private _artyFired = false;

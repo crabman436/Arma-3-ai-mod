@@ -276,12 +276,18 @@ private _fnc_landAt = {
     // another transport helicopter down (or coming down) on this LZ: this one
     // keeps hovering until it has gone (the landing is asked for again next cycle)
     private _lzPos = if (_pad isEqualType objNull && { !isNull _pad }) then { getPosATL _pad } else { getPosATL _veh };
-    // (two coming down near each other's pads: the one with the lower group
-    // hash lands first, the other holds; a landed one always has the right of way)
+    // (two coming down near each other's pads: the one whose group hash sorts
+    // first lands first, the other holds; a landed one always has the right of
+    // way. hashValue is a string: sort orders it, `<` would not)
     private _mine = hashValue (group (driver _veh));
     private _other = _heliVehs findIf {
         _x isNotEqualTo _veh && { alive _x } && { (_x distance2D _lzPos) < AIC_LZ_SEPARATION }
-        && { [_x] call AIC_fnc_isLanded || { ((getPosATL _x) select 2) < AIC_LZ_HOLD_ALT && { (hashValue (group (driver _x))) < _mine } } }
+        && { [_x] call AIC_fnc_isLanded || { ((getPosATL _x) select 2) < AIC_LZ_HOLD_ALT && {
+            private _theirs = hashValue (group (driver _x));
+            private _order = [_theirs, _mine];
+            _order sort true;
+            _theirs isNotEqualTo _mine && { (_order select 0) isEqualTo _theirs }
+        } } }
     };
     if (_other >= 0) exitWith {
         if ((time - (_veh getVariable ["AIC_landHoldLog", -1e6])) > 60) then {
@@ -302,10 +308,26 @@ private _fnc_boardFallback = {
     // one fullCrew enumeration: every empty seat is listed exactly once
     private _cargoIdx = []; // empty cargo seats (cargo index)
     private _ffv = [];      // empty FFV seats (turret path)
+    // seats somebody is already walking to (assigned, not yet in): the
+    // squads of this ride and whoever else is assigned as cargo
+    private _takenCargo = [];
+    private _takenTurrets = [];
+    private _walking = +_units;
+    { if (_x isEqualType grpNull && { !isNull _x }) then { _walking append (units _x); }; } forEach (_veh getVariable ["AIC_loadCargo", []]);
+    _walking append (assignedCargo _veh);
     {
-        _x params ["_unit", "_role", "_cIdx", "_path", ["_isFFV", false], ["_assigned", objNull]];
+        if (alive _x && { isNull objectParent _x } && { (assignedVehicle _x) isEqualTo _veh }) then {
+            private _r = assignedVehicleRole _x;
+            if (_r isEqualType [] && { count _r >= 2 }) then {
+                if ((toLowerANSI (_r select 0)) isEqualTo "cargo") then { _takenCargo pushBack (_r select 1); } else { _takenTurrets pushBack (_r select 1); };
+            };
+        };
+    } forEach _walking;
+    {
+        _x params ["_unit", "_role", "_cIdx", "_path", ["_isFFV", false]];
         // a seat somebody is already walking to is not free
-        if (isNull _unit && { !alive _assigned }) then {
+        private _taken = if (_isFFV isEqualTo true) then { (_takenTurrets findIf { _x isEqualTo _path }) >= 0 } else { _cIdx in _takenCargo };
+        if (isNull _unit && { !_taken }) then {
             if (_isFFV isEqualTo true) then {
                 _ffv pushBack _path;
             } else {

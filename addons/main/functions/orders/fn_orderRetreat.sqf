@@ -104,8 +104,12 @@ if (count _fromPos >= 2 && {_type in ["INF", "MOTOR", "MECH", "ARMOR"]}) then {
     if ((_lPos distance2D _dest) > AIC_RETREAT_FIRST_LEG && {!surfaceIsWater _away}) then {
         _first = _group addWaypoint [_away, 0];
         _first setWaypointType "MOVE";
-        _first setWaypointBehaviour "CARELESS";
-        _first setWaypointCombatMode "GREEN";
+        // the leg out of contact is a fighting withdrawal: fire at will
+        // without leaving the formation, then careless and quiet beyond it
+        [_group, "setBehaviour", "AWARE"] call AIC_fnc_do;
+        [_group, "setCombatMode", "YELLOW"] call AIC_fnc_do;
+        _first setWaypointBehaviour "AWARE";
+        _first setWaypointCombatMode "YELLOW";
         _first setWaypointSpeed "FULL";
         _first setWaypointFormation (if (_isGroundVeh) then {"COLUMN"} else {"FILE"});
         _first setWaypointCompletionRadius (if (_type == "INF") then {30} else {60});

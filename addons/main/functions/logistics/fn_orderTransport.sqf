@@ -218,6 +218,22 @@ private _fnc_lzPos = {
         _q = 3;
         _p = if (_e isEqualType [] && { count _e >= 2 }) then { [_e select 0, _e select 1, 0] } else { _q = 4; _c };
     };
+    // flat enough to set down on (a helicopter lands beside its pad, and a
+    // slope under the skids damages it): the spot itself, else the nearest
+    // flat point on a ring of 40 then 80 m around it, else the spot as found
+    if (_p isNotEqualTo [] && { (_p isFlatEmpty [10, -1, 0.3, 10, 0, false]) isEqualTo [] }) then {
+        private _flat = [];
+        {
+            private _d = _x;
+            {
+                private _f = _p getPos [_d, _x];
+                _f = [_f select 0, _f select 1, 0];
+                if (!surfaceIsWater _f && { (_f isFlatEmpty [10, -1, 0.3, 10, 0, false]) isNotEqualTo [] }) exitWith { _flat = _f; };
+            } forEach [0, 45, 90, 135, 180, 225, 270, 315];
+            if (_flat isNotEqualTo []) exitWith {};
+        } forEach [40, 80];
+        if (_flat isNotEqualTo []) then { _p = _flat; };
+    };
     [_p, _q]
 };
 
@@ -530,6 +546,14 @@ _cRec set ["approachTime", -1];
 _cRec set ["pickupLzMoved", false];
 _cRec set ["dropLzMoved", false];
 _cRec set ["hotLzMoved", false];
+// (per ride: a rider of an earlier ride is none now, the take-off kicks and
+// the LZ moves start afresh)
+_cRec set ["rider", false];
+_cRec set ["kickCount", 0];
+_cRec set ["kickTime", -1e6];
+_cRec set ["pickupLzMovedTries", 0];
+_cRec set ["dropLzMovedTries", 0];
+_cRec set ["hotLzMovedTries", 0];
 _cRec set ["insert", _insert];
 _cRec set ["pickupHot", _isHeli && { ([_cmd, "heliHotLanding"] call AIC_fnc_getSetting) isEqualTo true }
     && { ([_cmd, _pickupPos, AIC_HOT_INSERT_RADIUS] call AIC_fnc_nearestThreat) isNotEqualTo []
@@ -541,8 +565,8 @@ _cRec set ["lastPos", _cPos];
 _cRec set ["lastMoveTime", time];
 
 // a new ride id: the watcher of an earlier ride of this transport ends
-private _rideId = (missionNamespace getVariable ["AIC_rideCounter", 0]) + 1;
-missionNamespace setVariable ["AIC_rideCounter", _rideId];
+private _rideId = (AIC_ns getOrDefault ["rideCounter", 0]) + 1;
+AIC_ns set ["rideCounter", _rideId];
 _tRec set ["rideId", _rideId];
 // a helicopter's landing (fast, under fire) or rope insertion is flown by
 // its own watcher, twice a second

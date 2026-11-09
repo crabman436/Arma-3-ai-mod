@@ -134,6 +134,16 @@ private _teams = createHashMap;
     private _lead = _list select 0;
     {if (([_x] call _fnc_size) > ([_lead] call _fnc_size)) then {_lead = _x}} forEach _list;
 
+    // a pincer keeps its arms until the place is taken: teams attacking an
+    // objective that is not ours yet are not folded back into one body
+    if ((_lead getOrDefault ["task", ""]) isEqualTo "ATTACK" && {(_lead getOrDefault ["objective", ""]) isNotEqualTo ""}) then {
+        private _o = [_cmd, _lead getOrDefault ["objective", ""]] call AIC_fnc_getObjective;
+        if (count _o > 0 && {!((_o getOrDefault ["owner", sideUnknown]) isEqualTo _side)}) then {
+            {_x set ["teamTime", time]} forEach _list;
+            continue;
+        };
+    };
+
     private _leadGrp = _lead get "group";
     private _joined = 0;
     if ([_lead] call _fnc_free) then {

@@ -118,5 +118,12 @@ createHashMapFromArray [
     // (AIC_fnc_refillGroup): at most this many men per base an hour
     ["recoverBroken", true],
     ["replaceLosses", true],
-    ["replaceLossesPerHour", 24]
+    ["replaceLossesPerHour", 24],
+    // the groups on overwatch fire on the defenders while the assault goes in
+    // (AIC_fnc_suppressFor); the guns lay smoke on the near edge of the
+    // objective as it starts and light a night fight for men without night
+    // vision (AIC_fnc_supportCycle)
+    ["suppressiveFire", true],
+    ["useSmoke", true],
+    ["useIllumination", true]
 ]
