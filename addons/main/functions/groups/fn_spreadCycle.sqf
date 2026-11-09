@@ -42,7 +42,11 @@ private _list = [];
     if !(_rec isEqualType createHashMap) then {continue};
     private _grp = _rec getOrDefault ["group", grpNull];
     if (isNull _grp || {(_rec getOrDefault ["type", ""]) isNotEqualTo "INF"}) then {continue};
-    if !((_rec getOrDefault ["task", ""]) in ["IDLE", "ATTACK", "REINFORCE", "DEFEND", "PATROL", "RETREAT"]) then {continue};
+    private _task = _rec getOrDefault ["task", ""];
+    if !(_task in ["IDLE", "ATTACK", "REINFORCE", "DEFEND", "PATROL"]) then {continue};
+    // a group fighting its way in stays on its lane
+    if (_task isEqualTo "ATTACK" && {count (_rec getOrDefault ["taskPos", []]) >= 2}
+        && {((leader _grp) distance2D (_rec get "taskPos")) < AIC_CROWD_ATTACK_KEEP}) then {continue};
     // waiting in an assembly area (a group still marching there may be spread)
     if ((_rec getOrDefault ["staged", false]) isEqualTo true
         && {count (_rec getOrDefault ["stagePos", []]) >= 2}

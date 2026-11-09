@@ -44,6 +44,9 @@ if (([_cmd, _basePos, AIC_THREAT_RADIUS] call AIC_fnc_nearestThreat) isNotEqualT
 private _rec = (_cmd getOrDefault ["groupData", createHashMap]) getOrDefault [hashValue _group, createHashMap];
 if (count _rec == 0) exitWith { 0 };
 if (!((_rec getOrDefault ["type", ""]) in ["INF", "MOTOR", "MECH", "ARMOR"]) || { (_rec getOrDefault ["task", ""]) in ["TRANSPORT", "TRANSPORTED"] }) exitWith { 0 };
+// a cached group has only its leader in the world (record "cache"): its men
+// come back with AIC_fnc_uncacheGroup, the refill waits for that ("refillDue")
+if ((_rec getOrDefault ["cache", []]) isNotEqualTo []) exitWith { 0 };
 private _alive = (units _group) select { alive _x };
 if (_alive isEqualTo [] || { (_alive findIf { isPlayer _x }) >= 0 }) exitWith { 0 };
 private _leader = leader _group;

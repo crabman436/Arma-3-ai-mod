@@ -121,7 +121,11 @@ if (count _lift == 0) then {
     } forEach _gd;
     if (_best isEqualTo []) exitWith {};
     _best params ["_pGrp", "_veh", "_seats", "_pRec"];
-    private _id = format ["%1>%2@%3", _a select 0, _b select 0, round time];
+    // (a sequence, not the second: two squads planned in one cycle for the
+    // same pair of airfields must not share an id)
+    private _seq = (_cmd getOrDefault ["airliftSeq", 0]) + 1;
+    _cmd set ["airliftSeq", _seq];
+    private _id = format ["%1>%2#%3", _a select 0, _b select 0, _seq];
     _lift = createHashMapFromArray [
         ["id", _id], ["plane", _pGrp], ["veh", _veh], ["from", _a], ["to", _b],
         ["phase", "LOAD"], ["created", time], ["phaseTime", time],

@@ -325,6 +325,7 @@ if (!isServer || { isNull _veh } || { count _cRec == 0 } || { count _tRec == 0 }
                     ["%1: %2 is down at the hot LZ, group %3 out", [_side, groupId _tGroup, groupId _cGroup]] call AIC_fnc_log;
                 };
                 [_cGroup, _veh, false, false] call AIC_fnc_dismountCarrier;
+                { if (_x isEqualType grpNull && { !isNull _x }) then { [_x, _veh, false, false] call AIC_fnc_dismountCarrier; }; } forEach (_tRec getOrDefault ["riders", []]);
                 if ((time - _outTime) > AIC_HOT_UNLOAD_MAX) then {
                     { if ((objectParent _x) isEqualTo _veh) then { [_x, "moveOut"] call AIC_fnc_do; }; } forEach _units;
                 };

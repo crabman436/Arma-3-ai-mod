@@ -497,6 +497,10 @@ if (_qrfNew > 0) then { _status = [_cmd] call AIC_fnc_garrisonStatus; };
 // ------------------------------------------------------------ 3. transfers
 private _moves = 0;
 
+// a place that is not ours now starts its count afresh when it is ours again
+{
+    if (!(_x in _status) && { ((_objById get _x) getOrDefault ["deficitCycles", 0]) > 0 }) then { (_objById get _x) set ["deficitCycles", 0]; };
+} forEach (keys _objById);
 // deficits: [-(deficit * priority), id]  (sort ascending = largest first)
 private _deficits = [];
 {

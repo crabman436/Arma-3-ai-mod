@@ -83,6 +83,13 @@ if (_near isNotEqualTo []) then {
     // no house out there: high ground with trees
     _post = [_ideal, _local * 0.6, "hills + trees - 10*sea"] call AIC_fnc_bestPlace;
     if (_post isEqualTo []) then {_post = _ideal};
+    // on flat open ground the best place can lie well inside the band: a post
+    // of the belt stays out on its line (at least 0.8 x the band's distance)
+    private _minOut = _builtR * _share * 0.8;
+    if ((_c distance2D _post) < _minOut) then {
+        _post = _c getPos [_minOut, _c getDir _post];
+        _post = [_post select 0, _post select 1, 0];
+    };
 };
 _post = [_post] call _fnc_dry;
 

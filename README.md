@@ -222,6 +222,9 @@ change them live through `(_cmd get "settings") set [key, value]`.
 | `recoverBroken` | true | A broken group falls back to a rally spot about a kilometre from the threat, gathers for two minutes, and is picked up and taken home to the nearest base (see "Morale, rally points and reaction times") |
 | `replaceLosses` | true | A group back at a base after a recovery gets its dead replaced by new men of its original classes |
 | `replaceLossesPerHour` | 24 | Most men a base replaces in an hour |
+| `suppressiveFire` | true | The groups on overwatch fire on the defenders while an assault goes in, instead of waiting for a target to show (see "Fire support with the assault") |
+| `useSmoke` | true | The guns lay a smoke screen on the near edge of the objective as an assault goes in (needs `useArtillery` and a battery with smoke rounds) |
+| `useIllumination` | true | At night the guns fire illumination for infantry without night vision: over the objective of an assault going in, and over the enemy at a place of ours under attack (needs `useArtillery` and flare rounds) |
 
 The Eden module sets Side, Aggression, LoopInterval, ReplanOnContact, UseArtillery, UseAir,
 AutoObjectives, DebugMarkers, ReportToPlayers, ManageDynSim, ManageGarrisons,
@@ -1037,7 +1040,8 @@ weather either (trucks and APCs do). Artillery fires in any weather.
 **Phased assaults** (part of `stagedAssaults`). When a staged assault with
 infantry goes in, every group gets a job:
 
-- **Support by fire**: the vehicles with real weapons and one infantry team,
+- **Support by fire**: the vehicles with real weapons and, with three or
+  more infantry groups, one infantry team,
   the one with the most machine guns (or the smallest), take up an overwatch
   position about 250 m outside the objective and fire in support, on open
   ground as well as at a town.
@@ -1070,6 +1074,48 @@ was seen (at once if the enemy took it) it drives back to its base and is the
 QRF again. A QRF
 that breaks, retreats or gets a new home loses the role, and the base picks a
 new one.
+
+#### Fire support with the assault
+
+**Support by fire that fires** (`suppressiveFire`). The groups on overwatch
+used to sit on their hill with "fire at will" and wait for a defender to show
+himself; against men in houses that meant a silent overwatch. Now, every
+cycle while an assault is in GO, each group on its overwatch spot puts
+suppressive fire on the defenders: the known enemy contacts seen within the
+last 90 s inside the objective (the contact's spot and up to three of its
+men or vehicles, as positions, not as targets handed over), and, while
+nothing has been seen yet in the first 90 s after GO, the edge of the
+objective facing the assault, the buildings there first, so the overwatch
+opens up as the infantry steps off. Every armed vehicle and every man of the
+machine-gun team take a target each in turn and fire a burst every 8 s
+(measured on the dedicated server: a squad of seven fires about 200 rifle
+rounds a minute on the order; a vehicle's gunner takes the order but fires
+nothing for the first minute and a quarter, so the general's watcher aims the
+turret at the point itself and fires short bursts, from the coaxial machine
+gun where the turret has one, until the AI gunner joins in). No fire goes on a point with a friendly man or
+vehicle (players and allies included) within 60 m, or past a friendly
+standing within 25 m of the line of fire. The fire stops within a cycle of
+the assault ending and at once when the group gets a new order (so a
+support-by-fire group sent in does not keep firing while it moves).
+
+**Smoke** (`useSmoke`, with `useArtillery`). As an assault with infantry goes
+in (and again when it stalls), the general asks for a smoke screen on the
+near edge of the objective, two points 20 degrees either side of the
+assault's axis at 85 % of the radius, between the defenders and the infantry
+coming in. The first battery with smoke rounds and the range lays two rounds
+a gun on each point, at most one screen every 150 s. Smoke does not use up
+the guns' turn at the enemy (`artyCooldown`); a request nobody can serve
+within three minutes lapses. HQ reports "Smoke screen: ..." to the players.
+
+**Illumination** (`useIllumination`, with `useArtillery`). When it is dark,
+the guns light a fight for men who cannot see in it: over the objective of
+an assault in GO whose infantry going in is mostly without night-vision
+goggles (checked on the men on foot), and over the enemy force at a place of
+ours under attack (an enemy seen within the last two minutes) whose infantry
+garrison is. One round every 75 s per place, one place per cycle, the
+assault first. Troops with night vision get no light (it would help the
+enemy as much). Illumination is never refused as danger close; smoke is
+refused within 60 m of a friendly, HE within 150 m as before.
 
 #### Reacting between cycles
 

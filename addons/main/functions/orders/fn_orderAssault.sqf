@@ -15,7 +15,8 @@
  *                    walk (speed LIMITED), COMBAT, in line. A flanking team
  *                    uses its flanking point as line of departure.
  *     Vehicles     : built-up objective with infantry in the assault: to an
- *                    overwatch position outside the town, on high ground
+ *                    overwatch position outside the town, off the assault's
+ *                    axis (AIC_ASSAULT_SBF_OFFSET degrees), on high ground
  *                    with a terrain line of sight to it when there is any
  *                    within 150 m, and hold there, firing in support
  *                    (record "overwatch"). Open ground, or
@@ -160,8 +161,14 @@ private _lanePos = {
 // --- vehicles watch over a built-up objective from outside --------------------
 // (support by fire: wherever the objective is, infantry included)
 if ((_role isEqualTo "SBF" || {_role isEqualTo "" && {!_isInf} && {_assault get "urban"}}) && {_assault get "hasInf"}) exitWith {
+    // off the assault's axis (AIC_ASSAULT_SBF_OFFSET, alternating sides by
+    // lane): a support-by-fire position on the infantry's own line of advance
+    // is masked by the infantry the moment it steps off; from the flank it
+    // fires past them onto the near edge and into the place
+    private _sbfBearing = _dir + ([-1, 1, 1, -1] select (((_lane + 1) max 0) min 3)) * (AIC_ASSAULT_SBF_OFFSET + ([0, 0, 25, 25] select (((_lane + 1) max 0) min 3)));
+    private _sbfFallback = [_stage, _target getPos [_radius + AIC_ASSAULT_OVERWATCH, _assault get "dir"]] select (_stage isEqualTo []);
     // never into the town: a wet overwatch spot falls back to the assembly area
-    private _p = [_radius + AIC_ASSAULT_OVERWATCH, 20, [_stage, _target getPos [_radius + AIC_ASSAULT_OVERWATCH, _assault get "dir"]] select (_stage isEqualTo [])] call _lanePos;
+    private _p = [_target getPos [_radius + AIC_ASSAULT_OVERWATCH, _sbfBearing], _sbfFallback] call _fnc_dry;
     // high ground near it that can actually see the town (terrain line of sight, 2 m up)
     private _eyeTarget = (AGLToASL _target) vectorAdd [0, 0, 2];
     {

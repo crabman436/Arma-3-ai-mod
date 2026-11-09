@@ -30,6 +30,9 @@ createHashMapFromArray [
     ["initialSize", (count _alive) max 1],
     // the men it was registered with, by class: AIC_fnc_refillGroup replaces its dead from it
     ["roster", _alive apply {typeOf _x}],
+    // the leader at registration (AIC_fnc_groupEvent: "leaderLost" when he
+    // falls; refreshed every cycle by AIC_fnc_updateGroups)
+    ["leaderUnit", leader _group],
     ["strength", 1],
     ["task", "IDLE"],
     ["taskPos", []],

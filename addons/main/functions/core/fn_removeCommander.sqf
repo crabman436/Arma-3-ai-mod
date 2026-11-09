@@ -67,6 +67,15 @@ private _toWake = (_cmd getOrDefault ["groups", []]) select { _x isEqualType grp
     };
 } forEach (_cmd getOrDefault ["objectives", []]);
 
+// pads of airlifts still under way (AIC_fnc_airliftCycle, lift key "pad")
+{
+    if (_y isEqualType createHashMap) then {
+        private _pad = _y getOrDefault ["pad", objNull];
+        if (_pad isEqualType objNull && { !isNull _pad }) then { deleteVehicle _pad; };
+    };
+} forEach (_cmd getOrDefault ["airlifts", createHashMap]);
+_cmd set ["airlifts", createHashMap];
+
 // marches end: automatic combat mode and road following back to default
 {
     if (_x isEqualType grpNull && { !isNull _x }) then {

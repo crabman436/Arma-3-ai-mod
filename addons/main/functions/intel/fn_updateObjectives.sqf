@@ -193,6 +193,10 @@ private _contacts = (_cmd getOrDefault ["knownEnemies", []]) select {
         if (_owner isNotEqualTo _prevOwner) then {
             _obj set ["prevOwner", _prevOwner];
             _obj set ["owner", _owner];
+            // a place of ours lost or contested: the plan is redone at once
+            if (_prevOwner isEqualTo _cmdSide && { ([_cmd, "replanOnContact"] call AIC_fnc_getSetting) isEqualTo true }) then {
+                [_cmd, format ["'%1' lost to %2", _obj getOrDefault ["name", ""], _owner]] call AIC_fnc_requestReplan;
+            };
             if (!isNil "AIC_ns" && { AIC_ns getOrDefault ["debug", false] isEqualTo true }) then {
                 ["updateObjectives: %1 '%2' owner %3 -> %4 (%5)", [
                     _cmdSide, _obj getOrDefault ["name", ""], _prevOwner, _owner, _counts toArray false

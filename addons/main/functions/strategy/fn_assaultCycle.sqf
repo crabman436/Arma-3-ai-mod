@@ -245,9 +245,11 @@ private _fnc_assignRoles = {
         };
     } forEach _list;
     // the machine-gun team: one outside the objective first, then most
-    // machine guns, then the smallest team
+    // machine guns, then the smallest team (only with three or more
+    // infantry groups: of two, one on overwatch would leave one squad to
+    // take the place by itself)
     private _rest = +_inf;
-    if (count _inf >= 2) then {
+    if (count _inf >= 3) then {
         private _rank = [];
         {
             private _i = _forEachIndex;
@@ -328,6 +330,30 @@ private _fnc_pushOverwatch = {
             [_cmd, _x get "group", "ATTACK", _assault get "pos", _assault get "id", true] call AIC_fnc_issueOrder;
         };
     } forEach _list;
+};
+
+// a smoke screen on the near edge of the objective, between the defenders and
+// the infantry going in (AIC_fnc_supportCycle lays it with the first battery
+// that has smoke rounds and the range; setting "useSmoke")
+private _fnc_requestSmoke = {
+    params ["_assault", "_objRadius"];
+    if !(([_cmd, "useSmoke"] call AIC_fnc_getSetting) isEqualTo true) exitWith {};
+    private _reqs = _cmd getOrDefault ["smokeRequests", []];
+    if !(_reqs isEqualType []) then {_reqs = []};
+    private _id = _assault get "id";
+    if ((_reqs findIf {_x isEqualType [] && {(_x param [2, ""]) isEqualTo _id}}) >= 0) exitWith {};
+    private _p = _assault get "pos";
+    private _dir = _assault getOrDefault ["dir", 0];
+    if !(_dir isEqualType 0) then {_dir = 0};
+    private _points = [];
+    {
+        private _q = _p getPos [_objRadius * 0.85, _dir + _x];
+        if (!surfaceIsWater _q) then {_points pushBack [_q select 0, _q select 1, 0]};
+    } forEach [-20, 20];
+    if (_points isEqualTo []) exitWith {};
+    _reqs pushBack [_points, time, _id];
+    _cmd set ["smokeRequests", _reqs];
+    ["%1: assault on '%2' asks for a smoke screen on the objective's edge", [_side, _id]] call AIC_fnc_log;
 };
 
 // where a group regroups after an aborted assault: its home garrison if we
@@ -584,8 +610,20 @@ private _started = 0;
         // AIC_fnc_monitorOrders and so always looks as if it moved): it goes
         // with whoever is there, and the GO clocks end it if nobody gets in
         private _totalFrom = [_assault get "time", _first] select _progressing;
+        // one squad shot at in the assembly area does not commit the force:
+        // under fire the assault goes once half its power is in place, or
+        // once the fire has lasted AIC_ASSAULT_WAIT s (assault
+        // "underFireSince"); the groups there fight back where they stand
+        private _goFire = false;
+        if (_underFire) then {
+            private _since = _assault getOrDefault ["underFireSince", -1];
+            if (!(_since isEqualType 0) || {_since < 0}) then {_since = time; _assault set ["underFireSince", time]};
+            _goFire = (_ready >= (0.5 * _power)) || {(time - _since) > AIC_ASSAULT_WAIT};
+        } else {
+            _assault set ["underFireSince", -1];
+        };
         private _goNow = !_nightWait && {
-            _underFire
+            _goFire
             || {(time - (_assault get "time")) > (AIC_ASSAULT_MAX_TOTAL + AIC_NIGHT_WAIT_MAX)}
             || {_ready > 0 && {_ready >= (AIC_ASSAULT_READY * _power)}}
             || {_first >= 0 && {(time - _first) > AIC_ASSAULT_WAIT} && {_riding isEqualTo []} && {_pending isEqualTo []}}
@@ -597,7 +635,7 @@ private _started = 0;
         private _prepWait = false;
         if (_goNow && {_artyReady} && {!_underFire} && {!_early}) then {
             if (!_prepFresh) then {call _fnc_prepFire};
-            if ((time - _prepTime) < AIC_PREP_FIRE_DELAY) then {_goNow = false; _prepWait = true};
+            if (_prepTime >= 0 && {(time - _prepTime) < AIC_PREP_FIRE_DELAY}) then {_goNow = false; _prepWait = true};
         };
         // why the stage still waits (AIC_fnc_jevState reports it): "night",
         // "prep fire", "riding" (members riding or orders queued),
@@ -626,6 +664,7 @@ private _started = 0;
             _started = _started + 1;
             // support by fire, assault and reserve
             [_assault, _attacking, _objRadius] call _fnc_assignRoles;
+            if (_hasInf) then {[_assault, _objRadius] call _fnc_requestSmoke};
             private _note = switch (true) do {
                 case (_underFire): {" (under fire)"};
                 case (_early && {_ready < (AIC_ASSAULT_READY * _power)}): {" (early, on the staff's advice)"};
@@ -646,6 +685,7 @@ private _started = 0;
             _assault set ["rolesTried", true];
             _assault set ["hasInf", true];
             [_assault, _attacking, _objRadius] call _fnc_assignRoles;
+            [_assault, _objRadius] call _fnc_requestSmoke;
             _roles = _assault getOrDefault ["roles", createHashMap];
             {
                 [_cmd, _x get "group", "ATTACK", _assault get "pos", _id, true] call AIC_fnc_issueOrder;
@@ -659,6 +699,9 @@ private _started = 0;
             _assault set ["contactTime", time];
             _goAge = 0;
         };
+        // support by fire that fires: the groups on overwatch suppress the
+        // defenders while the infantry goes in (AIC_fnc_suppressFor)
+        [_cmd, _assault, _attacking, _obj] call AIC_fnc_suppressFor;
         // the reserve goes in: the assault at the objective's edge (exploit),
         // the assault bleeding, on the staff's advice, or no capture after a
         // long while
@@ -697,6 +740,7 @@ private _started = 0;
             _assault set ["escalated", true];
             _obj set ["attackBoost", AIC_ASSAULT_BOOST];
             _cmd set ["prepTarget", [_assault get "pos", time]];
+            if (_hasInf) then {[_assault, _objRadius] call _fnc_requestSmoke};
             ["%1: assault on '%2' is stalling after %3 s, more force and fire asked for", [_side, _id, round _goAge]] call AIC_fnc_log;
             if ([_assault, _attacking] call _fnc_reserveWaits) then {
                 [_assault, _attacking, "the assault is stalling"] call _fnc_commitReserve;
